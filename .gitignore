@@ -1,10 +1,10 @@
 # Data directories
-./data
+./data/
 
 # Output directories
-./results
+./results/
 ./subduction/outfiles*
-./crustal_jde/outfile*
+./crustal/outfile*/
 
 # __pycache__ directories
-./*/__pycache__
+./*/__pycache__/
