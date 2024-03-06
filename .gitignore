@@ -4,6 +4,7 @@ data/
 # Output directories
 results/
 subduction/out_files*
+subduction/displacements/
 crustal/out_file*/
 
 # __pycache__ directories
