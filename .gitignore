@@ -3,8 +3,8 @@ data/
 
 # Output directories
 results/
-subduction/outfiles*
-crustal/outfile*/
+subduction/out_files*
+crustal/out_file*/
 
 # __pycache__ directories
 */__pycache__/
