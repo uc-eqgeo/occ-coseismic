@@ -9,3 +9,6 @@ crustal/out_file*/
 
 # __pycache__ directories
 */__pycache__/
+
+# Other files
+FaultSections.qgz

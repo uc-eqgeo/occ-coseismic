@@ -2,10 +2,10 @@
 First attempt at calculating uplift for the national seismic hazard model. Requires Wellington area fault mesh files.
 
 ## Scripts
-Scripts are all in the `searise-coseismic` directory. The main scripts that should be run in the following 
-order:
+Scripts are all in the `occ-coseismic` directory. The main scripts that should be run in the following order:
+
 1. `crustal/subset_fault_sections_by_mesh_v3.py` This script extracts the fault sections from the NSHM that are located 
-   along meshes in the Wellington area. Uses keywords that you have to input. Outputs a geojson with filtered traces.
+   along meshes in the defined area. Uses RoI or specified fault names. Outputs a geojson with filtered traces.
 2. `crustal/discretize_crustal_remeshed.py` This script reads in fault traces from the NSHM, turns them into retangular 
    patches with metadata, and matches each patch to triangles in the finer mesh. Inputs trace shapefiles with from 
    subset_scenarios_by_mesh.py or from all  traces from the NSHM.
