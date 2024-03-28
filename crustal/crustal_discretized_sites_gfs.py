@@ -12,7 +12,7 @@ import os
 
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
-mesh_version = "_Model2"
+mesh_version = "_Model_testing"
 #out_extension = f"_{mesh_version}_v1"
 
 steeper_dip, gentler_dip = False, False

@@ -6,11 +6,11 @@ import rasterio.mask
 from array_operations import write_tiff, write_gmt_grd
 
 ### USER INPUTS ###
-mesh_version = "_Model2"
+mesh_version = "_Model_testing"
 steeper_dip, gentler_dip = False, False
 cell_size = 4000  # in meters
 x, y = 1760934, 5431096  # central location of grid; Seaview
-buffer = 12.e4  # in meters (area around w ellington to calculate displacements)
+buffer = 12.e4  # in meters (area around wellington to calculate displacements)
 
 #########################
 gf_type = "grid"
