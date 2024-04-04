@@ -7,7 +7,7 @@ import pickle as pkl
 import os
 
 #### USER INPUT #####
-version_extension  = "_v1"
+version_extension  = "_vtesting"
 
 #this can be any working branch, should be the same for all.
 NSHM_directory = "NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE5"
@@ -48,9 +48,9 @@ traces = gpd.read_file(f"../data/sz_solutions/{NSHM_directory}/ruptures/fault_se
 all_rectangle_centroids = []
 all_rectangle_polygons = []
 # make dataframe forrectangle polygon attribtes (for export later)
-df1 = pd.DataFrame(columns=['fault_id', 'dip_deg', 'patch_height_m', 'up_depth_km', 'low_depth_km'])
+df1 = pd.DataFrame()
 
-df_rectangle_centroid = pd.DataFrame(columns=['fault_id'])
+df_rectangle_centroid = pd.DataFrame()
 
 # Turn section traces into rectangular patches using the metadata in the GeoJSON file
 for i, trace in traces.iterrows():
@@ -187,7 +187,7 @@ rectangle_rake = np.array(rectangle_rake)
 closest_rectangles = []
 for triangle_centroid in triangle_centroids:
     distances = np.linalg.norm(all_rectangle_centroids - triangle_centroid, axis=1)
-    if distances.min() < 2.e4:
+    if distances.min() < 2.2e4:
         closest_rectangle = np.argmin(distances)
         closest_rectangles.append(closest_rectangle)
     else:
