@@ -15,6 +15,9 @@ NSHM_directory = "NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE5
 #Sensitivity testing for subduction interface depth
 steeper_dip = False
 gentler_dip = False
+
+# De-blobify outputs
+deblobify = True
 #######################
 def cross_3d(a, b):
     """
@@ -191,11 +194,11 @@ for ix, triangle_centroid in enumerate(triangle_centroids):
         nearest = np.where(distances < 2.2e4)[0]
         vsep = all_rectangle_centroids[:, 2] - triangle_centroid[2]
         abs_sep = abs(vsep)
-        if np.sum(distances < 2.2e4) == 1:  # If only one option, use that option
+        if np.sum(distances < 2.2e4) == 1 or not deblobify:  # If only one option, use that option. Alternatively, use geographically nearest if using original, blobify method
             closest_rectangle = np.argmin(distances)
         else:
             nearest2 = nearest[np.argsort(abs_sep[nearest])[:2]]
-            if np.diff(abs_sep[nearest2])[0] < 1e3:  # If nearest 2 are within 1 km vertical seperation, use the geographically nearest
+            if np.diff(abs_sep[nearest2])[0] < 1.5e3:  # If nearest 2 are within 1.5 km vertical seperation, use the geographically nearest
                 closest_rectangle = nearest2[np.argmin(distances[nearest2])]
             else:
                 closest_rectangle = nearest2[np.argmin(abs_sep[nearest2])]  # If nearest 2 are > 1 km vertical seperation, use the structurally nearest
@@ -205,6 +208,7 @@ for ix, triangle_centroid in enumerate(triangle_centroids):
 
 # Manually correct some triangles
 if os.path.exists('../data/mesh_corrections.csv'):
+    print('Manually correcting some triangles')
     with open('../data/mesh_corrections.csv', 'r') as f:
         corrections = [[int(val) for val in line.strip().split(',')] for line in f.readlines()]
 
@@ -213,6 +217,7 @@ if os.path.exists('../data/mesh_corrections.csv'):
 
 # Prevent isolated triangles
 if os.path.exists('../data/hik_kerk3k_neighbours.txt'):
+    print('Removing isolated triangles')
     with open('../data/hik_kerk3k_neighbours.txt', 'r') as f:
         neighbours = [[int(tri) for tri in line.strip().split()] for line in f.readlines()]
 
@@ -221,9 +226,11 @@ if os.path.exists('../data/hik_kerk3k_neighbours.txt'):
         if rect != -1:
             if len(neighbours[tri]) == 3:
                 neigh = [closest_rectangles[neigh] for neigh in neighbours[tri] if closest_rectangles[neigh] != -1]
-                if all([ix == rect for ix in neigh]) and len(neigh) == 3:
+                if sum([ix != rect for ix in neigh]) >= 2 and len(neigh) == 3:
                     rects, count = np.unique(neigh, return_counts=True)
                     closest_rectangles[tri] = rects[np.argmax(count)]
+elif deblobify:
+    print('No neighbour file found - final output may include isolated triangles')
 
 closest_rectangles = np.array(closest_rectangles)
 
