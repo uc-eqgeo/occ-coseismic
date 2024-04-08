@@ -245,7 +245,8 @@ for index in traces.index:
     triangle_polygons = [Polygon(triangle) for triangle in triangles]
     dissolved_triangle_polygons = gpd.GeoSeries(triangle_polygons).unary_union
     discretized_polygons.append(dissolved_triangle_polygons)
-    discretised_dict[index] = {"triangles": triangles, "rake": rectangle_rake[index]}
+    discretised_dict[index] = {"triangles": triangles, "rake": mesh_rake[triangles_locs]}
+
 
 # Create a geodataframe and geospon file from the polygons
 gdf = gpd.GeoDataFrame({"rake": rectangle_rake, "geometry": discretized_polygons, "fault_id": traces.index})
