@@ -9,3 +9,10 @@ crustal/out_file*/
 
 # __pycache__ directories
 */__pycache__/
+
+# Other files
+FaultSections.qgz
+mesh_corrections.csv
+hik_kerk3k_neighbours.txt
+array_operations.py
+QGIS/

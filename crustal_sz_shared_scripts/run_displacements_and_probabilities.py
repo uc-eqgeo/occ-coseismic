@@ -5,14 +5,14 @@ import matplotlib
 from helper_scripts import get_rupture_disp_dict, save_target_rates
 from rupture_scenario_plotting_scripts import vertical_disp_figure
 from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE, plot_branch_hazard_curve, \
-    plot_cumu_disp_hazard_map, make_10_2_disp_plot, make_branch_prob_plot
+    make_10_2_disp_plot, make_branch_prob_plot
 
 ##### USER INPUTS   #####
 # must run crustal and subduction lists/loops separately
-results_directory = "results_jde"
+results_directory = "results"
 
 slip_taper = False                    # True or False, only matter if crustal otherwise it defaults to false later.
-fault_type = "crustal"                  # "crustal or "sz"
+fault_type = "sz"                  # "crustal or "sz"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
@@ -23,9 +23,9 @@ single_branch = True
 specific_rupture_ids = True
 
 #can only run one type of GF and fault geometry at a time
-gf_name = "sites"                       # "sites" or "grid" or "coastal"
+gf_name = "grid"                       # "sites" or "grid" or "coastal"
 crustal_model_extension = "_CFM"         # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_v1"                # must match suffix in the subduction directory with gfs
+sz_model_version = "_vtesting"                # must match suffix in the subduction directory with gfs
 
 # Can run more than one type of deformation model at a time (only matters for crustal)
 deformation_model = "geologic and geodetic"          # "geologic" or "geodetic" or "geologic and geodetic"
@@ -37,13 +37,13 @@ time_independent = True     # True or False
 # Just want to make some figures?
 # False: calculate displacements and probabilities and saves them as dictionaries (and continues with figures)
 # True: uses saved displacement and probability dictionaries to make probability and displacement figures
-only_make_figures = True
+only_make_figures = False
 file_type_list=["png", "pdf"]
 
 # Skip the displacements and jump to probabilities
 # True: this skips calculating displacements and making displacement figures (assumes you've already done it)
 # False: this calculates displacements (and makes disp figures) and probabilities
-skip_displacements = True
+skip_displacements = False
 
 ################
 # this makes so when you export fonts as pdfs, they are editable in Illustrator
@@ -158,8 +158,8 @@ if len(file_suffix_list) != len(NSHM_directory_list):
     raise ValueError("Number of file suffixes and NSHM directories must be equal")
 
 extension1_list = [gf_name + suffix for suffix in file_suffix_list]
-crustal_directory = "crustal_jde"
-sz_directory = "subduction_jde"
+crustal_directory = "crustal"
+sz_directory = "subduction"
 model_version_results_directory = f"{results_directory}/{fault_type}{model_version}"
 if gf_name == "grid":
     grid = True
