@@ -135,7 +135,7 @@ def vertical_disp_figure(all_ruptures_disp_dict, NSHM_directory, target_rupture_
     if fault_type == "crustal":
         discretized_polygons_gdf = gpd.read_file(f"../{crustal_directory}/out_files{model_version}"
                                                  f"/{fault_type}_discretized_polygons.geojson")
-        rectangle_outlines_gdf = gpd.read_file(f"../crustal_jde/out_files"
+        rectangle_outlines_gdf = gpd.read_file(f"../crustal/out_files"
                                                f"{model_version}/all_rectangle_outlines.geojson")
         part_a_figure_extent = "ruptured_rectangles"
     elif fault_type == "sz":

@@ -12,3 +12,8 @@ crustal/out_file*/
 
 # Other files
 FaultSections.qgz
+mesh_corrections.csv
+hik_kerk3k_neighbours.txt
+array_operations.py
+QGIS/
+*.csv

@@ -15,6 +15,7 @@ model_extension = "_Model_testing"         # "_Model1" or "_Model2" or "_CFM"
 
 # Define region of interest
 minLon, maxLon, minLat, maxLat = 174.5, 176.5, -42.0, -40.0
+#minLon, maxLon, minLat, maxLat = 160.5, 176.5, -48.0, -40.0
 
 # Convert to RoI from Lon/Lat to NZ grid if needed
 if abs(minLon) <= 180:
@@ -28,7 +29,6 @@ if abs(minLon) <= 180:
 target_fault_names = ["Aotea", "Huangarua", "Fisherman", "Honeycomb", "Moonshine", "Otaki", "Ohariu", "Okupe",
                       "Opouawe", "Uruti", "Otaraia", "Pahaua", "Palliser", "Pukerua", "Riversdale", "Shepherds Gully",
                       "Mana", "Otaheke", "Wairarapa", "Wellington Hutt", "Whareama", "Wharekauhau", "Whitemans"]
-
 
 # Define fault names to exclude that may be in RoI.
 # If fault appears in target_fault_names and exclude_fault_names, it will be included.

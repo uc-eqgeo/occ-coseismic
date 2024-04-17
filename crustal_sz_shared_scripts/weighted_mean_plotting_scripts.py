@@ -15,17 +15,17 @@ from helper_scripts import make_qualitative_colormap
 # define parameters
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "crustal"                      # "crustal or "sz"; only matters for single fault model
-crustal_model_version = "_CFM"           # "_camillas_meshes", "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_v1"                    # must match suffix in the subduction directory with gfs
+crustal_model_version = "_Model_testing"           # "_camillas_meshes", "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_vtesting"                    # must match suffix in the subduction directory with gfs
 outfile_extension = "testing"               # Optional; something to tack on to the end so you don't overwrite
 # files
 
 # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
-single_fault_model = True                   # True or False
-paired_crustal_sz = False
+single_fault_model = False                   # True or False
+paired_crustal_sz = True
 
 file_type_list = ["png"]
-results_directory = "results_jde"
+results_directory = "results"
 ##############
 
 plot_order = ["Paraparaumu", "Porirua CBD north", "South Coast", "Wellington Airport", "Wellington CBD", "Petone",
@@ -138,7 +138,6 @@ def get_mean_prob_barchart_data(site_PPE_dictionary, threshold, exceed_type, sit
         errs_minus.append(err_minus)
 
     return probs, errs_plus, errs_minus
-
 
 def make_mean_10_2_disp_bar_chart(slip_taper, model_version, model_version_results_directory,
                                   outfile_extension, file_type_list):
@@ -257,7 +256,6 @@ def make_mean_10_2_disp_bar_chart(slip_taper, model_version, model_version_resul
     for file_type in file_type_list:
         fig.savefig(f"../{model_version_results_directory}/weighted_mean_figures/"
                     f"10_2_disps{extension1}{taper_extension}.{file_type}", dpi=300)
-
 
 def make_site_prob_barchart(slip_taper, fault_type, model_version_results_directory, model_version, outfile_extension,
                         file_type_list, threshold=0.2, optional_extension=""):

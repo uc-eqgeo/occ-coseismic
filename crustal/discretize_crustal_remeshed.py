@@ -24,7 +24,7 @@ NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"
 # provide model extension to match the mesh directory and name output directory
 model_extension = "_Model_testing"
 mesh_directory = f"../data/wellington_alt_geom/meshes{model_extension}/STL_remeshed"
-
+# mesh_directory = f"../data/mesh2500"
 # this must be the same length as the number of meshes and have some value that matches all the target fault sections
 # will need to come up with a better way to do this in the future when more faults/meshes are used
 target_NSHM_fault_names = ["Aotea|Evans Bay", "Dry River|Huangarua", "Fisherman", "Honeycomb",
@@ -134,14 +134,11 @@ named_rectangle_centroids = []
 named_rectangle_polygons = []
 all_rectangle_polygons = []
 # make dataframe for fault section rectangle attributes (for export later)
-df_named_rectangle = pd.DataFrame(columns=['fault_id', 'fault_name', 'dip_deg', 'patch_height_m', 'up_depth_km',
-                                  'low_depth_km', 'dip_dir_deg'])
-df_all_rectangle = pd.DataFrame(columns=['fault_id', 'fault_name', 'dip_deg', 'patch_height_m', 'up_depth_km',
-                                         'low_depth_km', 'dip_dir_deg'])
+df_named_rectangle = pd.DataFrame()
+df_all_rectangle = pd.DataFrame()
 
-df_named_rectangle_centroid = pd.DataFrame(columns=['fault_id', 'fault_name', 'dip_deg', 'patch_height_m',
-                                                    'up_depth_km', 'low_depth_km', 'dip_dir_deg'])
-df_all_rectangle_centroid = pd.DataFrame(columns=['fault_id', 'fault_name'])
+df_named_rectangle_centroid = pd.DataFrame()
+df_all_rectangle_centroid = pd.DataFrame()
 
 # turn NSHM traces into rectangular patches using the metadata in the GeoJSON file
 for i, trace in all_traces.iterrows():
@@ -185,10 +182,11 @@ for i, trace in all_traces.iterrows():
 
     # Append the patch and polygon to lists
     all_rectangle_polygons.append(rectangle_polygon)
+
 ####
 all_rectangle_outline_gs = gpd.GeoSeries(all_rectangle_polygons, crs=2193)
 all_rectangle_outline_gdf = gpd.GeoDataFrame(df_all_rectangle, geometry=all_rectangle_outline_gs.geometry, crs=2193)
-all_rectangle_outline_gdf.to_file("out_files{model_extension}/all_rectangle_outlines.geojson",
+all_rectangle_outline_gdf.to_file(f"out_files{model_extension}/all_rectangle_outlines.geojson",
                                   driver="GeoJSON")
 
 # Turn name-filtered section traces into rectangular patches using the metadata in the GeoJSON file
@@ -300,7 +298,12 @@ for i in range(len(mesh_list)):
     # fault mesh name, deal with some mesh at a time
     mesh = mesh_list[i]
     mesh_name = mesh_name_list[i]
-    print(f"making discretized mesh for {mesh_name}")
+    if np.sum(named_rectangle_centroids_gdf['fault_name'].str.contains(target_NSHM_fault_names[i], case=False)):
+        print(f"making discretized mesh for {mesh_name} ({target_NSHM_fault_names[i]})")
+    else:
+        print('{} not found in target_traces file. Skipping...'.format(target_NSHM_fault_names[i]))
+        continue
+
     mesh_triangles_indices = mesh.cells_dict["triangle"]    # indices of vertices that make up triangles
 
     # NOT CURRENTLY USING FOR CRUSTAL. Multiply depths by steeper/gentler constant
@@ -320,6 +323,7 @@ for i in range(len(mesh_list)):
     for triangle in triangle_vertex_arrays:
         ordered_triangle_array = check_triangle_normal(triangle)
         ordered_triangle_vertex_arrays.append(ordered_triangle_array)
+
     ordered_triangle_vertex_arrays = np.array(ordered_triangle_vertex_arrays)
 
     triangle_centroids = np.mean(ordered_triangle_vertex_arrays, axis=1)   # three part arrray. means of x, y, and z.

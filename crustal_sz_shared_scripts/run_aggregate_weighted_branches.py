@@ -8,12 +8,12 @@ import pickle as pkl
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal or "sz"; only matters for single fault model
-crustal_model_version = "_CFM"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_v1"                    # must match suffix in the subduction directory with gfs
+crustal_model_version = "_Model_testing"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_vtesting"                    # must match suffix in the subduction directory with gfs
 outfile_extension = "testing"               # Optional; something to tack on to the end so you don't overwrite files
 
 probability_plot = False                # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
-displacement_chart = False                 # plots the displacement at the 10% and 2% probability of exceedance
+displacement_chart = True                 # plots the displacement at the 10% and 2% probability of exceedance
 # thresholds
 make_hazcurves = False
 make_colorful_hazcurves = False
