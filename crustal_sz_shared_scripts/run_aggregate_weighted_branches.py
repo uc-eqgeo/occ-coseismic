@@ -8,12 +8,12 @@ import pickle as pkl
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal or "sz"; only matters for single fault model
-crustal_model_version = "_CFM"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_v1"                    # must match suffix in the subduction directory with gfs
+crustal_model_version = "_Model_testing"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_vtesting"                    # must match suffix in the subduction directory with gfs
 outfile_extension = "testing"               # Optional; something to tack on to the end so you don't overwrite files
 
 probability_plot = False                # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
-displacement_chart = False                 # plots the displacement at the 10% and 2% probability of exceedance
+displacement_chart = True                 # plots the displacement at the 10% and 2% probability of exceedance
 # thresholds
 make_hazcurves = False
 make_colorful_hazcurves = False
@@ -26,7 +26,7 @@ paired_crustal_sz = True                   # True or False
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = False            # True or False
+calculate_fault_model_PPE = True            # True or False
 
 figure_file_type_list = ["png", "pdf"]             # file types for figures
 
@@ -36,9 +36,9 @@ unique_id_keyphrase_list = ["N165", "N279"]         # sz
 #unique_id_keyphrase_list = ["S042", "S158"]
 
 # set up file directories
-crustal_directory = "crustal_jde"
-sz_directory = "subduction_jde"
-results_directory = "results_jde"
+crustal_directory = "crustal"
+sz_directory = "subduction"
+results_directory = "results"
 
 #plot_order_temp = ["Porirua CBD north", "Porirua CBD south"]
 ######################################################

@@ -5,7 +5,8 @@ import matplotlib
 from helper_scripts import get_rupture_disp_dict, save_target_rates
 from rupture_scenario_plotting_scripts import vertical_disp_figure
 from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE, plot_branch_hazard_curve, \
-    make_10_2_disp_plot, make_branch_prob_plot
+    make_10_2_disp_plot, make_branch_prob_plot #, \
+    # plot_cumu_disp_hazard_map
 
 ##### USER INPUTS   #####
 # must run crustal and subduction lists/loops separately
@@ -16,15 +17,15 @@ fault_type = "sz"                  # "crustal or "sz"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
-single_branch = True
+single_branch = False
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
 specific_rupture_ids = True
 
 #can only run one type of GF and fault geometry at a time
-gf_name = "grid"                       # "sites" or "grid" or "coastal"
-crustal_model_extension = "_CFM"         # "_Model1", "_Model2", or "_CFM"
+gf_name = "sites"                       # "sites" or "grid" or "coastal"
+crustal_model_extension = "_Model_testing"         # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_vtesting"                # must match suffix in the subduction directory with gfs
 
 # Can run more than one type of deformation model at a time (only matters for crustal)
@@ -226,14 +227,18 @@ if gf_name == "sites":
     #for i in range(1):
     for i in range(len(extension1_list)):
 
-        ## step 1: get site displacement dictionary
-        # branch_site_disp_dict = get_site_disp_dict(extension1_list[i], slip_taper=slip_taper,
-        #                    model_version_results_directory=model_version_results_directory)
-        #
-        # ### step 2: get exceedance probability dictionary
-        # get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
-        #             model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-        #             time_interval=100, n_samples=1000000)
+        taper_extension = "_tapered" if slip_taper else "_uniform"
+        pkl_file = f"../{model_version_results_directory}/{extension1_list[i]}/cumu_exceed_prob_{extension1_list[i]}{taper_extension}.pkl"
+
+        if not os.path.exists(pkl_file):
+            ## step 1: get site displacement dictionary
+            branch_site_disp_dict = get_site_disp_dict(extension1_list[i], slip_taper=slip_taper,
+                                model_version_results_directory=model_version_results_directory)
+
+            ### step 2: get exceedance probability dictionary
+            get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
+                        model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
+                        time_interval=100, n_samples=100000)  # n_samples reduced from 1e6 for testing speed
 
         ## step 3 (optional): plot hazard curves
         print(f"*~ Making probability figures for {extension1_list[i]} ~*\n")
@@ -248,10 +253,10 @@ if gf_name == "sites":
         #                           sz_directory=sz_directory, model_version=model_version)
 
         ## step 5: plot bar charts
-        make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
-                            model_version_results_directory=model_version_results_directory,
-                            model_version=model_version)
+        #make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
+        #                    model_version_results_directory=model_version_results_directory,
+        #                    model_version=model_version)
 
         make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
                                  model_version_results_directory=model_version_results_directory,
-                                 outfile_extension="")
+                                 file_type_list=["png", "pdf"])
