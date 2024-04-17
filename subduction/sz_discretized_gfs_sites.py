@@ -1,6 +1,7 @@
 import pickle as pkl
 import numpy as np
 import geopandas as gpd
+import pandas as pd
 import cutde.halfspace as HS
 from shapely.geometry import MultiPoint, LineString, Point
 import os
@@ -8,29 +9,16 @@ import os
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_v1_steeperdip"
+version_extension = "_vtesting"
 #NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
-steeper_dip, gentler_dip = True, False
+steeper_dip, gentler_dip = False, False
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_1_coord = np.array([1749376, 5427530, 0])   # downtown Wellington in NZTM
-site_2_coord = np.array([1736455, 5427195, 0])   # South Coast, sea/shore electricity cable location
-site_3_coord = np.array([1751064, 5423128, 0])   # Wellington airport
-site_4_coord = np.array([1754357, 5445716, 0])   # Porirua CBD north of Ohariu fault
-site_5_coord = np.array([1754557, 5445119, 0])   # Porirua CBD south of Ohariu fault
-site_6_coord = np.array([1757199, 5434207, 0])   # Petone (Hutt Valley); people and office buildings
-site_7_coord = np.array([1759240, 5432111, 0])   # Seaview (Hutt Valley); oil tankers loading/unloading
-site_8_coord = np.array([1766726, 5471342, 0])   # Paraparaumu; west coast
-site_9_coord = np.array([1758789, 5427418, 0])   # Eastbourne (eastern wellington harbour)
-site_10_coord = np.array([1760183, 5410911, 0])   # Turakirae Head
-site_11_coord = np.array([1779348, 5415831, 0])   # Lake Ferry (small settlement, flood infrustructure)
-site_12_coord = np.array([1789451, 5391086, 0])      # Cape Palliser (marine terraces to compare)
-site_13_coord = np.array([1848038, 5429751, 0])     # Flat Point (round out point spacing)
+site_list_csv = os.path.join('/mnt/', 'c', 'Users', 'jmc753', 'Work', 'occ-coseismic', 'wellington_qgis_grid_points.csv')
+sites_df = pd.read_csv(site_list_csv)
 
-site_coords = np.vstack((site_1_coord, site_2_coord, site_3_coord, site_4_coord, site_5_coord, site_6_coord,
-                   site_7_coord, site_8_coord, site_9_coord, site_10_coord, site_11_coord, site_12_coord, site_13_coord))
-site_name_list = ["Wellington CBD", "South Coast", "Wellington Airport", "Porirua CBD north", "Porirua CBD south",
-                  "Petone", "Seaview", "Paraparaumu", "Eastbourne", "Turakirae Head", "Lake Ferry", "Cape Palliser",
-                  "Flat Point"]
+site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
+site_name_list = [site for site in sites_df['siteId']]
+
 
 #############################################
 x_data = site_coords[:, 0]
@@ -47,6 +35,10 @@ if steeper_dip == True and gentler_dip == True:
     # throw an error
     print("Dip modifications are wrong. Only one statement can be True at once. Try again.")
     exit()
+elif steeper_dip:
+    version_extension += "_steeperdip"
+elif gentler_dip:
+    version_extension += "_gentlerdip"
 
 # Load files
 with open(f"out_files{version_extension}/sz_discretised_dict.pkl",
