@@ -5,18 +5,19 @@ import matplotlib
 from helper_scripts import get_rupture_disp_dict, save_target_rates
 from rupture_scenario_plotting_scripts import vertical_disp_figure
 from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE, plot_branch_hazard_curve, \
-    plot_cumu_disp_hazard_map, make_10_2_disp_plot, make_branch_prob_plot
+    make_10_2_disp_plot, make_branch_prob_plot #, \
+    # plot_cumu_disp_hazard_map
 
 ##### USER INPUTS   #####
 # must run crustal and subduction lists/loops separately
-results_directory = "results_jde"
+results_directory = "results"
 
 slip_taper = False                    # True or False, only matter if crustal otherwise it defaults to false later.
 fault_type = "crustal"                  # "crustal or "sz"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
-single_branch = True
+single_branch = False
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
@@ -24,8 +25,8 @@ specific_rupture_ids = True
 
 #can only run one type of GF and fault geometry at a time
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
-crustal_model_extension = "_CFM"         # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_v1"                # must match suffix in the subduction directory with gfs
+crustal_model_extension = "_Model_testing"         # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_vtesting"                # must match suffix in the subduction directory with gfs
 
 # Can run more than one type of deformation model at a time (only matters for crustal)
 deformation_model = "geologic and geodetic"          # "geologic" or "geodetic" or "geologic and geodetic"
@@ -37,13 +38,13 @@ time_independent = True     # True or False
 # Just want to make some figures?
 # False: calculate displacements and probabilities and saves them as dictionaries (and continues with figures)
 # True: uses saved displacement and probability dictionaries to make probability and displacement figures
-only_make_figures = True
+only_make_figures = False
 file_type_list=["png", "pdf"]
 
 # Skip the displacements and jump to probabilities
 # True: this skips calculating displacements and making displacement figures (assumes you've already done it)
 # False: this calculates displacements (and makes disp figures) and probabilities
-skip_displacements = True
+skip_displacements = False
 
 ################
 # this makes so when you export fonts as pdfs, they are editable in Illustrator
@@ -158,8 +159,8 @@ if len(file_suffix_list) != len(NSHM_directory_list):
     raise ValueError("Number of file suffixes and NSHM directories must be equal")
 
 extension1_list = [gf_name + suffix for suffix in file_suffix_list]
-crustal_directory = "crustal_jde"
-sz_directory = "subduction_jde"
+crustal_directory = "crustal"
+sz_directory = "subduction"
 model_version_results_directory = f"{results_directory}/{fault_type}{model_version}"
 if gf_name == "grid":
     grid = True
@@ -226,14 +227,18 @@ if gf_name == "sites":
     #for i in range(1):
     for i in range(len(extension1_list)):
 
-        ## step 1: get site displacement dictionary
-        # branch_site_disp_dict = get_site_disp_dict(extension1_list[i], slip_taper=slip_taper,
-        #                    model_version_results_directory=model_version_results_directory)
-        #
-        # ### step 2: get exceedance probability dictionary
-        # get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
-        #             model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-        #             time_interval=100, n_samples=1000000)
+        taper_extension = "_tapered" if slip_taper else "_uniform"
+        pkl_file = f"../{model_version_results_directory}/{extension1_list[i]}/cumu_exceed_prob_{extension1_list[i]}{taper_extension}.pkl"
+
+        if not os.path.exists(pkl_file):
+            ## step 1: get site displacement dictionary
+            branch_site_disp_dict = get_site_disp_dict(extension1_list[i], slip_taper=slip_taper,
+                                model_version_results_directory=model_version_results_directory)
+
+            ### step 2: get exceedance probability dictionary
+            get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
+                        model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
+                        time_interval=100, n_samples=100000)  # n_samples reduced from 1e6 for testing speed
 
         ## step 3 (optional): plot hazard curves
         print(f"*~ Making probability figures for {extension1_list[i]} ~*\n")
@@ -248,10 +253,10 @@ if gf_name == "sites":
         #                           sz_directory=sz_directory, model_version=model_version)
 
         ## step 5: plot bar charts
-        make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
-                            model_version_results_directory=model_version_results_directory,
-                            model_version=model_version)
+        #make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
+        #                    model_version_results_directory=model_version_results_directory,
+        #                    model_version=model_version)
 
         make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
                                  model_version_results_directory=model_version_results_directory,
-                                 outfile_extension="")
+                                 file_type_list=["png", "pdf"])

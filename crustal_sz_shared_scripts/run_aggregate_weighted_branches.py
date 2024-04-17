@@ -26,7 +26,7 @@ paired_crustal_sz = True                   # True or False
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = False            # True or False
+calculate_fault_model_PPE = True            # True or False
 
 figure_file_type_list = ["png", "pdf"]             # file types for figures
 
@@ -36,9 +36,9 @@ unique_id_keyphrase_list = ["N165", "N279"]         # sz
 #unique_id_keyphrase_list = ["S042", "S158"]
 
 # set up file directories
-crustal_directory = "crustal_jde"
-sz_directory = "subduction_jde"
-results_directory = "results_jde"
+crustal_directory = "crustal"
+sz_directory = "subduction"
+results_directory = "results"
 
 #plot_order_temp = ["Porirua CBD north", "Porirua CBD south"]
 ######################################################

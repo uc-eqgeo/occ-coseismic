@@ -20,6 +20,7 @@ matplotlib.rcParams['pdf.fonttype'] = 42
 plot_order = ["Paraparaumu", "Porirua CBD north", "South Coast", "Wellington Airport", "Wellington CBD", "Petone",
               "Seaview", "Eastbourne", "Turakirae Head", "Lake Ferry", "Cape Palliser",
               "Flat Point"]
+plot_order = [41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52]
 
 def get_site_disp_dict(extension1, slip_taper, model_version_results_directory):
     """
@@ -118,6 +119,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
     for i, site_of_interest in enumerate(branch_site_disp_dict.keys()):
+        print('Site:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
         # if i == 0:
         #     if branch_key not in ["nan", ""]:
         #         print(f"calculating {branch_key} PPE for site {i} of {len(branch_site_disp_dict.keys())}")
@@ -445,7 +447,7 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
     for site in site_list:
         threshold_vals = site_PPE_dictionary[site]["thresholds"]
 
-        # dispalcement threasholds are negative for "down" exceedances
+        # displacement thresholds are negative for "down" exceedances
         if exceed_type == "down":
             threshold_vals = -threshold_vals
 
@@ -506,6 +508,7 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
     fig, axs = plt.subplots(figsize=(8, 10))
     plt.subplots_adjust(hspace=0.3, wspace=0.3)
     fig.suptitle("Sites", fontsize=18, y=0.95)
+    plot_order = [key for key in PPE_dictionary.keys()][:12]
 
     #loop through sites and make a subplot for each one
     for i, site in enumerate(plot_order):
@@ -547,9 +550,9 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
 def plot_many_hazard_curves(file_suffix_list, slip_taper, gf_name, fault_type, model_version_results_directory, model_version,
                             color_map):
 
-    plot_order = ["Paraparaumu", "Porirua CBD north", "South Coast", "Wellington Airport", "Wellington CBD", "Petone",
-                  "Seaview", "Eastbourne", "Turakirae Head", "Lake Ferry", "Cape Palliser",
-                  "Flat Point"]
+#    plot_order = ["Paraparaumu", "Porirua CBD north", "South Coast", "Wellington Airport", "Wellington CBD", "Petone",
+#                  "Seaview", "Eastbourne", "Turakirae Head", "Lake Ferry", "Cape Palliser",
+#                  "Flat Point"]
 
     exceed_type_list = ["total_abs"]
 
