@@ -11,11 +11,11 @@ from shapely.geometry import Point
 #######INPUTS
 # find only the rupture scenarios that use faults we have meshes for
 NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"  # geologic, mid B and N, C 4.2
-model_extension = "_Model_testing"         # "_Model1" or "_Model2" or "_CFM"
+model_extension = "_Model_CFM_10km"         # "_Model1" or "_Model2" or "_CFM"
 
 # Define region of interest
 minLon, maxLon, minLat, maxLat = 174.5, 176.5, -42.0, -40.0
-#minLon, maxLon, minLat, maxLat = 160.5, 176.5, -48.0, -40.0
+minLon, maxLon, minLat, maxLat = 160.5, 179.0, -48.0, -34.0
 
 # Convert to RoI from Lon/Lat to NZ grid if needed
 if abs(minLon) <= 180:

@@ -5,7 +5,7 @@ import matplotlib
 from helper_scripts import get_rupture_disp_dict, save_target_rates
 from rupture_scenario_plotting_scripts import vertical_disp_figure
 from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE, plot_branch_hazard_curve, \
-    make_10_2_disp_plot, make_branch_prob_plot #, \
+    make_10_2_disp_plot, make_branch_prob_plot, save_10_2_disp #, \
     # plot_cumu_disp_hazard_map
 
 ##### USER INPUTS   #####
@@ -13,11 +13,11 @@ from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE,
 results_directory = "results"
 
 slip_taper = False                    # True or False, only matter if crustal otherwise it defaults to false later.
-fault_type = "sz"                  # "crustal or "sz"
+fault_type = "crustal"                  # "crustal or "sz"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
-single_branch = False
+single_branch = True
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
@@ -217,7 +217,7 @@ if skip_displacements is False:
                              target_rupture_ids=target_rupture_ids, extension1=extension1_list[i],
                              extent="Wellington", slip_taper=slip_taper, grid=grid, fault_type=fault_type,
                              results_version_directory=model_version_results_directory, crustal_directory=crustal_directory,
-                             sz_directory=sz_directory, model_version=model_version, file_type_list=file_type_list)
+                             sz_directory=sz_directory, model_version=model_version, file_type_list=file_type_list, save_arrays=False)
 
         # save_target_rates(NSHM_directory_list[i], target_rupture_ids=target_rupture_ids, extension1=extension1_list[i],
         #                   results_version_directory=model_version_results_directory)
@@ -246,17 +246,20 @@ if gf_name == "sites":
                             model_version_results_directory=model_version_results_directory,
                             slip_taper=slip_taper, file_type_list=file_type_list)
 
-        # step 4 (optional): plot hazard maps
-        # plot_cumu_disp_hazard_map(extension1=extension1_list[i], slip_taper=slip_taper, grid=grid, fault_type=fault_type,
-        #                           model_version_results_directory=model_version_results_directory,
-        #                           crustal_directory=crustal_directory,
-        #                           sz_directory=sz_directory, model_version=model_version)
+        # step 4 (optional): plot hazard maps (Needs to be imported from subduction/sz_probability_plotting_scripts.py)
+        #plot_cumu_disp_hazard_map(extension1=extension1_list[i], slip_taper=slip_taper, grid=grid, fault_type=fault_type,
+        #                          model_version_results_directory=model_version_results_directory,
+        #                          crustal_directory=crustal_directory,
+        #                          sz_directory=sz_directory, model_version=model_version)
 
         ## step 5: plot bar charts
-        #make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
-        #                    model_version_results_directory=model_version_results_directory,
-        #                    model_version=model_version)
+        make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
+                           model_version_results_directory=model_version_results_directory,
+                           model_version=model_version)
 
         make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
                                  model_version_results_directory=model_version_results_directory,
                                  file_type_list=["png", "pdf"])
+
+        save_10_2_disp(extension1=extension1_list[i], slip_taper=slip_taper,
+                                 model_version_results_directory=model_version_results_directory)
