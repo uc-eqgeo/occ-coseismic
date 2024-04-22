@@ -8,7 +8,6 @@ import pickle as pkl
 from scipy.interpolate import griddata
 
 
-
 def read_rupture_csv(csv_file: str):
     rupture_dict = {}
     with open(csv_file, "r") as fid:
@@ -26,6 +25,7 @@ def read_average_slip(csv_file: str):
         slip_dict[i] = row["Average Slip (m)"]
     return slip_dict
 
+
 def read_rake_csv(csv_file: str):
     df = pd.read_csv(csv_file)
     rake_dict = {}
@@ -34,9 +34,30 @@ def read_rake_csv(csv_file: str):
         rake_dict[fault_id] = {"cfm_rake": row["cfm_rake"], "model1_rake": row["model1_rake"], "model2_rake": row["model2_rake"]}
     return rake_dict
 
+
+def rake_from_traces(traces):
+    rake_dict = {}
+    for i, row in traces.iterrows():
+        fault_id = int(row["FaultID"])
+        rake_dict[fault_id] = {"cfm_rake": row["Rake"]}
+    return rake_dict
+
+
+def read_combination_csv(csv_file: str, saveSpaces: bool = False):
+    df = pd.read_csv(csv_file, header=None)
+    comb_dict = {}
+    for i, row in df.iterrows():
+        if saveSpaces:
+            fault_id = row[0].replace('combined', '').replace(' - ', '|').replace('-', '|').strip().strip('|')
+            comb_dict[fault_id] = [fault for fault in row[1:] if isinstance(fault, str)]
+        else:
+            fault_id = row[0].replace('combined', '').replace(' ', '').replace('-', '|').strip('|')
+            comb_dict[fault_id] = [fault.replace(' ', '') for fault in row[1:] if isinstance(fault, str)]
+    return comb_dict
+
+
 def make_total_slip_dictionary(gf_dict_pkl):
     """ calculates total greens function displacement using strike slip gf, dip slip gf, and rake value
-
     need to run the and crustal_discretized_gfs script first"""
 
     with open(gf_dict_pkl, "rb") as fid:
@@ -72,7 +93,7 @@ def merge_rupture_attributes(directory, trimmed=True):
     trimmed_rates_df = rates_df[rates_df["Annual Rate"] > 0]
 
     # combine the data frames based on rupture index, using reduce and merge
-    if trimmed == True:
+    if trimmed is True:
         # make a list of data frames. Rates needs to be last based on merge function below
         dfs_list = [avg_slip_df, properties_df, trimmed_rates_df]
         # merge only works with 2 data frames, hence the use of reduce
@@ -125,7 +146,7 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, extension1, 
     for i in range(len(fault_rectangle_centroids_gdf.centroid)):
         centroid = fault_rectangle_centroids_gdf.centroid[i]
         if centroid.distance(Wellington) < search_radius:
-            #filtered_fault_ids.append(patch_centroids_gdf.index[i])
+            # filtered_fault_ids.append(patch_centroids_gdf.index[i])
             filtered_fault_ids.append(int(fault_rectangle_centroids_gdf.fault_id[i]))
 
     # this can probably be simplified
@@ -138,6 +159,7 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, extension1, 
 
     print(f"location filtered scenarios: {len(filtered_scenarios)}")
     return filtered_scenarios
+
 
 def get_rect_geojson(NSHM_directory, target_rupture_ids, extension1, extension2, slip_taper):
     """makes geojson of rectangles for specified rupture scenario indicies
@@ -166,7 +188,7 @@ def get_rect_geojson(NSHM_directory, target_rupture_ids, extension1, extension2,
     if not os.path.exists(f"out_files/{extension1}{extension2}/geojson"):
         os.mkdir(f"out_files/{extension1}{extension2}/geojson")
 
-    ## loop through target ruptures
+    # loop through target ruptures
     for rupture_id in target_rupture_ids:
         # get patch indices that ruptured in scenario
         ruptured_patches = all_ruptures[rupture_id]
@@ -175,16 +197,17 @@ def get_rect_geojson(NSHM_directory, target_rupture_ids, extension1, extension2,
         # subset slip rates, patch polygons, and make dataframe/geodataframe
         ruptured_patch_sliprates = sect_sliprates_df[sect_sliprates_df.index.isin(ruptured_patches)]
         scenario_rectangles_gdf = all_rectangles_gdf[all_rectangles_gdf.index.isin(ruptured_patches)]
-        df = pd.DataFrame({'section_index':ruptured_patches,
+        df = pd.DataFrame({'section_index': ruptured_patches,
                            "slp_rt_m_yr": ruptured_patch_sliprates["Slip Rate (m/yr)"]})
         out_rectangles_gdf = gpd.GeoDataFrame(df, geometry=scenario_rectangles_gdf.geometry, crs=2193)
 
         # write patches to file
-        out_rectangles_gdf.to_file\
-            (f"out_files/{extension1}{extension2}/geojson/rectangles_{rupture_id}{extension3}.geojson",
-                                driver="GeoJSON")
+        out_rectangles_gdf.to_file(
+            f"out_files/{extension1}{extension2}/geojson/rectangles_{rupture_id}{extension3}.geojson",
+            driver="GeoJSON")
 
     print("Rupture patches written to geojson")
+
 
 def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectangle_outlines_gdf, rupture_id,
                              ruptured_fault_ids, slip_taper, rupture_slip_dict, gf_total_slip_dict):
@@ -256,7 +279,7 @@ def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectang
 
         # interpolate slip at each discretized polygon (i.e., patch) centroid and corresponding displacement
         polygon_slips = griddata(along_rupture_line_xy, tapered_slip_values, ruptured_polygon_centroid_coords,
-                               method="nearest")
+                                 method="nearest")
 
         # calculate displacements by multiplying the polygon green's function by slip on each fault
         # this will be a list of lists
@@ -264,15 +287,15 @@ def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectang
         for i, fault_id in enumerate(ruptured_discretized_polygons_gdf.fault_id):
             disp_i = gf_total_slip_dict[fault_id]["combined_gf"] * polygon_slips[i]
             disps_i_list.append(disp_i)
-        #sum displacements from each patch
+        # sum displacements from each patch
         disps_scenario = np.sum(disps_i_list, axis=0)
         if len(ruptured_fault_ids_with_mesh) != 0:
             disps_scenario[np.abs(disps_scenario) < 5.e-3] = 0.
         elif len(ruptured_fault_ids_with_mesh) == 0:
             disps_scenario = None
 
-
     return disps_scenario, polygon_slips
+
 
 def get_rupture_disp_dict(NSHM_directory, extension1, extension2, slip_taper):
     """
@@ -322,7 +345,6 @@ def get_rupture_disp_dict(NSHM_directory, extension1, extension2, slip_taper):
     site_name_list = gf_total_slip_dict[first_key]["site_name_list"]
     site_coords = gf_total_slip_dict[first_key]["site_coords"]
 
-
     # calculate displacements at all th sites by rupture. Output dictionary keys are by rupture ID.
     disp_dictionary = {}
     print(f"calculating displacements for {extension1}")
@@ -334,7 +356,7 @@ def get_rupture_disp_dict(NSHM_directory, extension1, extension2, slip_taper):
         ruptured_rectangle_outlines_gdf = rectangle_outlines_gdf[
             rectangle_outlines_gdf.fault_id.isin(ruptured_fault_ids)]
 
-        #calculate displacements, output is a list of displacements for each site
+        # calculate displacements, output is a list of displacements for each site
         disps_scenario, patch_slips = \
             calculate_vertical_disps(ruptured_discretized_polygons_gdf=ruptured_discretized_polygons_gdf,
                                      ruptured_rectangle_outlines_gdf=ruptured_rectangle_outlines_gdf,
@@ -368,6 +390,7 @@ def get_rupture_disp_dict(NSHM_directory, extension1, extension2, slip_taper):
 
     return disp_dictionary
 
+
 def get_figure_bounds(polygon_gdf, extent=""):
     """sets figure bounds based on key words
     polygon_gdf: either discretized polygon gdf (for displacement figure) or ruptured rectangles gdf (slip figure)
@@ -375,7 +398,7 @@ def get_figure_bounds(polygon_gdf, extent=""):
 
     if extent == "North Island":    # bounds of whole north island
         plot_xmin, plot_ymin, plot_xmax, plot_ymax = 1525000, 5247000, 2300000, 6176000
-        xmin_tick, xmax_tick  = round(plot_xmin, -4), round(plot_xmax, -4)
+        xmin_tick, xmax_tick = round(plot_xmin, -4), round(plot_xmax, -4)
         ymin_tick, ymax_tick = round(plot_ymin, -4), round(plot_ymax, -4)
         tick_separation = 100000.
     elif extent == "Wellington":    # bounds around wellington, with a 10 km buffer
@@ -400,6 +423,7 @@ def get_figure_bounds(polygon_gdf, extent=""):
         tick_separation = 400000.
     return plot_xmin, plot_ymin, plot_xmax, plot_ymax, xmin_tick, xmax_tick, ymin_tick, ymax_tick, tick_separation
 
+
 def save_target_rates(NSHM_directory, target_rupture_ids, extension1, extension2):
     """get the annual rates from NSHM solution for target ruptures, output a csv file
 
@@ -415,5 +439,6 @@ def save_target_rates(NSHM_directory, target_rupture_ids, extension1, extension2
     trimmed_rates_df.to_csv(f"out_files/{extension1}{extension2}/coastal_def_ruptures_rates.csv", sep=',')
     print("Filtered annual rates written to .csv")
 
-#target_rupture_ids = [209026]
-#rates_df = pd.read_csv(f"../data/{NSHM_directory}/solution/rates.csv")
+
+# target_rupture_ids = [209026]
+# rates_df = pd.read_csv(f"../data/{NSHM_directory}/solution/rates.csv")

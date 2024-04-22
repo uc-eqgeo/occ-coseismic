@@ -4,7 +4,7 @@ import numpy as np
 import meshio
 from shapely.geometry import Polygon, LineString, Point
 import pickle as pkl
-from crustal_helper_scripts import read_rake_csv
+from crustal_helper_scripts import read_rake_csv, rake_from_traces, read_combination_csv
 import glob
 import os
 
@@ -22,9 +22,9 @@ import os
 # Doesn't really matter which inversion solution because all the NSHM fault files are the same.
 NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"
 # provide model extension to match the mesh directory and name output directory
-model_extension = "_Model_testing"
+model_extension = "_Model_CFM_50km"
 mesh_directory = f"../data/wellington_alt_geom/meshes{model_extension}/STL_remeshed"
-# mesh_directory = f"../data/mesh2500"
+mesh_directory = f"../data/mesh2500"
 # this must be the same length as the number of meshes and have some value that matches all the target fault sections
 # will need to come up with a better way to do this in the future when more faults/meshes are used
 target_NSHM_fault_names = ["Aotea|Evans Bay", "Dry River|Huangarua", "Fisherman", "Honeycomb",
@@ -40,48 +40,19 @@ all_traces = gpd.read_file(f"../data/crustal_solutions/{NSHM_directory}/ruptures
 
 # read in rake data
 rake_dict = read_rake_csv("../data/wellington_alt_geom/alt_geom_rakes.csv")
-if model_extension == "_Model2" or "_Model_testing":
+if model_extension == "_Model2" or model_extension == "_Model_testing":
     rake_col = "model2_rake"
 elif model_extension == "_Model1":
     rake_col = "model1_rake"
 elif model_extension == "_CFM":
     rake_col = "cfm_rake"
+else:
+    rake_dict = rake_from_traces(target_traces)
+    rake_col = "cfm_rake"
 
 # read in fault meshes and assign unique names to each one
 # there is probably a better way to do this, but the names matter so this is it for now.
 # stl can be visualised by command line meshio convert, and opening in paraview
-
-AoteaEvansBay_mesh = meshio.read(f"{mesh_directory}/Aotea-EvansBay_remeshed.stl")
-DryRiver_Huangarua_mesh = meshio.read(f"{mesh_directory}/DryRiver-Huangaruacombined_remeshed.stl")
-Fisherman_mesh = meshio.read(f"{mesh_directory}/Fishermancombined_remeshed.stl")
-Honeycomb_mesh = meshio.read(f"{mesh_directory}/Honeycomb_remeshed.stl")
-Moonshine_OtakiForks_mesh = meshio.read(f"{mesh_directory}/Moonshine-OtakiForkscombined_remeshed.stl")
-Ohariu_mesh = meshio.read(f"{mesh_directory}/Ohariucombined_remeshed.stl")
-Okupe_mesh = meshio.read(f"{mesh_directory}/Okupe1_remeshed.stl")
-OpouaweUruti_mesh = meshio.read(f"{mesh_directory}/Opouawe-Uruti_remeshed.stl")
-Otaraia_mesh = meshio.read(f"{mesh_directory}/Otaraia_remeshed.stl")
-Pahaua_mesh = meshio.read(f"{mesh_directory}/Pahaua_remeshed.stl")
-PalliserKaiwhata_mesh = meshio.read(f"{mesh_directory}/Palliser-Kaiwhata_remeshed.stl")
-PukeruaShepherdsGully_mesh = meshio.read(f"{mesh_directory}/Pukerua-ShepherdsGullycombined_remeshed.stl")
-Riversdale_mesh = meshio.read(f"{mesh_directory}/Riversdale_remeshed.stl")
-ShepherdsGullyMana_Otaheke_mesh = meshio.read(f"{mesh_directory}/ShepherdsGully-Mana-Otahekecombined_remeshed.stl")
-Wairarapa_mesh = meshio.read(f"{mesh_directory}/Wairarapacombined_remeshed.stl")
-WellingtonHutt_mesh = meshio.read(f"{mesh_directory}/WellingtonHuttValleycombined_remeshed.stl")
-WhareamaBank_mesh = meshio.read(f"{mesh_directory}/WhareamaBank_remeshed.stl")
-Wharekauhau_mesh = meshio.read(f"{mesh_directory}/Wharekauhau_remeshed.stl")
-WhitemansValley_mesh = meshio.read(f"{mesh_directory}/WhitemansValley_remeshed.stl")
-
-# make mesh list with same order as fault name list
-mesh_list = [AoteaEvansBay_mesh, DryRiver_Huangarua_mesh, Fisherman_mesh, Honeycomb_mesh, Moonshine_OtakiForks_mesh,
-             Ohariu_mesh, Okupe_mesh, OpouaweUruti_mesh, Otaraia_mesh, Pahaua_mesh, PalliserKaiwhata_mesh,
-             PukeruaShepherdsGully_mesh, Riversdale_mesh, ShepherdsGullyMana_Otaheke_mesh, Wairarapa_mesh,
-             WellingtonHutt_mesh, WhareamaBank_mesh, Wharekauhau_mesh, WhitemansValley_mesh]
-# one unique name per fault mesh. Matches the names and order of the mesh list.
-mesh_name_list = ["AoteaEvansBay_mesh", "DryRiver_Huangarua_mesh", "Fisherman_mesh", "Honeycomb_mesh",
-                  "Moonshine_OtakiForks_mesh", "Ohariu_mesh", "Okupe_mesh", "OpouaweUruti_mesh", "Otaraia_mesh",
-                  "Pahaua_mesh", "PalliserKaiwhata_mesh", "PukeruaShepherdsGully_mesh", "Riversdale_mesh",
-                  "ShepherdsGullyMana_Otaheke_mesh", "Wairarapa_mesh", "WellingtonHutt_mesh", "WhareamaBank_mesh",
-                  "Wharekauhau_mesh", "WhitemansValley_mesh"]
 
 # Read in all meshes from mesh directory, and add to mesh list_and mesh_name_list
 stl_list = glob.glob(f"{mesh_directory}/*.stl")
@@ -91,16 +62,20 @@ target_NSHM_fault_names = []
 for mesh in stl_list:
     mesh_list.append(meshio.read(mesh))
     mesh_name = os.path.basename(mesh).split(".")[0].replace('remeshed', 'mesh')
-    mesh_name = mesh_name.replace('combined', '')
-    mesh_name = ''.join([i for i in mesh_name if not i.isdigit()])
     mesh_name_list.append(mesh_name)  # remove numbers from mesh name
-    target_NSHM_fault_names.append(mesh_name.split('_')[0].replace('-', '|'))
+    target_NSHM_fault_names.append(mesh_name.split('_')[0].replace('-combined', 'combined'))
+
+# Read in combination file
+combine_meshes = True
+if combine_meshes:
+    comb_dict = read_combination_csv('../data/NZ_CFM_v1_0_rs1km_modified_connected_edited_OCC.csv')
 
 #########
 
 # Sensitivity testing for patch edge depth/dip angle. Skip for crustal for now.
 steeper_dip = False
 gentler_dip = False
+
 
 ##############
 def cross_3d(a, b):
@@ -111,6 +86,7 @@ def cross_3d(a, b):
     y = ((a[2] * b[0]) - (a[0] * b[2]))
     z = ((a[0] * b[1]) - (a[1] * b[0]))
     return np.array([x, y, z])
+
 
 def check_triangle_normal(triangle_vertices):
     """ needed for correct dip direction. check if the normal vector is positive or negative. If negative,
@@ -207,16 +183,16 @@ for i, trace in target_traces.iterrows():
     rectangle_horizontal_dist = initial_rectangle_height / initial_tandip
 
     # set conditions for rectangular patch geometry parameters, which change with dip angle
-    # for steeper dip ( fault section depths * 1.85)
+    # for steeper dip ( fault section depths * 1.15)
     # probably is a little bit broken if steeper or gentler are True
-    if steeper_dip == True and gentler_dip == False:
+    if steeper_dip is True and gentler_dip is False:
         low_depth, up_depth = trace.LowDepth * 1.15, trace.UpDepth * 1.15
         rectangle_height = (low_depth - up_depth) * 1000.
         trace_centroid = np.array([*trace.geometry.centroid.coords[0], trace.UpDepth * -1000])
         dip_angle = np.degrees(np.arctan(rectangle_height / rectangle_horizontal_dist))
         extension2 = "_steeperdip"
     # for gentler dip ( fault section depths * 0.85)
-    elif gentler_dip == True and steeper_dip == False:
+    elif gentler_dip is True and steeper_dip is False:
         low_depth, up_depth = trace.LowDepth * 0.85, trace.UpDepth * 0.85
         rectangle_height = (low_depth - up_depth) * 1000.
         trace_centroid = np.array([*trace.geometry.centroid.coords[0], trace.UpDepth * -1000])
@@ -242,7 +218,8 @@ for i, trace in target_traces.iterrows():
                                   'dip_dir_deg': [trace.DipDir]}, index=[i])
     df_named_rectangle = pd.concat([df_named_rectangle, df2_rectangle])
 
-    df2_rectangle_centroid = pd.DataFrame({'fault_id': [trace.FaultID], 'fault_name': [trace.FaultName]}, index=[i])
+    df2_rectangle_centroid = pd.DataFrame({'fault_id': [trace.FaultID], 'fault_name': [trace.FaultName.replace(':', '')],
+                                           'mesh_name': trace['Mesh Name']}, index=[i])
     df_named_rectangle_centroid = pd.concat([df_named_rectangle_centroid, df2_rectangle_centroid])
     #######################
     # # Calculate the across-strike vector, (orthogonal to strike) aka dip direction xy vector
@@ -276,12 +253,10 @@ named_rectangle_centroids_gdf.to_file(
 
 # Remove all spaces from fault names (Life's just easier that way)
 named_rectangle_centroids_gdf['fault_name'] = named_rectangle_centroids_gdf['fault_name'].str.replace(' ', '')
-
 named_rectangle_outline_gs = gpd.GeoSeries(named_rectangle_polygons, crs=2193)
 named_rectangle_outline_gdf = gpd.GeoDataFrame(df_named_rectangle, geometry=named_rectangle_outline_gs.geometry, crs=2193)
 named_rectangle_outline_gdf.to_file(
     f"out_files{model_extension}/named_rectangle_polygons.geojson", driver="GeoJSON")
-
 
 #### mesh stuff
 # make output geodata frame to add all discretized patch/fault info to
@@ -294,22 +269,25 @@ discretised_dict = {}       # values are xyz or triangle coords for each fault I
 
 # loop over individual fault meshes, find closest rectangle patch centroid for same fault name
 ####### important to subset by name so you don't get the closest patch centroid from a different fault
+unused_mesh = []
+used_mesh = []
 for i in range(len(mesh_list)):
     # fault mesh name, deal with some mesh at a time
     mesh = mesh_list[i]
     mesh_name = mesh_name_list[i]
-    if np.sum(named_rectangle_centroids_gdf['fault_name'].str.contains(target_NSHM_fault_names[i], case=False)):
+
+    if np.sum(named_rectangle_centroids_gdf['mesh_name'].str.contains(target_NSHM_fault_names[i], case=False)):
         print(f"making discretized mesh for {mesh_name} ({target_NSHM_fault_names[i]})")
+        used_mesh.append(target_NSHM_fault_names[i])
     else:
-        print('{} not found in target_traces file. Skipping...'.format(target_NSHM_fault_names[i]))
         continue
 
     mesh_triangles_indices = mesh.cells_dict["triangle"]    # indices of vertices that make up triangles
 
     # NOT CURRENTLY USING FOR CRUSTAL. Multiply depths by steeper/gentler constant
-    if steeper_dip == True:
+    if steeper_dip is True:
         mesh_vertices = mesh.points * [1, 1, 1.15]
-    elif gentler_dip == True:
+    elif gentler_dip is True:
         mesh_vertices = mesh.points * [1, 1, 0.85]
     else:
         mesh_vertices = mesh.points  # xyz of vertices in mesh. indexed.
@@ -326,7 +304,7 @@ for i in range(len(mesh_list)):
 
     ordered_triangle_vertex_arrays = np.array(ordered_triangle_vertex_arrays)
 
-    triangle_centroids = np.mean(ordered_triangle_vertex_arrays, axis=1)   # three part arrray. means of x, y, and z.
+    triangle_centroids = np.mean(ordered_triangle_vertex_arrays, axis=1)   # three part array. means of x, y, and z.
 
     # find the closest fault rectangle patch to each triangle centroid
     closest_rectangles = []
@@ -335,7 +313,7 @@ for i in range(len(mesh_list)):
         # search_terms = target_NSHM_fault_names[i]
         # subset centroids by fault name that matches mesh name (prevents grabbing the wrong fault)
         rectangle_centroid_gdf_i = named_rectangle_centroids_gdf[
-            named_rectangle_centroids_gdf['fault_name'].str.contains(target_NSHM_fault_names[i], case=False)]
+            named_rectangle_centroids_gdf['mesh_name'].str.contains(target_NSHM_fault_names[i], case=False)]
         # get coordinates of patch centroids
         # needs to be in array format to work with triangle centroids
         patch_centroids_i = np.vstack([np.array(value.coords) for value in
@@ -390,6 +368,8 @@ for i in range(len(mesh_list)):
 
                 # set the triangles and rake for each fault ID
                 discretised_dict[trace.FaultID] = {"triangles": triangles, "rake": rake}
+        else:
+            print('\t{} not found in rake file. Skipping...'.format(target_NSHM_fault_names[i]))
 
     # get patch rakes and fault ids to add to output geojson file
     polygon_rakes = np.array(polygon_rakes)
@@ -399,7 +379,14 @@ for i in range(len(mesh_list)):
     # Create a geodataframe from the discretized polygons
     gdf = gpd.GeoDataFrame({"rake": polygon_rakes, "geometry": mesh_polygons, "fault_name": mesh_name_array, "fault_id":
                             polygon_fault_ids})
+
     out_gdf = pd.concat([out_gdf, gdf])
+
+missing_meshes = list(set(list(target_traces['Mesh Name'])) - set(used_mesh))
+missing_meshes.sort()
+if len(missing_meshes) > 0:
+    for missing in missing_meshes:
+        print('Expected {} .stl file not found in meshdir. Faults not created'.format(missing))
 
 # make pickle with triangle vertices
 pkl.dump(discretised_dict, open(f"out_files{model_extension}/crustal_discretized_dict.pkl", "wb"))

@@ -17,7 +17,7 @@ fault_type = "crustal"                  # "crustal or "sz"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
-single_branch = False
+single_branch = True
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
@@ -25,8 +25,8 @@ specific_rupture_ids = True
 
 #can only run one type of GF and fault geometry at a time
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
-crustal_model_extension = "_Model_testing"         # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_vtesting"                # must match suffix in the subduction directory with gfs
+crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_v50km"                # must match suffix in the subduction directory with gfs
 
 # Can run more than one type of deformation model at a time (only matters for crustal)
 deformation_model = "geologic and geodetic"          # "geologic" or "geodetic" or "geologic and geodetic"
@@ -257,6 +257,6 @@ if gf_name == "sites":
         #                    model_version_results_directory=model_version_results_directory,
         #                    model_version=model_version)
 
-        make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
-                                 model_version_results_directory=model_version_results_directory,
-                                 file_type_list=["png", "pdf"])
+        #make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
+        #                         model_version_results_directory=model_version_results_directory,
+         #                        file_type_list=["png", "pdf"])
