@@ -104,7 +104,7 @@ def plot_vert_difference(NSHM_directory, rupture_slip_dict, target_rupture_ids, 
 def vertical_disp_figure(all_ruptures_disp_dict, NSHM_directory, target_rupture_ids, extension1, slip_taper,
                          grid, fault_type, results_version_directory, model_version, extent="Wellington",
                          crustal_directory="crustal_files",
-                         sz_directory="sz_files", file_type_list=["png", "pdf"]):
+                         sz_directory="sz_files", file_type_list=["png", "pdf"], save_arrays=False):
     """ makes two-part figure with ruptures patches on left and vertical deformation on right
     input:      dictionary of displacements (at all green's function sites), indexed/keyed by rupture id
                 NSHM solutions directory name (str),
@@ -179,6 +179,13 @@ def vertical_disp_figure(all_ruptures_disp_dict, NSHM_directory, target_rupture_
         patch_slips = all_ruptures_disp_dict[rupture_id]["polygon_slips_m"]
         plot_x_data = all_ruptures_disp_dict[rupture_id]["x_data"]
         plot_y_data = all_ruptures_disp_dict[rupture_id]["y_data"]
+
+        # Save displacement array
+        if save_arrays:
+            if not os.path.exists(f"../{results_version_directory}/{extension1}/displacement_arrays"):
+                os.makedirs(f"../{results_version_directory}/{extension1}/displacement_arrays")
+            save_array = np.array([plot_x_data, plot_y_data, disps_scenario])
+            np.save(f"../{results_version_directory}/{extension1}/displacement_arrays/rupture{rupture_id}_disps_{extension1}{extension3}.npy", save_array)
 
         max_vert_disp = np.max(np.abs(disps_scenario))
         ruptured_discretized_polygons_gdf["slip"] = patch_slips

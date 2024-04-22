@@ -23,6 +23,7 @@ import os
 NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"
 # provide model extension to match the mesh directory and name output directory
 model_extension = "_Model_CFM_50km"
+
 mesh_directory = f"../data/wellington_alt_geom/meshes{model_extension}/STL_remeshed"
 mesh_directory = f"../data/mesh2500"
 # this must be the same length as the number of meshes and have some value that matches all the target fault sections

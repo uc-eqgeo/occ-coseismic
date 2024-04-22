@@ -90,7 +90,6 @@ def get_site_disp_dict(extension1, slip_taper, model_version_results_directory):
     #     pkl.dump(site_disp_dictionary, f)
     return site_disp_dictionary
 
-
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict,  n_samples,
                  extension1, branch_key="nan", time_interval=100, sd=0.4):
     """
@@ -253,7 +252,6 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
     with open(f"../{model_version_results_directory}/{outfile_name}.pkl", "wb") as f:
         pkl.dump(fault_model_allbranch_PPE_dict, f)
     return fault_model_allbranch_PPE_dict
-
 
 def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper):
     """takes all the branch PPEs and combines them based on the branch weights into a weighted mean PPE dictionary
@@ -486,7 +484,6 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
         probs_threshold.append(site_PPE[index])
 
     return probs_threshold
-
 
 def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_directory, file_type_list):
     """makes hazard curves for each site. includes the probability of cumulative displacement from multiple
@@ -878,9 +875,6 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
                 f"../{out_directory}/weighted_mean_figures/"
                 f"{file_name}weighted_mean_hazcurve_{exceed_type}{taper_extension}.{file_type}", dpi=300)
 
-
-
-
 # What is the displacement at 10% and 2% probability?
 def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory, file_type_list=["png", "pdf"]):
     """ makes bar charts of the displacement value at the 10% and 2% probability of exceence thresholds for each site
@@ -982,6 +976,49 @@ def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory,
     for file_type in file_type_list:
         fig.savefig(f"{outfile_directory}/10_2_disps_{extension1}{taper_extension}.{file_type}", dpi=300)
 
+def save_10_2_disp(extension1, slip_taper, model_version_results_directory):
+    """ save displacement value at the 10% and 2% probability of exceence thresholds for each site
+        extension1 = "sites_c_MDEz" or whatever
+        fault_type = "crustal" or "sz"
+        slip_taper = True or False
+        model_version_results_directory = "{results_directory}/{fault_type}{fault_model}"
+    """
+    probability_list = [0.1, 0.02]
+
+    if slip_taper is True:
+        taper_extension = "_tapered"
+    else:
+        taper_extension = "_uniform"
+
+
+    with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
+              f"{taper_extension}.pkl", "rb") as fid:
+        site_PPE_dictionary = pkl.load(fid)
+
+    outfile_directory = f"../{model_version_results_directory}/{extension1}/displacement_arrays"
+    if not os.path.exists(f"{outfile_directory}"):
+        os.makedirs(f"{outfile_directory}")
+
+    site_list = [site for site in site_PPE_dictionary.keys()]
+    site_array = np.zeros((len(site_list), 3))
+    for ix, site in enumerate(site_list):
+        site_array[ix, :] = np.hstack([np.array(site), site_PPE_dictionary[site]['site_coords'][:2]])
+
+    for i, probability in enumerate(probability_list):
+        disps_up = \
+            get_exceedance_bar_chart_data(site_PPE_dictionary=site_PPE_dictionary, exceed_type="up",
+                                    site_list=site_list, probability=probability)
+        disps_down= \
+            get_exceedance_bar_chart_data(site_PPE_dictionary=site_PPE_dictionary, exceed_type="down",
+                                     site_list=site_list, probability=probability)
+        disps_abs= \
+            get_exceedance_bar_chart_data(site_PPE_dictionary=site_PPE_dictionary, exceed_type="total_abs",
+                                     site_list=site_list, probability=probability)
+        
+        disp_array = np.vstack([np.array(disps_up), np.array(disps_down), np.array(disps_abs)]).T
+        save_array = np.hstack([site_array, disp_array])
+
+        np.save(f"{outfile_directory}/{int(probability * 100)}perc_disps_{extension1}{taper_extension}.npy", save_array)
 
 # What is the probability of exceeding 0.2 m subsidence, 0.2 m uplift at each site?
 def make_prob_bar_chart(extension1,  slip_taper, model_version, model_version_results_directory,

@@ -18,7 +18,6 @@ model_extension = "_Model_CFM_50km"         # "_Model1" or "_Model2" or "_CFM"
 # Define region of interest
 minLon, maxLon, minLat, maxLat = 160.5, 179.0, -48.0, -34.0
 
-
 # Convert to RoI from Lon/Lat to NZ grid if needed
 if abs(minLon) <= 180:
     P1, P2 = gpd.GeoSeries([Point(minLon, minLat), Point(maxLon, maxLat)], crs=4326).to_crs(epsg=2193)

@@ -22,7 +22,7 @@ A. Prep crustal fault meshes and greens functions. The results are put into a ne
 B. subduction zone file prep. The results are put in a new folder in the subduction zone directory
 4. `subduction/discretize_subduction.py` This script reads in fault traces from the NSHM, turns them into 
    rectangular patches with metadata, and matches each patch to triangles in the mesh. Outputs a dictionary.
-5. Choose where to calculate greens functions and dispalcements:
+5. Choose where to calculate greens functions and displacements:
    1. `subduction_discretize/discretized_gfs_grid.py` Calculates greens functions on a grid
    2. `subduction_discretize/discretized_gfs_coast.py` Calculates greens functions along the coastline
    3. `subduction_discretize/discretized_gfs_sites.py` Calculates greens functions at specific coordinates
