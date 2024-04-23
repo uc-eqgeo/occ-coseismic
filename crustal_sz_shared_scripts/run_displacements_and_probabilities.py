@@ -25,8 +25,8 @@ specific_rupture_ids = True
 
 #can only run one type of GF and fault geometry at a time
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
-crustal_model_extension = "_Model_testing"         # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_vtesting"                # must match suffix in the subduction directory with gfs
+crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_v50km"                # must match suffix in the subduction directory with gfs
 
 # Can run more than one type of deformation model at a time (only matters for crustal)
 deformation_model = "geologic and geodetic"          # "geologic" or "geodetic" or "geologic and geodetic"

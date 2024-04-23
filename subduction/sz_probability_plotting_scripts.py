@@ -210,6 +210,7 @@ def get_exceedance_plot_data(site_PPE_dictionary, site_list=None, exceed_type="t
 
     return disps_10, disps_2
 
+
 def get_probability_plot_data(site_PPE_dictionary, exceed_type, threshold, site_list=None):
     """ function that finds the probability at each site for the specified displacement threshold on the hazard curve
             Inputs:
@@ -755,9 +756,9 @@ grid = False
 #exceed_type_list=["total_abs", "up", "down"]
 
 #Start with rupture displacement dictionary
-# print("Getting rupture displacement dictionary...")
-# all_ruptures_disp_dict = get_rupture_disp_dict(NSHM_directory=NSHM_directory, extension1=extension1,
-#                                             extension2=extension2)
+print("Getting rupture displacement dictionary...")
+all_ruptures_disp_dict = get_rupture_disp_dict(NSHM_directory=NSHM_directory, extension1=extension1,
+                                            extension2=extension2)
 # step 1: get site displacement dictionary
 print("Calculating displacement probabilities...")
 get_site_disp_dict(extension1, extension2)
