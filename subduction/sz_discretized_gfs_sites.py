@@ -5,34 +5,32 @@ import pandas as pd
 import cutde.halfspace as HS
 from shapely.geometry import MultiPoint, LineString, Point
 import os
+from time import time
 
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_vtesting"
-#NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
-steeper_dip, gentler_dip = False, False
+version_extension = "_deblob"
+# NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
+steeper_dip, gentler_dip = True, False
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('/mnt/', 'c', 'Users', 'jmc753', 'Work', 'occ-coseismic', 'wellington_qgis_grid_points.csv')
-sites_df = pd.read_csv(site_list_csv)
+csvfile = 'JDE_sites.csv'
+try:
+    site_list_csv = os.path.join('/mnt/', 'c', 'Users', 'jmc753', 'Work', 'occ-coseismic', csvfile)
+    sites_df = pd.read_csv(site_list_csv)
+except FileNotFoundError:
+    site_list_csv = os.path.join('C:\\', 'Users', 'jmc753', 'Work', 'occ-coseismic', csvfile)
+    sites_df = pd.read_csv(site_list_csv)
 
 site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
 site_name_list = [site for site in sites_df['siteId']]
-
 
 #############################################
 x_data = site_coords[:, 0]
 y_data = site_coords[:, 1]
 gf_type = "sites"
-# not using this part at the moment
-# if steeper_dip == True and gentler_dip == False:
-#     dip_modification_extension = "_steeperdip"
-# elif gentler_dip == True and steeper_dip == False:
-#     dip_modification_extension = "_gentlerdip"
-# elif gentler_dip == False and steeper_dip == False:
-#     dip_modification_extension = ""
-if steeper_dip == True and gentler_dip == True:
-    # throw an error
+
+if steeper_dip and gentler_dip:
     print("Dip modifications are wrong. Only one statement can be True at once. Try again.")
     exit()
 elif steeper_dip:
@@ -45,33 +43,32 @@ with open(f"out_files{version_extension}/sz_discretised_dict.pkl",
           "rb") as f:
     discretised_dict = pkl.load(f)
 
-gf_dict_sites = {}
-for rupture_id in discretised_dict.keys():
-    triangles = discretised_dict[rupture_id]["triangles"]
-    rake = discretised_dict[rupture_id]["rake"]
+gf_dict = {}
 
-    vertices = triangles.reshape(triangles.shape[0] * triangles.shape[1], 3)
-    vertex_multipoint = MultiPoint(vertices)
+for fault_id in discretised_dict.keys():
+    triangles = discretised_dict[fault_id]["triangles"]
+    rake = discretised_dict[fault_id]["rake"]
 
-    pts = site_coords
+    # Get DS and SS components for each triangle element, depending on the element rake
+    ss_comp = np.cos(np.radians(rake))
+    ds_comp = np.sin(np.radians(rake))
+    total_slip_array = np.zeros([triangles.shape[0], 3])
 
-    zero_slip_array = np.zeros((triangles.shape[0],))
-    ones_slip_array = np.ones((triangles.shape[0],))
+    begin = time()
+    # Calculate the slip components for each triangle element
+    for tri in range(triangles.shape[0]):
+        ss, ds = np.linalg.lstsq(np.array([ss_comp[tri], ds_comp[tri]]).reshape([1, 2]), np.array([1]).reshape([1, 1]), rcond=None)[0]
+        total_slip_array[tri, :2] = np.array([ss[0], ds[0]])
 
-    dip_slip_array = np.vstack([zero_slip_array, ones_slip_array, zero_slip_array]).T
-    strike_slip_array = np.vstack([ones_slip_array, zero_slip_array, zero_slip_array]).T
+    disps = HS.disp_free(obs_pts=site_coords, tris=triangles, slips=total_slip_array, nu=0.25)
 
-    # calculate displacements
-    disps_ss = HS.disp_free(obs_pts=pts, tris=triangles, slips=strike_slip_array, nu=0.25)
-    disps_ds = HS.disp_free(obs_pts=pts, tris=triangles, slips=dip_slip_array, nu=0.25)
+    # Set rake to 90 so that in future functions total displacement is just equal to DS
+    disp_dict = {"ss": disps[:, -1] * 0, "ds": disps[:, -1], "rake": 90, "site_coords": site_coords,
+                 "site_name_list": site_name_list, "x_data": x_data, "y_data": y_data}
 
-    # make displacement dictionary for outputs. only use vertical disps (last column)
-    disp_dict = {"ss": disps_ss[:, -1], "ds": disps_ds[:, -1], "rake": rake, "site_name_list": site_name_list,
-                 "site_coords": site_coords, "x_data": x_data, "y_data": y_data}
-
-    gf_dict_sites[rupture_id] = disp_dict
-
+    gf_dict[fault_id] = disp_dict
+    if fault_id % 1 == 0:
+        print(f'discretized dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)')
 
 with open(f"out_files{version_extension}/sz_gf_dict_{gf_type}.pkl", "wb") as f:
-    pkl.dump(gf_dict_sites, f)
-
+    pkl.dump(gf_dict, f)
