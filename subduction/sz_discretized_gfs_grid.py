@@ -9,16 +9,15 @@ except:
 # from array_operations import write_tiff, write_gmt_grd
 # import os
 from time import time
-from timeit import timeit
 
 ##### USER INPUTS #####
-version_extension = "_vtesting"
+version_extension = "_deblob"
 cell_size = 4000            # in meters
 x, y = 1760934, 5431096     # central location of grid; Seaview
 buffer_size = 12.e4         # in meters (area around wellington to calculate displacements)
 #x, y = 1625083, 5430914     # central location of grid; Center of New Zealand Monument
 
-steeper_dip, gentler_dip = False, False
+steeper_dip, gentler_dip = False, True
 
 #######################
 gf_type = "grid"
@@ -26,6 +25,10 @@ gf_type = "grid"
 if steeper_dip and gentler_dip:
     print("Dip modifications are wrong. Only one statement can be True at once. Try again.")
     exit()
+elif steeper_dip:
+    version_extension += "_steeperdip"
+elif gentler_dip:
+    version_extension += "_gentlerdip"
 
 # load files: open discretized dict of subduction interface to calculate grenns functions over
 with open(f"out_files{version_extension}/sz_discretised_dict.pkl", "rb") as f:

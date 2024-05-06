@@ -7,7 +7,7 @@ import pickle as pkl
 import os
 
 #### USER INPUT #####
-version_extension  = "_vtesting"
+version_extension  = "_deblob"
 
 #this can be any working branch, should be the same for all.
 NSHM_directory = "NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE5"
@@ -15,6 +15,14 @@ NSHM_directory = "NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE5
 #Sensitivity testing for subduction interface depth
 steeper_dip = False
 gentler_dip = False
+
+if steeper_dip and gentler_dip:
+    print("Dip modifications are wrong. Only one statement can be True at once. Try again.")
+    exit()
+elif steeper_dip:
+    version_extension += "_steeperdip"
+elif gentler_dip:
+    version_extension += "_gentlerdip"
 
 # De-blobify outputs
 deblobify = True
@@ -91,10 +99,6 @@ for i, trace in traces.iterrows():
         # Calculate the height of the patch
         patch_height = (trace.LowDepth - trace.UpDepth) * 1000.
         dip_angle = trace.DipDeg
-
-    else:
-        print("Dip modifications are wrong. Only one statement can be True at once. Try again.")
-        exit()
 
     # write patch attributes to dictionary and add to bottom of data frame
     df2 = pd.DataFrame({'fault_id': [int(trace.FaultID)], 'dip_deg': [dip_angle], 'patch_height_m': [patch_height],
