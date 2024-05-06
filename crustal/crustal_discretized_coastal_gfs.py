@@ -79,9 +79,5 @@ for i in discretised_dict.keys():
 
         gf_dict_coast[i] = disp_dict
 
-
-
 with open(f"out_files/{extension1}{extension2}/crustal_gf_dict_{extension1}{extension2}.pkl", "wb") as f:
     pkl.dump(gf_dict_coast, f)
-
-

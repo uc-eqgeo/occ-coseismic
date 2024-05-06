@@ -14,13 +14,13 @@ import platform
 
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
-mesh_version = "_Model_CFM_50km"
+mesh_version = "_Model_CFM_jde"
 #out_extension = f"_{mesh_version}_v1"
 
 steeper_dip, gentler_dip = False, False
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'national_50km_grid_points.csv')
+site_list_csv = os.path.join('..', 'JDE_sites.csv')
 sites_df = pd.read_csv(site_list_csv)
 
 site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
@@ -75,8 +75,5 @@ for fault_id in discretised_dict.keys():
 
     gf_dict_sites[fault_id] = disp_dict
 
-
 with open(f"out_files{mesh_version}/crustal_gf_dict_{gf_type}.pkl", "wb") as f:
     pkl.dump(gf_dict_sites, f)
-
-

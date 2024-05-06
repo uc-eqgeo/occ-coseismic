@@ -97,7 +97,6 @@ def read_average_slip(csv_file: str):
 
 def make_total_slip_dictionary(gf_dict_pkl):
     """ calculates total greens function displacement using strike slip gf, dip slip gf, and rake value
-
     need to run the and crustal_discretized_gfs script first"""
 
     with open(gf_dict_pkl, "rb") as fid:

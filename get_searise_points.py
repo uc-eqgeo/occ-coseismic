@@ -10,8 +10,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 
-searise_csv = 'nz_sea_rise_projections_wellington_region.csv'
-searise_csv = 'wellington_qgis_grid.csv'
+searise_csv = 'whakatone_10km_grid.csv'
 
 data = pd.read_csv(searise_csv)
 
@@ -28,6 +27,7 @@ ix = np.unique(data['siteId'].to_numpy(), return_index=True)[1]
 
 data = data[['siteId', 'Lon', 'Lat']].iloc[ix].reset_index(drop=True)
 data['Height'] = 0
+data['siteId'] = np.array(data.index) # Reset siteIds
 
 searise_out = searise_csv.replace('.csv', '_points.csv')
 
