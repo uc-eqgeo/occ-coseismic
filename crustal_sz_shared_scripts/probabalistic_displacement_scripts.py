@@ -20,7 +20,7 @@ matplotlib.rcParams['pdf.fonttype'] = 42
 plot_order = ["Paraparaumu", "Porirua CBD north", "South Coast", "Wellington Airport", "Wellington CBD", "Petone",
               "Seaview", "Eastbourne", "Turakirae Head", "Lake Ferry", "Cape Palliser",
               "Flat Point"]
-plot_order = [41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52]
+#plot_order = [206, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52]
 
 def get_site_disp_dict(extension1, slip_taper, model_version_results_directory):
     """
@@ -900,6 +900,8 @@ def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory,
         site_PPE_dictionary = pkl.load(fid)
 
     plt.close("all")
+    plot_order = list(site_PPE_dictionary.keys())
+
     fig, axs = plt.subplots(1, 2, figsize=(7, 3.4))
     x = np.arange(len(plot_order))  # the site label locations
     width = 0.4  # the width of the bars
@@ -941,7 +943,8 @@ def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory,
     for i in range(len(probability_list)):
         axs[i].set_ylim(min(max_min_y_vals) - 0.25, max(max_min_y_vals) + 0.25)
         axs[i].tick_params(axis='x', labelrotation=90, labelsize=label_size)
-        axs[i].set_xticks(x, main_plot_labels)
+        if len(x) == 12:
+            axs[i].set_xticks(x, main_plot_labels)
         axs[i].tick_params(axis='y', labelsize=8)
         axs[i].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
         # set tick labels to be every 0.2
@@ -1019,6 +1022,10 @@ def save_10_2_disp(extension1, slip_taper, model_version_results_directory):
         save_array = np.hstack([site_array, disp_array])
 
         np.save(f"{outfile_directory}/{int(probability * 100)}perc_disps_{extension1}{taper_extension}.npy", save_array)
+
+        disp_gdf = gpd.GeoDataFrame(save_array[:, [0, 3, 4, 5]], columns=['site', 'uplift', 'subsidence', 'total_abs'],
+                                    geometry=gpd.points_from_xy(save_array[:, 1], save_array[:, 2]), crs="EPSG:2193")
+        disp_gdf.to_file(f"{outfile_directory}/{int(probability * 100)}perc_disps_{extension1}{taper_extension}.geojson", driver='GeoJSON')
 
 # What is the probability of exceeding 0.2 m subsidence, 0.2 m uplift at each site?
 def make_prob_bar_chart(extension1,  slip_taper, model_version, model_version_results_directory,

@@ -13,11 +13,11 @@ from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE,
 results_directory = "results"
 
 slip_taper = False                    # True or False, only matter if crustal otherwise it defaults to false later.
-fault_type = "crustal"                  # "crustal or "sz"
+fault_type = "sz"                  # "crustal or "sz"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
-single_branch = True
+single_branch = False
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
@@ -25,8 +25,8 @@ specific_rupture_ids = True
 
 #can only run one type of GF and fault geometry at a time
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
-crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_v50km"                # must match suffix in the subduction directory with gfs
+crustal_model_extension = "_Model_CFM_jde"         # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_deblob_steeperdip"                # must match suffix in the subduction directory with gfs
 
 # Can run more than one type of deformation model at a time (only matters for crustal)
 deformation_model = "geologic and geodetic"          # "geologic" or "geodetic" or "geologic and geodetic"
@@ -253,13 +253,19 @@ if gf_name == "sites":
         #                          sz_directory=sz_directory, model_version=model_version)
 
         ## step 5: plot bar charts
-        make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
-                           model_version_results_directory=model_version_results_directory,
-                           model_version=model_version)
+        try:
+            make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
+                               model_version_results_directory=model_version_results_directory,
+                               model_version=model_version)
+        except KeyError:
+            print('Currently too many sites to create a bar chart')
 
         make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
                                  model_version_results_directory=model_version_results_directory,
                                  file_type_list=["png", "pdf"])
 
-        save_10_2_disp(extension1=extension1_list[i], slip_taper=slip_taper,
-                                 model_version_results_directory=model_version_results_directory)
+        try:
+            save_10_2_disp(extension1=extension1_list[i], slip_taper=slip_taper,
+                                     model_version_results_directory=model_version_results_directory)
+        except ValueError:
+            print('Not saved displacements as arrays')
