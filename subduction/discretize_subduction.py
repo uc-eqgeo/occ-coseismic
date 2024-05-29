@@ -12,6 +12,20 @@ version_extension  = "_deblob"
 #this can be any working branch, should be the same for all.
 NSHM_directory = "NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE5"
 
+# Define whch subduction zone (hikkerk / puysegur)
+sz_zone = 'puysegur'
+
+if not sz_zone in ['hikkerk', 'puysegur']:
+    print("Please define a valid subduction zone (hikkerk / puysegur).")
+    exit()
+
+if sz_zone == 'hikkerk':
+    neighbours_file = '../data/hik_kerk3k_neighbours.txt'
+    prefix = 'sz'
+else:
+    neighbours_file = '../data/puysegur_neighbours.txt'
+    prefix = 'py'
+
 #Sensitivity testing for subduction interface depth
 steeper_dip = False
 gentler_dip = False
@@ -25,7 +39,7 @@ elif gentler_dip:
     version_extension += "_gentlerdip"
 
 # De-blobify outputs
-deblobify = True
+deblobify = False
 #######################
 def cross_3d(a, b):
     """
@@ -53,7 +67,10 @@ def check_triangle_normal(triangle_vertices):
 ####################
 
 # Read in the geojson file from the NSHM inversion solution
-traces = gpd.read_file(f"../data/sz_solutions/{NSHM_directory}/ruptures/fault_sections.geojson").to_crs(epsg=2193)
+if sz_zone == 'hikkerk':
+    traces = gpd.read_file(f"../data/sz_solutions/{NSHM_directory}/ruptures/fault_sections.geojson").to_crs(epsg=2193)
+else:
+    traces = gpd.read_file(f"../data/sz_solutions/puysegur_fault_sections.geojson").to_crs(epsg=2193)
 
 # get rectangle centroid and polygon vertices based on NSHM fault data
 all_rectangle_centroids = []
@@ -145,15 +162,19 @@ all_rectangle_centroids = np.array(all_rectangle_centroids)
 all_rectangle_centroids_gs = gpd.GeoSeries([Point(centroid) for centroid in all_rectangle_centroids], crs=2193)
 all_rectangle_centroids_gdf = gpd.GeoDataFrame(df_rectangle_centroid, geometry=all_rectangle_centroids_gs.geometry, crs=2193)
 all_rectangle_centroids_gdf.to_file(
-    f"out_files{version_extension}/all_rectangle_centroids.geojson", driver="GeoJSON")
+    f"out_files{version_extension}/{prefix}_all_rectangle_centroids.geojson", driver="GeoJSON")
 
 all_rectangle_outline_gs = gpd.GeoSeries(all_rectangle_polygons, crs=2193)
 all_rectangle_outline_gdf = gpd.GeoDataFrame(df1, geometry=all_rectangle_outline_gs.geometry, crs=2193)
-all_rectangle_outline_gdf.to_file(f"out_files{version_extension}/all_rectangle_outlines.geojson", driver="GeoJSON")
+all_rectangle_outline_gdf.to_file(f"out_files{version_extension}/{prefix}_all_rectangle_outlines.geojson", driver="GeoJSON")
 
 #####
 # read in triangle mesh and add the patch centroids as points
-mesh = meshio.read(f"../data/hik_kerk3k_with_rake.vtk")
+if sz_zone == 'hikkerk':
+    mesh = meshio.read(f"../data/hik_kerk3k_with_rake.vtk")
+else:
+    mesh = meshio.read(f"../data/puysegur.vtk")
+
 mesh_rake = mesh.cell_data["rake"][0]
 mesh_triangles = mesh.cells_dict["triangle"]    # indices of vertices that make up triangles
 mesh_vertices = mesh.points              # xyz of vertices
@@ -211,7 +232,7 @@ for ix, triangle_centroid in enumerate(triangle_centroids):
         closest_rectangles.append(-1)
 
 # Manually correct some triangles
-if os.path.exists('../data/mesh_corrections.csv'):
+if os.path.exists('../data/mesh_corrections.csv') and sz_zone == 'hikkerk':
     print('Manually correcting some triangles')
     with open('../data/mesh_corrections.csv', 'r') as f:
         corrections = [[int(val) for val in line.strip().split(',')] for line in f.readlines()]
@@ -220,7 +241,7 @@ if os.path.exists('../data/mesh_corrections.csv'):
         closest_rectangles[tri] = closest_rectangle
 
 # Prevent isolated triangles
-if os.path.exists('../data/hik_kerk3k_neighbours.txt'):
+if os.path.exists('../data/hik_kerk3k_neighbours.txt') and sz_zone == 'hikkerk':
     print('Removing isolated triangles')
     with open('../data/hik_kerk3k_neighbours.txt', 'r') as f:
         neighbours = [[int(tri) for tri in line.strip().split()] for line in f.readlines()]
@@ -255,6 +276,6 @@ for index in traces.index:
 # Create a geodataframe and geospon file from the polygons
 gdf = gpd.GeoDataFrame({"rake": rectangle_rake, "geometry": discretized_polygons, "fault_id": traces.index})
 gdf.crs = traces.crs
-gdf.to_file(f"out_files{version_extension}/sz_discretized_polygons.geojson", driver="GeoJSON")
+gdf.to_file(f"out_files{version_extension}/{prefix}_discretized_polygons.geojson", driver="GeoJSON")
 
-pkl.dump(discretised_dict, open(f"out_files{version_extension}/sz_discretised_dict.pkl", "wb"))
+pkl.dump(discretised_dict, open(f"out_files{version_extension}/{prefix}_discretised_dict.pkl", "wb"))

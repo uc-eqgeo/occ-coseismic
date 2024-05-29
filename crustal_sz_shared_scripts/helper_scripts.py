@@ -221,7 +221,7 @@ def filter_ruptures_by_rate(directory):
 # This runs a bit slowly
 def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, model_version,
                                 crustal_directory="crustal_files", sz_directory="subduction_files",
-                                search_radius=2.5e5):
+                                location=Point(1749150, 5428092), search_radius=2.5e5, prefix='sz'):
     """ filters the initial rupture scenarios by which patches are involved
         set a distance from interest area and cut out scenarios that don't intersect
 
@@ -231,14 +231,12 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
         fault_type = "crustal" or "sz"
         """
 
-    # input: interest location
-    Wellington = Point(1749150, 5428092)
     if fault_type == "crustal":
         fault_rectangle_centroids_gdf = gpd.read_file(f"../{crustal_directory}/out_files{model_version}"
                                                       f"/named_rectangle_centroids.geojson")
     if fault_type == "sz":
         fault_rectangle_centroids_gdf = gpd.read_file(
-            f"../{sz_directory}/out_files{model_version}/all_rectangle_centroids.geojson")
+            f"../{sz_directory}/out_files{model_version}/{prefix}_all_rectangle_centroids.geojson")
 
     all_ruptures_patch_indices = read_rupture_csv(f"../data/{NSHM_directory}/ruptures/indices.csv")
 
@@ -250,7 +248,7 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
     filtered_fault_ids = []
     for i in range(len(fault_rectangle_centroids_gdf.centroid)):
         centroid = fault_rectangle_centroids_gdf.centroid[i]
-        if centroid.distance(Wellington) < search_radius:
+        if centroid.distance(location) < search_radius:
             #filtered_fault_ids.append(patch_centroids_gdf.index[i])
             filtered_fault_ids.append(int(fault_rectangle_centroids_gdf.fault_id[i]))
 
@@ -357,7 +355,8 @@ def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectang
     return disps_scenario, polygon_slips
 
 def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf_name, model_version,
-                          results_version_directory, crustal_directory="crustal_files", sz_directory="subduction_files"):
+                          results_version_directory, crustal_directory="crustal_files", sz_directory="subduction_files",
+                          location=Point(1749150, 5428092), search_radius=2.5e5, prefix='sz'):
     """
     inputs: uses extension naming scheme to load NSHM rate/slip data and fault geometry, state slip taper
 
@@ -387,9 +386,9 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
         rectangle_outlines_gdf = gpd.read_file(f"../{crustal_directory}/out_files"
                                                f"{model_version}/all_rectangle_outlines.geojson")
     elif fault_type == "sz":
-        discretized_polygons_gdf = gpd.read_file(f"../{sz_directory}/out_files{model_version}/sz_discretized_polygons.geojson")
-        gf_dict_pkl = f"../{sz_directory}/out_files{model_version}/sz_gf_dict_{gf_name}.pkl"
-        rectangle_outlines_gdf = gpd.read_file(f"../{sz_directory}/out_files{model_version}/all_rectangle_outlines.geojson")
+        discretized_polygons_gdf = gpd.read_file(f"../{sz_directory}/out_files{model_version}/{prefix}_discretized_polygons.geojson")
+        gf_dict_pkl = f"../{sz_directory}/out_files{model_version}/{prefix}_gf_dict_{gf_name}.pkl"
+        rectangle_outlines_gdf = gpd.read_file(f"../{sz_directory}/out_files{model_version}/{prefix}_all_rectangle_outlines.geojson")
 
     # this line takes ages, only do it once
     all_ruptures = read_rupture_csv(f"../data/{NSHM_directory}/ruptures/indices.csv")
@@ -403,7 +402,8 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     filtered_ruptures_location = filter_ruptures_by_location(NSHM_directory=NSHM_directory,
                                                              target_rupture_ids=filtered_ruptures_annual_rate,
                                                              fault_type=fault_type, crustal_directory=crustal_directory,
-                                                             sz_directory=sz_directory, model_version=model_version)
+                                                             sz_directory=sz_directory, model_version=model_version,
+                                                             location=location, search_radius=search_radius)
 
     # Makes a new total gf displacement dictionary using rake. If points don't have a name (e.g., for whole coastline
     # calculations), the site name list is just a list of numbers

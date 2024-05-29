@@ -2,6 +2,7 @@ import pickle as pkl
 import random
 import os
 import matplotlib
+from shapely.geometry import Point
 from helper_scripts import get_rupture_disp_dict, save_target_rates
 from rupture_scenario_plotting_scripts import vertical_disp_figure
 from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE, plot_branch_hazard_curve, \
@@ -14,6 +15,7 @@ results_directory = "results"
 
 slip_taper = False                    # True or False, only matter if crustal otherwise it defaults to false later.
 fault_type = "sz"                  # "crustal or "sz"
+sz_zone = 'puysegur'                # 'hikkerk' or 'puysegur'
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
@@ -26,7 +28,7 @@ specific_rupture_ids = True
 #can only run one type of GF and fault geometry at a time
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
 crustal_model_extension = "_Model_CFM_jde"         # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_deblob_steeperdip"                # must match suffix in the subduction directory with gfs
+sz_model_version = "_deblob"                # must match suffix in the subduction directory with gfs
 
 # Can run more than one type of deformation model at a time (only matters for crustal)
 deformation_model = "geologic and geodetic"          # "geologic" or "geodetic" or "geologic and geodetic"
@@ -47,6 +49,15 @@ file_type_list=["png", "pdf"]
 skip_displacements = False
 
 ################
+if fault_type == 'sz':
+    if sz_zone == 'hikkerk':
+        prefix = 'sz'
+    elif sz_zone == 'puysegur':
+        prefix = 'py'
+    else:
+        print("Please define a valid subduction zone (hikkerk / puysegur).")
+        exit()
+
 # this makes so when you export fonts as pdfs, they are editable in Illustrator
 matplotlib.rcParams['pdf.fonttype'] = 42
 
@@ -173,6 +184,7 @@ if not os.path.exists(f"../{model_version_results_directory}"):
     os.mkdir(f"../{model_version_results_directory}")
 
 if only_make_figures is False and skip_displacements is False:
+    Wellington = Point(1749150, 5428092)  # Wellington coordinates in NZTM
     # Calculate displacements and make displacement dictionary once per branch. Save to pickle file in branch directory.
     for i in range(len(extension1_list)):
         print (f"branch {i} in {len(extension1_list)}")
@@ -180,7 +192,7 @@ if only_make_figures is False and skip_displacements is False:
                               slip_taper=slip_taper, fault_type=fault_type, gf_name=gf_name,
                               results_version_directory=model_version_results_directory,
                               crustal_directory=crustal_directory, sz_directory=sz_directory,
-                              model_version=model_version)
+                              model_version=model_version, location=Wellington, search_radius=2.5e5, prefix=prefix)
 
 ### make vertical displacement figures (random sample of ~10 ruptures per branch)
 

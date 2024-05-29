@@ -12,9 +12,13 @@ from time import time
 # Read in the geojson file from the NSHM inversion solution
 version_extension = "_deblob"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
-steeper_dip, gentler_dip = True, False
+steeper_dip, gentler_dip = False, False
+
+# Define whch subduction zone (hikkerk / puysegur)
+sz_zone = 'puysegur'
+
 # in list form for one coord or list of lists for multiple (in NZTM)
-csvfile = 'JDE_sites.csv'
+csvfile = 'national_50km_grid_points.csv'
 try:
     site_list_csv = os.path.join('/mnt/', 'c', 'Users', 'jmc753', 'Work', 'occ-coseismic', csvfile)
     sites_df = pd.read_csv(site_list_csv)
@@ -38,8 +42,18 @@ elif steeper_dip:
 elif gentler_dip:
     version_extension += "_gentlerdip"
 
+if sz_zone == 'hikkerk':
+    neighbours_file = '../data/hik_kerk3k_neighbours.txt'
+    prefix = 'sz'
+elif sz_zone == 'puysegur':
+    neighbours_file = '../data/puysegur_neighbours.txt'
+    prefix = 'py'
+else:
+    print("Please define a valid subduction zone (hikkerk / puysegur).")
+    exit()
+
 # Load files
-with open(f"out_files{version_extension}/sz_discretised_dict.pkl",
+with open(f"out_files{version_extension}/{prefix}_discretised_dict.pkl",
           "rb") as f:
     discretised_dict = pkl.load(f)
 
@@ -70,5 +84,5 @@ for fault_id in discretised_dict.keys():
     if fault_id % 1 == 0:
         print(f'discretized dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)')
 
-with open(f"out_files{version_extension}/sz_gf_dict_{gf_type}.pkl", "wb") as f:
+with open(f"out_files{version_extension}/{prefix}_gf_dict_{gf_type}.pkl", "wb") as f:
     pkl.dump(gf_dict, f)
