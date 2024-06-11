@@ -653,121 +653,138 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
 
     unique_id_list = list(PPE_dictionary.keys())
 
-    for exceed_type in exceed_type_list:
-        plt.close("all")
-        fig, axs = plt.subplots(figsize=(8, 10))
-        plt.subplots_adjust(hspace=0.3, wspace=0.3)
+    plt.close("all")
 
-        # shade the region between the max and min value of all the curves at each site
-        for i, site in enumerate(plot_order):
-            ax = plt.subplot(4, 3, i + 1)
+    n_plots = int(np.ceil(len(plot_order) / 12))
+    for plot_n in range(n_plots):
+        if (plot_n + 1) % 10 == 0:
+            print(f"\t\t{plot_n + 1}/{n_plots}")
+        sites = plot_order[plot_n*12:(plot_n+1)*12]
+        if len(sites) >= 5 or len(sites) == 3:
+            n_cols = 3
+            n_rows = int(np.ceil(len(sites) / 3))
+        elif len(sites) == 4 or len(sites) == 2:
+            n_cols = 2
+            n_rows = int(np.ceil(len(sites) / 2))
+        else:
+            n_cols = 1
+            n_rows = len(sites)
 
-            # plots all three types of exceedance (total_abs, up, down) on the same plot
-            max_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_max_vals"]
-            min_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_min_vals"]
-            threshold_vals = weighted_mean_PPE_dictionary[site]["threshold_vals"]
-            threshold_vals = threshold_vals[1:]
-            max_probs = max_probs[1:]
-            min_probs = min_probs[1:]
+        for exceed_type in exceed_type_list:
+            fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2.63 + 0.12, n_rows * 2.32 + 0.71))  # Replicate 8x10 inch figure if there are less than 12 subplots
+            plt.subplots_adjust(hspace=0.3, wspace=0.3)
 
-            ax.fill_between(threshold_vals, max_probs, min_probs, color='0.9')
+            # shade the region between the max and min value of all the curves at each site
+            for i, site in enumerate(sites):
+                ax = plt.subplot(n_rows, n_cols, i + 1)
 
-        # plot all the branches as light grey lines
-        # for each branch, plot the exceedance probabilities for each site
-        for k, unique_id in enumerate(unique_id_list):
-            # this loop isn't really needed, but it's useful if you calculate Green's functions
-            # at more sites than you want to plot
-
-            for i, site in enumerate(plot_order):
-                threshold_vals = PPE_dictionary[unique_id]["cumu_PPE_dict"][site]["thresholds"]
-                site_exceedance_probs = PPE_dictionary[unique_id]["cumu_PPE_dict"][site][f"exceedance_probs_{exceed_type}"]
-
-                ax = plt.subplot(4, 3, i + 1)
-                ax.plot(threshold_vals, site_exceedance_probs, color='0.7')
-
-        # loop through sites and add the weighted mean lines
-        for i, site in enumerate(plot_order):
-            ax = plt.subplot(4, 3, i + 1)
-
-            # plots all three types of exceedance (total_abs, up, down) on the same plot
-            weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"]
-            threshold_vals = weighted_mean_PPE_dictionary[site]["threshold_vals"]
-
-            line_color = get_probability_color(exceed_type)
-            ax.plot(threshold_vals, weighted_mean_exceedance_probs, color=line_color, linewidth=2)
-
-            ax.axhline(y=0.02, color="g", linestyle='dashed')
-            ax.axhline(y=0.1, color="g", linestyle='dotted')
-
-            xmin, xmax = 0.01, 3
-            ymin, ymax = 0.000005, 1
-            ax.set_title(site)
-            ax.set_yscale('log'), ax.set_xscale('log')
-            ax.set_ylim([ymin, ymax])
-            ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
-            ax.get_xaxis().set_major_formatter(ScalarFormatter())
-            ax.ticklabel_format(axis='x', style='plain')
-            ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-            ax.set_xlim([xmin, xmax])
-
-        fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
-        fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
-        fig.suptitle(f"weighted mean hazard curves\n{model_version_title} {taper_extension}\n{exceed_type}")
-        plt.tight_layout()
-
-        if not os.path.exists(f"../{out_directory}/weighted_mean_figures"):
-            os.mkdir(f"../{out_directory}/weighted_mean_figures")
-
-        for file_type in file_type_list:
-            plt.savefig(
-                f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurve_{exceed_type}{taper_extension}.{file_type}", dpi=300)
-
-    # make a second graph with just the shaded envelope and weighted mean lines
-    if len(exceed_type_list) > 1:
-        plt.close("all")
-        fig, axs = plt.subplots(figsize=(8, 10))
-        plt.subplots_adjust(hspace=0.3, wspace=0.3)
-
-        for i, site in enumerate(plot_order):
-            ax = plt.subplot(4, 3, i + 1)
-            for exceed_type in exceed_type_list:
-                fill_color = get_probability_color(exceed_type)
-
-                weighted_mean_max_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_max_vals"]
-                weighted_mean_min_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_min_vals"]
+                # plots all three types of exceedance (total_abs, up, down) on the same plot
+                max_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_max_vals"]
+                min_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_min_vals"]
                 threshold_vals = weighted_mean_PPE_dictionary[site]["threshold_vals"]
-                ax.fill_between(threshold_vals, weighted_mean_max_probs, weighted_mean_min_probs, color=fill_color,
-                                alpha=0.2)
+                threshold_vals = threshold_vals[1:]
+                max_probs = max_probs[1:]
+                min_probs = min_probs[1:]
 
-            # plot solid lines on top of the shaded regions
-            for exceed_type in exceed_type_list:
+                ax.fill_between(threshold_vals, max_probs, min_probs, color='0.9')
+
+            # plot all the branches as light grey lines
+            # for each branch, plot the exceedance probabilities for each site
+            for k, unique_id in enumerate(unique_id_list):
+                # this loop isn't really needed, but it's useful if you calculate Green's functions
+                # at more sites than you want to plot
+
+                for i, site in enumerate(sites):
+                    threshold_vals = PPE_dictionary[unique_id]["cumu_PPE_dict"][site]["thresholds"]
+                    site_exceedance_probs = PPE_dictionary[unique_id]["cumu_PPE_dict"][site][f"exceedance_probs_{exceed_type}"]
+
+                    ax = plt.subplot(n_rows, n_cols, i + 1)
+                    ax.plot(threshold_vals, site_exceedance_probs, color='0.7')
+
+            # loop through sites and add the weighted mean lines
+            for i, site in enumerate(sites):
+                ax = plt.subplot(n_rows, n_cols, i + 1)
+
+                # plots all three types of exceedance (total_abs, up, down) on the same plot
+                weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"]
+                threshold_vals = weighted_mean_PPE_dictionary[site]["threshold_vals"]
+
                 line_color = get_probability_color(exceed_type)
-                weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][
-                    f"weighted_exceedance_probs_{exceed_type}"]
                 ax.plot(threshold_vals, weighted_mean_exceedance_probs, color=line_color, linewidth=2)
 
-            # add 10% and 2% lines
-            ax.axhline(y=0.02, color="g", linestyle='dashed')
-            ax.axhline(y=0.1, color="g", linestyle='dotted')
+                ax.axhline(y=0.02, color="g", linestyle='dashed')
+                ax.axhline(y=0.1, color="g", linestyle='dotted')
 
-            # make axes pretty
-            ax.set_title(site)
-            ax.set_yscale('log'), ax.set_xscale('log')
-            ax.set_ylim([0.000005, 1]), ax.set_xlim([0.01, 3])
-            ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
-            ax.get_xaxis().set_major_formatter(ScalarFormatter())
-            ax.ticklabel_format(axis='x', style='plain')
-            ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+                xmin, xmax = 0.01, 3
+                ymin, ymax = 0.000005, 1
+                ax.set_title(site)
+                ax.set_yscale('log'), ax.set_xscale('log')
+                ax.set_ylim([ymin, ymax])
+                ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
+                ax.get_xaxis().set_major_formatter(ScalarFormatter())
+                ax.ticklabel_format(axis='x', style='plain')
+                ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+                ax.set_xlim([xmin, xmax])
 
-        fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
-        fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
-        exceed_types_string = ", ".join(exceed_type_list)
-        fig.suptitle(f"weighted mean hazard curves \n{model_version_title} {taper_extension} \n{exceed_types_string} ")
-        plt.tight_layout()
+            fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
+            fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
+            fig.suptitle(f"weighted mean hazard curves\n{model_version_title} {taper_extension}\n{exceed_type}")
+            plt.tight_layout()
 
-        for file_type in file_type_list:
-            plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves{taper_extension}"
-                        f".{file_type}", dpi=300)
+            if not os.path.exists(f"../{out_directory}/weighted_mean_figures"):
+                os.mkdir(f"../{out_directory}/weighted_mean_figures")
+
+            for file_type in file_type_list:
+                plt.savefig(
+                    f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurve_{exceed_type}{taper_extension}_{plot_n}.{file_type}", dpi=300)
+            plt.close()
+
+        # make a second graph with just the shaded envelope and weighted mean lines
+        if len(exceed_type_list) > 1:
+            fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2.63 + 0.12, n_rows * 2.32 + 0.71))
+            plt.subplots_adjust(hspace=0.3, wspace=0.3)
+
+            for i, site in enumerate(sites):
+                ax = plt.subplot(n_rows, n_cols, i + 1)
+                for exceed_type in exceed_type_list:
+                    fill_color = get_probability_color(exceed_type)
+
+                    weighted_mean_max_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_max_vals"]
+                    weighted_mean_min_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_min_vals"]
+                    threshold_vals = weighted_mean_PPE_dictionary[site]["threshold_vals"]
+                    ax.fill_between(threshold_vals, weighted_mean_max_probs, weighted_mean_min_probs, color=fill_color,
+                                    alpha=0.2)
+
+                # plot solid lines on top of the shaded regions
+                for exceed_type in exceed_type_list:
+                    line_color = get_probability_color(exceed_type)
+                    weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][
+                        f"weighted_exceedance_probs_{exceed_type}"]
+                    ax.plot(threshold_vals, weighted_mean_exceedance_probs, color=line_color, linewidth=2)
+
+                # add 10% and 2% lines
+                ax.axhline(y=0.02, color="g", linestyle='dashed')
+                ax.axhline(y=0.1, color="g", linestyle='dotted')
+
+                # make axes pretty
+                ax.set_title(site)
+                ax.set_yscale('log'), ax.set_xscale('log')
+                ax.set_ylim([0.000005, 1]), ax.set_xlim([0.01, 3])
+                ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
+                ax.get_xaxis().set_major_formatter(ScalarFormatter())
+                ax.ticklabel_format(axis='x', style='plain')
+                ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+
+            fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
+            fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
+            exceed_types_string = ", ".join(exceed_type_list)
+            fig.suptitle(f"weighted mean hazard curves \n{model_version_title} {taper_extension} \n{exceed_types_string} ")
+            plt.tight_layout()
+
+            for file_type in file_type_list:
+                plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves{taper_extension}_{plot_n}"
+                            f".{file_type}", dpi=300)
+            plt.close()
 
 def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dictionary, exceed_type_list,
                                            model_version_title, out_directory, file_type_list, slip_taper, file_name,
@@ -787,112 +804,128 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
 
     unique_id_list = list(PPE_dictionary.keys())
 
-    for exceed_type in exceed_type_list:
-        plt.close("all")
-        fig, axs = plt.subplots(sharex=True, sharey=True, figsize=(12, 10), )
-        plt.subplots_adjust(hspace=0.3, wspace=0.3)
-        subplot_indices = [1, 2, 3, 5, 6, 7, 9, 10, 11, 13, 14, 15]
+    plt.close("all")
 
-        # shade the region between the max and min value of all the curves at each site
-        for i, site in enumerate(plot_order):
-            # ax = plt.subplot(4, 4, i + 1)
-            ax = plt.subplot(4, 4, subplot_indices[i])
+    n_plots = int(np.ceil(len(plot_order) / 12))
+    for plot_n in range(n_plots):
+        if (plot_n + 1) % 10 == 0:
+            print(f"\t\t{plot_n + 1}/{n_plots}")
+        sites = plot_order[plot_n*12:(plot_n+1)*12]
+        if len(sites) >= 5 or len(sites) == 3:
+            n_cols = 3
+            n_rows = int(np.ceil(len(sites) / 3))
+        elif len(sites) == 4 or len(sites) == 2:
+            n_cols = 2
+            n_rows = int(np.ceil(len(sites) / 2))
+        else:
+            n_cols = 1
+            n_rows = len(sites)
 
-            # plots all three types of exceedance (total_abs, up, down) on the same plot
-            max_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_max_vals"]
-            min_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_min_vals"]
-            threshold_vals = weighted_mean_PPE_dictionary[site]["threshold_vals"]
+        for exceed_type in exceed_type_list:
+            fig, axs = plt.subplots(sharex=True, sharey=True, figsize=((n_cols + 1) * 2.63 + 0.12, n_rows * 2.32 + 0.71))  # Replicate 8x10 inch figure if there are less than 12 subplots
+            plt.subplots_adjust(hspace=0.3, wspace=0.3)
+            subplot_indices = [1, 2, 3, 5, 6, 7, 9, 10, 11, 13, 14, 15]
 
-            threshold_vals = threshold_vals[1:]
-            max_probs = max_probs[1:]
-            min_probs = min_probs[1:]
+            # shade the region between the max and min value of all the curves at each site
+            for i, site in enumerate(sites):
+                ax = plt.subplot(n_rows, n_cols + 1, subplot_indices[i])
 
-            ax.fill_between(threshold_vals, max_probs, min_probs, color='0.9', label="_nolegend_")
+                # plots all three types of exceedance (total_abs, up, down) on the same plot
+                max_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_max_vals"]
+                min_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_min_vals"]
+                threshold_vals = weighted_mean_PPE_dictionary[site]["threshold_vals"]
 
-        # plot all the branches as light grey lines
-        # for each branch, plot the exceedance probabilities for each site
-        # make a list of random colors in the length on unique_ids
-        # random_colors = [
-        #     (random.uniform(0, 1), random.uniform(0, 1), random.uniform(0, 1)) for i in range(len(unique_id_list))
-        # ]
-        special_colors = [(235 / 255, 97 / 255, 35 / 255), (64 / 255, 176 / 255, 166 / 255), (116 / 255, 43 / 255,
-                                                                                         140 / 255)]
-
-        for k, unique_id in enumerate(unique_id_list):
-            # this loop isn't really needed, but it's useful if you calculate Green's functions
-            # at more sites than you want to plot
-
-
-            if string_list[0] in unique_id:
-                line_color = special_colors[0]
-                linewidth = 1
-            elif string_list[1] in unique_id:
-                line_color = special_colors[1]
-                linewidth = 1
-            else:
-                line_color = special_colors[2]
-                linewidth = 1
-
-            for i, site in enumerate(plot_order):
-
-                threshold_vals = PPE_dictionary[unique_id]["cumu_PPE_dict"][site]["thresholds"]
-                site_exceedance_probs = PPE_dictionary[unique_id]["cumu_PPE_dict"][site][f"exceedance_probs_{exceed_type}"]
-
-                # skip the 0 value in the list
                 threshold_vals = threshold_vals[1:]
-                site_exceedance_probs = site_exceedance_probs[1:]
+                max_probs = max_probs[1:]
+                min_probs = min_probs[1:]
 
+                ax.fill_between(threshold_vals, max_probs, min_probs, color='0.9', label="_nolegend_")
+
+            # plot all the branches as light grey lines
+            # for each branch, plot the exceedance probabilities for each site
+            # make a list of random colors in the length on unique_ids
+            # random_colors = [
+            #     (random.uniform(0, 1), random.uniform(0, 1), random.uniform(0, 1)) for i in range(len(unique_id_list))
+            # ]
+            special_colors = [(235 / 255, 97 / 255, 35 / 255), (64 / 255, 176 / 255, 166 / 255), (116 / 255, 43 / 255,
+                                                                                            140 / 255)]
+
+            for k, unique_id in enumerate(unique_id_list):
+                # this loop isn't really needed, but it's useful if you calculate Green's functions
+                # at more sites than you want to plot
+
+
+                if string_list[0] in unique_id:
+                    line_color = special_colors[0]
+                    linewidth = 1
+                elif string_list[1] in unique_id:
+                    line_color = special_colors[1]
+                    linewidth = 1
+                else:
+                    line_color = special_colors[2]
+                    linewidth = 1
+
+                for i, site in enumerate(sites):
+
+                    threshold_vals = PPE_dictionary[unique_id]["cumu_PPE_dict"][site]["thresholds"]
+                    site_exceedance_probs = PPE_dictionary[unique_id]["cumu_PPE_dict"][site][f"exceedance_probs_{exceed_type}"]
+
+                    # skip the 0 value in the list
+                    threshold_vals = threshold_vals[1:]
+                    site_exceedance_probs = site_exceedance_probs[1:]
+
+                    # ax = plt.subplot(4, 3, i + 1)
+                    ax = plt.subplot(4, 4, subplot_indices[i])
+
+                    #ax.plot(threshold_vals, site_exceedance_probs, color='0.7')
+                    ax.plot(threshold_vals, site_exceedance_probs, color=line_color, linewidth=linewidth)
+
+            # loop through sites and add the weighted mean lines
+            for i, site in enumerate(sites):
                 # ax = plt.subplot(4, 3, i + 1)
                 ax = plt.subplot(4, 4, subplot_indices[i])
 
-                #ax.plot(threshold_vals, site_exceedance_probs, color='0.7')
-                ax.plot(threshold_vals, site_exceedance_probs, color=line_color, linewidth=linewidth)
+                # plots all three types of exceedance (total_abs, up, down) on the same plot
+                weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"]
+                threshold_vals = weighted_mean_PPE_dictionary[site]["threshold_vals"]
 
-        # loop through sites and add the weighted mean lines
-        for i, site in enumerate(plot_order):
-            # ax = plt.subplot(4, 3, i + 1)
-            ax = plt.subplot(4, 4, subplot_indices[i])
+                threshold_vals = threshold_vals[1:]
+                weighted_mean_exceedance_probs = weighted_mean_exceedance_probs[1:]
 
-            # plots all three types of exceedance (total_abs, up, down) on the same plot
-            weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"]
-            threshold_vals = weighted_mean_PPE_dictionary[site]["threshold_vals"]
+                line_color = get_probability_color(exceed_type)
+                ax.plot(threshold_vals, weighted_mean_exceedance_probs, color=line_color, linewidth=2)
 
-            threshold_vals = threshold_vals[1:]
-            weighted_mean_exceedance_probs = weighted_mean_exceedance_probs[1:]
+                ax.axhline(y=0.02, color="0.3", linestyle='dashed')
+                ax.axhline(y=0.1, color="0.3", linestyle='dotted')
 
-            line_color = get_probability_color(exceed_type)
-            ax.plot(threshold_vals, weighted_mean_exceedance_probs, color=line_color, linewidth=2)
+                xmin, xmax = 0.01, 3
+                ymin, ymax = 0.000005, 1
+                ax.set_title(site)
+                ax.set_yscale('log'), ax.set_xscale('log')
+                ax.set_ylim([ymin, ymax])
+                ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
+                ax.get_xaxis().set_major_formatter(ScalarFormatter())
+                ax.ticklabel_format(axis='x', style='plain')
+                ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+                ax.set_xlim([xmin, xmax])
 
-            ax.axhline(y=0.02, color="0.3", linestyle='dashed')
-            ax.axhline(y=0.1, color="0.3", linestyle='dotted')
+            # fig.show()
+            fig.legend(unique_id_list, loc='center right', fontsize="x-small")
+            fig.subplots_adjust(left=0.0)
 
-            xmin, xmax = 0.01, 3
-            ymin, ymax = 0.000005, 1
-            ax.set_title(site)
-            ax.set_yscale('log'), ax.set_xscale('log')
-            ax.set_ylim([ymin, ymax])
-            ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
-            ax.get_xaxis().set_major_formatter(ScalarFormatter())
-            ax.ticklabel_format(axis='x', style='plain')
-            ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-            ax.set_xlim([xmin, xmax])
+            fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
+            fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
+            fig.suptitle(f"weighted mean hazard curves\n{model_version_title} {taper_extension}\n{exceed_type}")
+            plt.tight_layout()
 
-        # fig.show()
-        fig.legend(unique_id_list, loc='center right', fontsize="x-small")
-        fig.subplots_adjust(left=0.0)
+            if not os.path.exists(f"../{out_directory}/weighted_mean_figures"):
+                os.mkdir(f"../{out_directory}/weighted_mean_figures")
 
-        fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
-        fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
-        fig.suptitle(f"weighted mean hazard curves\n{model_version_title} {taper_extension}\n{exceed_type}")
-        plt.tight_layout()
-
-        if not os.path.exists(f"../{out_directory}/weighted_mean_figures"):
-            os.mkdir(f"../{out_directory}/weighted_mean_figures")
-
-        for file_type in file_type_list:
-            plt.savefig(
-                f"../{out_directory}/weighted_mean_figures/"
-                f"{file_name}weighted_mean_hazcurve_{exceed_type}{taper_extension}.{file_type}", dpi=300)
+            for file_type in file_type_list:
+                plt.savefig(
+                    f"../{out_directory}/weighted_mean_figures/"
+                    f"{file_name}weighted_mean_hazcurve_{exceed_type}{taper_extension}_{plot_n}.{file_type}", dpi=300)
+            plt.close()
 
 # What is the displacement at 10% and 2% probability?
 def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory, file_type_list=["png", "pdf"], probability_list=[0.1, 0.02],
