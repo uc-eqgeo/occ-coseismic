@@ -502,9 +502,7 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
         PPE_dictionary = pkl.load(fid)
 
     plt.close("all")
-    fig, axs = plt.subplots(figsize=(8, 10))
-    plt.subplots_adjust(hspace=0.3, wspace=0.3)
-    fig.suptitle("Sites", fontsize=18, y=0.95)
+
     if not plot_order:  # Take default plot order from the dictionary keys
         plot_order = [key for key in PPE_dictionary.keys()]
 
@@ -520,6 +518,9 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
         else:
             n_cols = 1
             n_rows = len(sites)
+
+        fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2.63 + 0.12, n_rows * 2.32 + 0.71))  # Replicate 8x10 inch figure if there are less than 12 subplots
+        plt.subplots_adjust(hspace=0.3, wspace=0.3)
 
         #loop through sites and make a subplot for each one
         for i, site in enumerate(sites):
@@ -544,7 +545,7 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
             ax.get_xaxis().set_major_formatter(ScalarFormatter())
             ax.ticklabel_format(axis='x', style='plain')
             ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-            breakpoint()
+
         fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
         fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
         fig.suptitle(f"cumulative exceedance hazard curves \n{taper_extension}".replace("_", " "))
@@ -558,6 +559,7 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
         for file_type in file_type_list:
             plt.savefig(f"../{model_version_results_directory}/{extension1}/probability_figures/hazard_curve_{extension1}"
                         f"{taper_extension}_{plot_n + 1}.{file_type}", dpi=300)
+
 
 def plot_many_hazard_curves(file_suffix_list, slip_taper, gf_name, fault_type, model_version_results_directory, model_version,
                             color_map): #, plot_order=plot_order):
