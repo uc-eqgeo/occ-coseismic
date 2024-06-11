@@ -892,7 +892,7 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
                 f"{file_name}weighted_mean_hazcurve_{exceed_type}{taper_extension}.{file_type}", dpi=300)
 
 # What is the displacement at 10% and 2% probability?
-def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory, file_type_list=["png", "pdf"]):
+def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory, file_type_list=["png", "pdf"], plot_order=[], max_sites=12):
     """ makes bar charts of the displacement value at the 10% and 2% probability of exceence thresholds for each site
         extension1 = "sites_c_MDEz" or whatever
         fault_type = "crustal" or "sz"
@@ -916,84 +916,90 @@ def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory,
         site_PPE_dictionary = pkl.load(fid)
 
     plt.close("all")
-    plot_order = list(site_PPE_dictionary.keys())
+    if not plot_order:  # Take default plot order from the dictionary keys
+        plot_order = list(site_PPE_dictionary.keys())
+    
+    n_plots = int(np.ceil(len(plot_order) / max_sites))
 
-    fig, axs = plt.subplots(1, 2, figsize=(7, 3.4))
-    x = np.arange(len(plot_order))  # the site label locations
-    width = 0.4  # the width of the bars
-    # find maximum value in all the "up" columns in PPE dictionary
+    for plot_n in range(n_plots):
+        sites = plot_order[plot_n * max_sites:(plot_n + 1) * max_sites]
+        main_plot_labels = [site.replace("CBD ", "CBD").replace(" ", "\n").replace("CBD", "CBD ") for site in sites]
 
-    max_min_y_vals = []
-    for i, probability in enumerate(probability_list):
-        disps_up = \
-            get_exceedance_bar_chart_data(site_PPE_dictionary=site_PPE_dictionary, exceed_type="up",
-                                    site_list=plot_order, probability=probability)
-        disps_down= \
-            get_exceedance_bar_chart_data(site_PPE_dictionary=site_PPE_dictionary, exceed_type="down",
-                                     site_list=plot_order, probability=probability)
+        fig, axs = plt.subplots(1, 2, figsize=(7, 3.4))
+        x = np.arange(len(sites))  # the site label locations
+        width = 0.4  # the width of the bars
+        # find maximum value in all the "up" columns in PPE dictionary
 
-        max_min_y_vals.append(max(disps_up))
-        max_min_y_vals.append(min(disps_down))
+        max_min_y_vals = []
+        for i, probability in enumerate(probability_list):
+            disps_up = \
+                get_exceedance_bar_chart_data(site_PPE_dictionary=site_PPE_dictionary, exceed_type="up",
+                                        site_list=sites, probability=probability)
+            disps_down= \
+                get_exceedance_bar_chart_data(site_PPE_dictionary=site_PPE_dictionary, exceed_type="down",
+                                        site_list=sites, probability=probability)
 
-        color_up = (189/255, 0, 0)
-        color_down = (15/255, 72/255, 186/255)
-        label_size = 6
-        label_offset = label_size / 60
+            max_min_y_vals.append(max(disps_up))
+            max_min_y_vals.append(min(disps_down))
 
-        # add bars to plot, add black horizontal line at zero.
-        bars_up = axs[i].bar(x, disps_up, width, color=color_up, linewidth=0.5)
-        bars_down = axs[i].bar(x, disps_down, width, color=color_down, linewidth=0.5)
-        axs[i].axhline(y=0, color="k", linewidth=0.5)
+            color_up = (189/255, 0, 0)
+            color_down = (15/255, 72/255, 186/255)
+            label_size = 6
+            label_offset = label_size / 60
 
-        # add value labels to bars
-        for bar in bars_up:
-            bar_color = bar.get_facecolor()
-            axs[i].text(x=bar.get_x(), y=bar.get_height() + label_offset, s=round(bar.get_height(), 1), ha='left',
-                        va='center', color=bar_color, fontsize=label_size, fontweight='bold')
+            # add bars to plot, add black horizontal line at zero.
+            bars_up = axs[i].bar(x, disps_up, width, color=color_up, linewidth=0.5)
+            bars_down = axs[i].bar(x, disps_down, width, color=color_down, linewidth=0.5)
+            axs[i].axhline(y=0, color="k", linewidth=0.5)
 
-        for bar in bars_down:
-            bar_color = bar.get_facecolor()
-            axs[i].text(x=bar.get_x(), y=bar.get_height() - label_offset, s=round(bar.get_height(), 1), ha='left',
-                        va='center', color=bar_color, fontsize=label_size, fontweight='bold')
+            # add value labels to bars
+            for bar in bars_up:
+                bar_color = bar.get_facecolor()
+                axs[i].text(x=bar.get_x(), y=bar.get_height() + label_offset, s=round(bar.get_height(), 1), ha='left',
+                            va='center', color=bar_color, fontsize=label_size, fontweight='bold')
 
-    for i in range(len(probability_list)):
-        axs[i].set_ylim(min(max_min_y_vals) - 0.25, max(max_min_y_vals) + 0.25)
-        axs[i].tick_params(axis='x', labelrotation=90, labelsize=label_size)
-        if len(x) == 12:
+            for bar in bars_down:
+                bar_color = bar.get_facecolor()
+                axs[i].text(x=bar.get_x(), y=bar.get_height() - label_offset, s=round(bar.get_height(), 1), ha='left',
+                            va='center', color=bar_color, fontsize=label_size, fontweight='bold')
+
+        for i in range(len(probability_list)):
+            axs[i].set_ylim(min(max_min_y_vals) - 0.25, max(max_min_y_vals) + 0.25)
+            axs[i].tick_params(axis='x', labelrotation=90, labelsize=label_size)
             axs[i].set_xticks(x, main_plot_labels)
-        axs[i].tick_params(axis='y', labelsize=8)
-        axs[i].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-        # set tick labels to be every 0.2
-        axs[i].yaxis.set_major_locator(mticker.MultipleLocator(0.5))
+            axs[i].tick_params(axis='y', labelsize=8)
+            axs[i].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+            # set tick labels to be every 0.2
+            axs[i].yaxis.set_major_locator(mticker.MultipleLocator(0.5))
 
-    # set indidual subplot stuff
-    axs[0].set_ylabel("Displacement (m)", fontsize=8)
-    axs[1].tick_params(axis='y', labelleft=False)
+        # set indidual subplot stuff
+        axs[0].set_ylabel("Displacement (m)", fontsize=8)
+        axs[1].tick_params(axis='y', labelleft=False)
 
-    axs[0].set_title(f"10% probability of exceedance", fontsize=8)
-    axs[1].set_title(f"2% probability of exceedance", fontsize=8)
+        axs[0].set_title(f"10% probability of exceedance", fontsize=8)
+        axs[1].set_title(f"2% probability of exceedance", fontsize=8)
 
-    # manually make legend with rectangles and text
-    swatch_width, swatch_height = width, max(max_min_y_vals) * 0.08
-    swatch_minx, swatch_miny = -1 * (len(plot_order) / 30), max(max_min_y_vals)
-    axs[0].add_patch(Rectangle((swatch_minx, swatch_miny), swatch_width, swatch_height,
-                               facecolor=color_up, edgecolor=None))
-    axs[0].add_patch(Rectangle((swatch_minx, swatch_miny - 2 * swatch_height), swatch_width, swatch_height,
-                               facecolor=color_down, edgecolor=None))
+        # manually make legend with rectangles and text
+        swatch_width, swatch_height = width, max(max_min_y_vals) * 0.08
+        swatch_minx, swatch_miny = -1 * (len(plot_order) / 30), max(max_min_y_vals)
+        axs[0].add_patch(Rectangle((swatch_minx, swatch_miny), swatch_width, swatch_height,
+                                facecolor=color_up, edgecolor=None))
+        axs[0].add_patch(Rectangle((swatch_minx, swatch_miny - 2 * swatch_height), swatch_width, swatch_height,
+                                facecolor=color_down, edgecolor=None))
 
 
-    axs[0].text(swatch_minx + 2 * swatch_width, swatch_miny, "uplift", fontsize=8)
-    axs[0].text(swatch_minx + 2 * swatch_width, swatch_miny - 2 * swatch_height, "subsidence", fontsize=8)
+        axs[0].text(swatch_minx + 2 * swatch_width, swatch_miny, "uplift", fontsize=8)
+        axs[0].text(swatch_minx + 2 * swatch_width, swatch_miny - 2 * swatch_height, "subsidence", fontsize=8)
 
-    fig.suptitle(f"100 yr exceedance displacements\n{extension1}{taper_extension}", fontsize=10)
-    fig.tight_layout()
+        fig.suptitle(f"100 yr exceedance displacements\n{extension1}{taper_extension}", fontsize=10)
+        fig.tight_layout()
 
-    # make a directory for the figures if it doesn't already exist
-    outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_figures"
-    if not os.path.exists(f"{outfile_directory}"):
-        os.makedirs(f"{outfile_directory}")
-    for file_type in file_type_list:
-        fig.savefig(f"{outfile_directory}/10_2_disps_{extension1}{taper_extension}.{file_type}", dpi=300)
+        # make a directory for the figures if it doesn't already exist
+        outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_figures"
+        if not os.path.exists(f"{outfile_directory}"):
+            os.makedirs(f"{outfile_directory}")
+        for file_type in file_type_list:
+            fig.savefig(f"{outfile_directory}/10_2_disps_{extension1}{taper_extension}_{plot_n + 1}.{file_type}", dpi=300)
 
 def save_10_2_disp(extension1, slip_taper, model_version_results_directory):
     """ save displacement value at the 10% and 2% probability of exceence thresholds for each site

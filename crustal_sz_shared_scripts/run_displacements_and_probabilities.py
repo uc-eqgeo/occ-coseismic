@@ -274,7 +274,7 @@ if gf_name == "sites":
 
         make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
                                  model_version_results_directory=model_version_results_directory,
-                                 file_type_list=["png", "pdf"])
+                                 file_type_list=["png", "pdf"], plot_order=plot_order, max_sites=max_sites)
 
         try:
             save_10_2_disp(extension1=extension1_list[i], slip_taper=slip_taper,
