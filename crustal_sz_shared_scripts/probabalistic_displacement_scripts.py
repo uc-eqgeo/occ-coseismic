@@ -17,9 +17,9 @@ from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean
 matplotlib.rcParams['pdf.fonttype'] = 42
 
 
-plot_order = ["Paraparaumu", "Porirua CBD north", "South Coast", "Wellington Airport", "Wellington CBD", "Petone",
-              "Seaview", "Eastbourne", "Turakirae Head", "Lake Ferry", "Cape Palliser",
-              "Flat Point"]
+#plot_order = ["Paraparaumu", "Porirua CBD north", "South Coast", "Wellington Airport", "Wellington CBD", "Petone",
+#              "Seaview", "Eastbourne", "Turakirae Head", "Lake Ferry", "Cape Palliser",
+#              "Flat Point"]
 #plot_order = [206, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52]
 
 def get_site_disp_dict(extension1, slip_taper, model_version_results_directory):
@@ -485,7 +485,7 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
 
     return probs_threshold
 
-def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_directory, file_type_list):
+def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_directory, file_type_list, plot_order=[]):
     """makes hazard curves for each site. includes the probability of cumulative displacement from multiple
     earthquakes exceeding a threshold in 100 years."""
 
@@ -505,47 +505,62 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
     fig, axs = plt.subplots(figsize=(8, 10))
     plt.subplots_adjust(hspace=0.3, wspace=0.3)
     fig.suptitle("Sites", fontsize=18, y=0.95)
-    plot_order = [key for key in PPE_dictionary.keys()][:12]
+    if not plot_order:  # Take default plot order from the dictionary keys
+        plot_order = [key for key in PPE_dictionary.keys()]
 
-    #loop through sites and make a subplot for each one
-    for i, site in enumerate(plot_order):
-        ax = plt.subplot(4, 3, i + 1)
+    n_plots = int(np.ceil(len(plot_order) / 12))
+    for plot_n in range(n_plots):
+        sites = plot_order[plot_n*12:(plot_n+1)*12]
+        if len(sites) >= 5 or len(sites) == 3:
+            n_cols = 3
+            n_rows = int(np.ceil(len(sites) / 3))
+        elif len(sites) == 4 or len(sites) == 2:
+            n_cols = 2
+            n_rows = int(np.ceil(len(sites) / 2))
+        else:
+            n_cols = 1
+            n_rows = len(sites)
 
-        # plots all three types of exceedance (total_abs, up, down) on the same plot
-        for j, exceed_type in enumerate(exceed_type_list):
-            curve_color = get_probability_color(exceed_type)
+        #loop through sites and make a subplot for each one
+        for i, site in enumerate(sites):
+            ax = plt.subplot(n_rows, n_cols, i + 1)
 
-            exceedance_probs = PPE_dictionary[site][f"exceedance_probs_{exceed_type}"]
-            threshold_vals = PPE_dictionary[site]["thresholds"]
+            # plots all three types of exceedance (total_abs, up, down) on the same plot
+            for j, exceed_type in enumerate(exceed_type_list):
+                curve_color = get_probability_color(exceed_type)
 
-            ax.plot(threshold_vals, exceedance_probs, color=curve_color)
-            ax.axhline(y=0.02, color="0.7", linestyle='dashed')
-            ax.axhline(y=0.1, color="0.7", linestyle='dotted')
+                exceedance_probs = PPE_dictionary[site][f"exceedance_probs_{exceed_type}"]
+                threshold_vals = PPE_dictionary[site]["thresholds"]
 
-        ax.set_title(site)
-        ax.set_yscale('log'), ax.set_xscale('log')
-        ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
-        ymin, ymax = 0.000005, 1
-        ax.set_ylim([ymin, ymax])
-        ax.get_xaxis().set_major_formatter(ScalarFormatter())
-        ax.ticklabel_format(axis='x', style='plain')
-        ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-    fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
-    fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
-    fig.suptitle(f"cumulative exceedance hazard curves \n{taper_extension}")
-    plt.tight_layout()
+                ax.plot(threshold_vals, exceedance_probs, color=curve_color)
+                ax.axhline(y=0.02, color="0.7", linestyle='dashed')
+                ax.axhline(y=0.1, color="0.7", linestyle='dotted')
 
-    #save hazard curve figure
-    # make directory for hazard curve if it doesn't exist
-    if not os.path.exists(f"../{model_version_results_directory}/{extension1}/probability_figures"):
-        os.mkdir(f"../{model_version_results_directory}/{extension1}/probability_figures")
+            ax.set_title(site)
+            ax.set_yscale('log'), ax.set_xscale('log')
+            ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
+            ymin, ymax = 0.000005, 1
+            ax.set_ylim([ymin, ymax])
+            ax.get_xaxis().set_major_formatter(ScalarFormatter())
+            ax.ticklabel_format(axis='x', style='plain')
+            ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+            breakpoint()
+        fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
+        fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
+        fig.suptitle(f"cumulative exceedance hazard curves \n{taper_extension}".replace("_", " "))
+        plt.tight_layout()
 
-    for file_type in file_type_list:
-        plt.savefig(f"../{model_version_results_directory}/{extension1}/probability_figures/hazard_curve_{extension1}"
-                    f"{taper_extension}.{file_type}", dpi=300)
+        #save hazard curve figure
+        # make directory for hazard curve if it doesn't exist
+        if not os.path.exists(f"../{model_version_results_directory}/{extension1}/probability_figures"):
+            os.mkdir(f"../{model_version_results_directory}/{extension1}/probability_figures")
+
+        for file_type in file_type_list:
+            plt.savefig(f"../{model_version_results_directory}/{extension1}/probability_figures/hazard_curve_{extension1}"
+                        f"{taper_extension}_{plot_n + 1}.{file_type}", dpi=300)
 
 def plot_many_hazard_curves(file_suffix_list, slip_taper, gf_name, fault_type, model_version_results_directory, model_version,
-                            color_map):
+                            color_map): #, plot_order=plot_order):
 
 #    plot_order = ["Paraparaumu", "Porirua CBD north", "South Coast", "Wellington Airport", "Wellington CBD", "Petone",
 #                  "Seaview", "Eastbourne", "Turakirae Head", "Lake Ferry", "Cape Palliser",
@@ -618,7 +633,7 @@ def plot_many_hazard_curves(file_suffix_list, slip_taper, gf_name, fault_type, m
     return fig, axs
 
 def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, exceed_type_list,
-                                  model_version_title, out_directory, file_type_list, slip_taper, plot_order=plot_order):
+                                  model_version_title, out_directory, file_type_list, slip_taper): #, plot_order=plot_order):
     """
     Plots the weighted mean hazard curve for each site, for each exceedance type (total_abs, up, down)
     :param weighted_mean_PPE_dictionary: dictionary containing the weighted mean exceedance probabilities for each site.
@@ -752,7 +767,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
 
 def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dictionary, exceed_type_list,
                                            model_version_title, out_directory, file_type_list, slip_taper, file_name,
-                                           string_list, plot_order=plot_order):
+                                           string_list): #, plot_order=plot_order):
     """
     Plots the weighted mean hazard curve for each site, for each exceedance type (total_abs, up, down)
     :param weighted_mean_PPE_dictionary: dictionary containing the weighted mean exceedance probabilities for each site.
