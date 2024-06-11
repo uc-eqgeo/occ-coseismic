@@ -118,7 +118,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
     for i, site_of_interest in enumerate(branch_site_disp_dict.keys()):
-        print('Site:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
+        print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
         # if i == 0:
         #     if branch_key not in ["nan", ""]:
         #         print(f"calculating {branch_key} PPE for site {i} of {len(branch_site_disp_dict.keys())}")
@@ -508,6 +508,8 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
 
     n_plots = int(np.ceil(len(plot_order) / 12))
     for plot_n in range(n_plots):
+        if (plot_n + 1) % 10 == 0:
+            print(f"\t\t{plot_n + 1}/{n_plots}")
         sites = plot_order[plot_n*12:(plot_n+1)*12]
         if len(sites) >= 5 or len(sites) == 3:
             n_cols = 3
@@ -558,6 +560,7 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
         for file_type in file_type_list:
             plt.savefig(f"../{model_version_results_directory}/{extension1}/probability_figures/hazard_curve_{extension1}"
                         f"{taper_extension}_{plot_n + 1}.{file_type}", dpi=300)
+        plt.close()
 
 
 def plot_many_hazard_curves(file_suffix_list, slip_taper, gf_name, fault_type, model_version_results_directory, model_version,
@@ -892,19 +895,14 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
                 f"{file_name}weighted_mean_hazcurve_{exceed_type}{taper_extension}.{file_type}", dpi=300)
 
 # What is the displacement at 10% and 2% probability?
-def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory, file_type_list=["png", "pdf"], plot_order=[], max_sites=12):
+def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory, file_type_list=["png", "pdf"], probability_list=[0.1, 0.02],
+                        plot_order=[], max_sites=12):
     """ makes bar charts of the displacement value at the 10% and 2% probability of exceence thresholds for each site
         extension1 = "sites_c_MDEz" or whatever
         fault_type = "crustal" or "sz"
         slip_taper = True or False
         model_version_results_directory = "{results_directory}/{fault_type}{fault_model}"
     """
-    main_plot_labels = ["Paraparaumu", "Porirua\nCBD north", "South\nCoast", "Wellington\nAirport", "Wellington\nCBD",
-                        "Petone", "Seaview", "Eastbourne", "Turakirae\nHead", "Lake\nFerry", "Cape\nPalliser",
-                        "Flat\nPoint"]
-
-    probability_list = [0.1, 0.02]
-
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
@@ -922,8 +920,10 @@ def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory,
     n_plots = int(np.ceil(len(plot_order) / max_sites))
 
     for plot_n in range(n_plots):
+        if (plot_n + 1) % 10 == 0:
+            print(f"\t\t{plot_n + 1}/{n_plots}")
         sites = plot_order[plot_n * max_sites:(plot_n + 1) * max_sites]
-        main_plot_labels = [site.replace("CBD ", "CBD").replace(" ", "\n").replace("CBD", "CBD ") for site in sites]
+        main_plot_labels = [site.replace("CBD ", "CBD").replace(" ", "\n").replace("CBD", "CBD ") if isinstance(site, str) else site for site in sites]
 
         fig, axs = plt.subplots(1, 2, figsize=(7, 3.4))
         x = np.arange(len(sites))  # the site label locations
@@ -983,8 +983,9 @@ def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory,
         axs[1].set_title(f"2% probability of exceedance", fontsize=8)
 
         # manually make legend with rectangles and text
+        max_min_y_vals.append(0.2)  # Incase all values are 0
         swatch_width, swatch_height = width, max(max_min_y_vals) * 0.08
-        swatch_minx, swatch_miny = -1 * (len(plot_order) / 30), max(max_min_y_vals)
+        swatch_minx, swatch_miny = -1 * (len(sites) / 30), max(max_min_y_vals)
         axs[0].add_patch(Rectangle((swatch_minx, swatch_miny), swatch_width, swatch_height,
                                 facecolor=color_up, edgecolor=None))
         axs[0].add_patch(Rectangle((swatch_minx, swatch_miny - 2 * swatch_height), swatch_width, swatch_height,
@@ -1003,6 +1004,9 @@ def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory,
             os.makedirs(f"{outfile_directory}")
         for file_type in file_type_list:
             fig.savefig(f"{outfile_directory}/10_2_disps_{extension1}{taper_extension}_{plot_n + 1}.{file_type}", dpi=300)
+        
+        plt.close("all")
+
 
 def save_10_2_disp(extension1, slip_taper, model_version_results_directory):
     """ save displacement value at the 10% and 2% probability of exceence thresholds for each site
@@ -1145,8 +1149,10 @@ def make_branch_prob_plot(extension1,  slip_taper, model_version, model_version_
     n_plots = int(np.ceil(len(plot_order) / max_sites))
 
     for plot_n in range(n_plots):
+        if (plot_n + 1) % 10 == 0:
+            print(f"\t\t{plot_n + 1}/{n_plots}")
         sites = plot_order[plot_n * max_sites:(plot_n + 1) * max_sites]
-        main_plot_labels = [site.replace("CBD ", "CBD").replace(" ", "\n").replace("CBD", "CBD ") for site in sites]
+        main_plot_labels = [site.replace("CBD ", "CBD").replace(" ", "\n").replace("CBD", "CBD ") if isinstance(site, str) else site for site in sites]
 
         # set up custom color scheme
         # set up custom color scheme
@@ -1200,3 +1206,5 @@ def make_branch_prob_plot(extension1,  slip_taper, model_version, model_version_
 
         for file_type in file_type_list:
             fig.savefig(f"{outfile_directory}/probs_chart_{extension1}{taper_extension}_{plot_n + 1}.{file_type}", dpi=300)
+        
+        plt.close()
