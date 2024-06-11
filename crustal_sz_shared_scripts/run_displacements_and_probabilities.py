@@ -1,4 +1,5 @@
 import pickle as pkl
+import pandas as pd
 import random
 import os
 import matplotlib
@@ -25,8 +26,21 @@ specific_rupture_ids = True
 
 #can only run one type of GF and fault geometry at a time
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
-crustal_model_extension = "_Model_CFM_jde"         # "_Model1", "_Model2", or "_CFM"
+crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_deblob_steeperdip"                # must match suffix in the subduction directory with gfs
+
+default_plot_order = False
+plot_order_csv = "../JDE_sites.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
+
+if default_plot_order:
+    plot_order = None
+elif not default_plot_order and not os.path.exists(plot_order_csv):
+    print("Manual plot order selected but no plot order csv found. Please create a csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId)")
+    exit()
+else:
+    print('Using custom plot order from', plot_order_csv)
+    plot_order = pd.read_csv(plot_order_csv)
+    plot_order = list(plot_order['siteId'])
 
 # Can run more than one type of deformation model at a time (only matters for crustal)
 deformation_model = "geologic and geodetic"          # "geologic" or "geodetic" or "geologic and geodetic"
@@ -244,7 +258,7 @@ if gf_name == "sites":
         print(f"*~ Making probability figures for {extension1_list[i]} ~*\n")
         plot_branch_hazard_curve(extension1=extension1_list[i],
                             model_version_results_directory=model_version_results_directory,
-                            slip_taper=slip_taper, file_type_list=file_type_list)
+                            slip_taper=slip_taper, file_type_list=file_type_list, plot_order=plot_order)
 
         # step 4 (optional): plot hazard maps (Needs to be imported from subduction/sz_probability_plotting_scripts.py)
         #plot_cumu_disp_hazard_map(extension1=extension1_list[i], slip_taper=slip_taper, grid=grid, fault_type=fault_type,
