@@ -10,7 +10,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 
-searise_csv = 'national_50km_grid.csv'
+searise_csv = 'national_2km_grid.csv'
 
 data = pd.read_csv(searise_csv)
 
@@ -24,9 +24,11 @@ data['Lon'] = data.geometry.x
 data['Lat'] = data.geometry.y
 
 ix = np.unique(data['siteId'].to_numpy(), return_index=True)[1] # Remove duplicate siteIds for different searise scenarios
-data = data[['siteId', 'Lon', 'Lat']].iloc[ix].reset_index(drop=True)
+data = data[['siteId', 'Lon', 'Lat']].iloc[ix]
 
 data['Height'] = 0
+
+data = data.sort_values(by = ['Lat', 'Lon']).reset_index(drop=True)  # Sort based on Latitude, then longitude
 data['siteId'] = np.array(data.index) # Reset siteIds
 
 searise_out = searise_csv.replace('.csv', '_points.csv')
