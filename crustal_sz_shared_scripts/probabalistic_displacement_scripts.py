@@ -970,7 +970,10 @@ def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory,
             axs[i].tick_params(axis='y', labelsize=8)
             axs[i].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
             # set tick labels to be every 0.2
-            axs[i].yaxis.set_major_locator(mticker.MultipleLocator(0.5))
+            if max(max_min_y_vals) + 0.25 < 1.0:
+                axs[i].yaxis.set_major_locator(mticker.MultipleLocator(0.25))
+            else:
+                axs[i].yaxis.set_major_locator(mticker.MultipleLocator(0.5))
 
         # set indidual subplot stuff
         axs[0].set_ylabel("Displacement (m)", fontsize=8)
