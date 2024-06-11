@@ -1025,9 +1025,10 @@ def save_10_2_disp(extension1, slip_taper, model_version_results_directory):
         os.makedirs(f"{outfile_directory}")
 
     site_list = [site for site in site_PPE_dictionary.keys()]
-    site_array = np.zeros((len(site_list), 3))
+    xy_array = np.zeros((len(site_list), 2))
+
     for ix, site in enumerate(site_list):
-        site_array[ix, :] = np.hstack([np.array(site), site_PPE_dictionary[site]['site_coords'][:2]])
+        xy_array[ix, :] = site_PPE_dictionary[site]['site_coords'][:2]
 
     for i, probability in enumerate(probability_list):
         disps_up = \
@@ -1040,13 +1041,9 @@ def save_10_2_disp(extension1, slip_taper, model_version_results_directory):
             get_exceedance_bar_chart_data(site_PPE_dictionary=site_PPE_dictionary, exceed_type="total_abs",
                                      site_list=site_list, probability=probability)
         
-        disp_array = np.vstack([np.array(disps_up), np.array(disps_down), np.array(disps_abs)]).T
-        save_array = np.hstack([site_array, disp_array])
+        data = {'sites': site_list, 'uplift': disps_up, 'subsidence': disps_down, 'total_abs': disps_abs}
 
-        np.save(f"{outfile_directory}/{int(probability * 100)}perc_disps_{extension1}{taper_extension}.npy", save_array)
-
-        disp_gdf = gpd.GeoDataFrame(save_array[:, [0, 3, 4, 5]], columns=['site', 'uplift', 'subsidence', 'total_abs'],
-                                    geometry=gpd.points_from_xy(save_array[:, 1], save_array[:, 2]), crs="EPSG:2193")
+        disp_gdf = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(xy_array[:, 0], xy_array[:, 1]), crs="EPSG:2193")
         disp_gdf.to_file(f"{outfile_directory}/{int(probability * 100)}perc_disps_{extension1}{taper_extension}.geojson", driver='GeoJSON')
 
 # What is the probability of exceeding 0.2 m subsidence, 0.2 m uplift at each site?

@@ -276,8 +276,5 @@ if gf_name == "sites":
                                  model_version_results_directory=model_version_results_directory,
                                  file_type_list=["png", "pdf"], plot_order=plot_order, max_sites=max_sites)
 
-        try:
-            save_10_2_disp(extension1=extension1_list[i], slip_taper=slip_taper,
-                                     model_version_results_directory=model_version_results_directory)
-        except ValueError:
-            print('Not saved displacements as arrays')
+        save_10_2_disp(extension1=extension1_list[i], slip_taper=slip_taper,
+                                    model_version_results_directory=model_version_results_directory)
