@@ -29,7 +29,7 @@ gf_name = "sites"                       # "sites" or "grid" or "coastal"
 crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_deblob_steeperdip"                # must match suffix in the subduction directory with gfs
 
-default_plot_order = False
+default_plot_order = True
 plot_order_csv = "../JDE_sites.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 
 if default_plot_order:
@@ -267,12 +267,10 @@ if gf_name == "sites":
         #                          sz_directory=sz_directory, model_version=model_version)
 
         ## step 5: plot bar charts
-        try:
-            make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
-                               model_version_results_directory=model_version_results_directory,
-                               model_version=model_version)
-        except KeyError:
-            print('Currently too many sites to create a bar chart')
+        max_sites = 13  # Max number of sites to show on one bar chart [default 12]
+        make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
+                            model_version_results_directory=model_version_results_directory,
+                            model_version=model_version, plot_order=plot_order, max_sites=max_sites)
 
         make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
                                  model_version_results_directory=model_version_results_directory,

@@ -529,7 +529,6 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
             # plots all three types of exceedance (total_abs, up, down) on the same plot
             for j, exceed_type in enumerate(exceed_type_list):
                 curve_color = get_probability_color(exceed_type)
-
                 exceedance_probs = PPE_dictionary[site][f"exceedance_probs_{exceed_type}"]
                 threshold_vals = PPE_dictionary[site]["thresholds"]
 
@@ -1119,12 +1118,8 @@ def make_prob_bar_chart(extension1,  slip_taper, model_version, model_version_re
                 f"{taper_extension}.png", dpi=300)
 
 def make_branch_prob_plot(extension1,  slip_taper, model_version, model_version_results_directory,
-                      file_type_list=["png", "pdf"], threshold=0.2):
+                      file_type_list=["png", "pdf"], threshold=0.2, plot_order=None, max_sites=12):
     """ """
-
-    main_plot_labels = ["Paraparaumu", "Porirua\nCBD north", "South\nCoast", "Wellington\nAirport", "Wellington\nCBD",
-                        "Petone", "Seaview", "Eastbourne", "Turakirae\nHead", "Lake\nFerry", "Cape\nPalliser",
-                        "Flat\nPoint"]
 
     exceed_type_list = ["up", "down"]
 
@@ -1137,56 +1132,65 @@ def make_branch_prob_plot(extension1,  slip_taper, model_version, model_version_
               f"{taper_extension}.pkl",
               "rb") as fid:
         PPE_dict = pkl.load(fid)
+    
+    if not plot_order:  # Take default plot order from the dictionary keys
+        plot_order = [key for key in PPE_dict.keys()]
+    
+    n_plots = int(np.ceil(len(plot_order) / max_sites))
 
-    # set up custom color scheme
-    # set up custom color scheme
-    colors = make_qualitative_colormap("custom", len(plot_order))
-    point_size = [35]
+    for plot_n in range(n_plots):
+        sites = plot_order[plot_n * max_sites:(plot_n + 1) * max_sites]
+        main_plot_labels = [site.replace("CBD ", "CBD").replace(" ", "\n").replace("CBD", "CBD ") for site in sites]
 
-    # set up figure and subplots
-    fig, axs = plt.subplots(1, 2, figsize=(7, 3.5))
-    x = np.arange(len(plot_order))  # the site label locations
+        # set up custom color scheme
+        # set up custom color scheme
+        colors = make_qualitative_colormap("custom", len(sites))
+        point_size = [35]
 
-    for i, exceed_type in enumerate(exceed_type_list):
-        probs = \
-            get_probability_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
-                                           threshold=threshold, site_list=plot_order)
+        # set up figure and subplots
+        fig, axs = plt.subplots(1, 2, figsize=(7, 3.5))
+        x = np.arange(len(sites))  # the site label locations
 
-        # add point and error bars to plot
-        axs[i].scatter(x, probs, s=point_size, color=colors, zorder=3, edgecolors='k', linewidths=0.5)
+        for i, exceed_type in enumerate(exceed_type_list):
+            probs = \
+                get_probability_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
+                                            threshold=threshold, site_list=sites)
 
-        labels = [f"{int(100 * round(prob, 2))}%" for prob in probs]
-        label_y_vals = [prob + 0.03 for prob in probs]
-        for site, q in enumerate(x):
-            axs[i].text(x=x[q], y=label_y_vals[q], s=labels[q],
-                        horizontalalignment='center', fontsize=6, fontweight='bold')
+            # add point and error bars to plot
+            axs[i].scatter(x, probs, s=point_size, color=colors, zorder=3, edgecolors='k', linewidths=0.5)
 
-        ymin, ymax  = 0.0, 0.3
-        axs[i].set_ylim([ymin, ymax])
-        axs[i].tick_params(axis='x', labelrotation=45, labelsize=6)
-        axs[i].tick_params(axis='y', labelsize=8)
-        axs[i].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-        # set tick labels to be every 0.2
-        axs[i].yaxis.set_major_locator(mticker.MultipleLocator(0.1))
-        axs[i].set_xticks(x, main_plot_labels, va='top', ha='center')
+            labels = [f"{int(100 * round(prob, 2))}%" for prob in probs]
+            label_y_vals = [prob + 0.03 for prob in probs]
+            for site, q in enumerate(x):
+                axs[i].text(x=x[q], y=label_y_vals[q], s=labels[q],
+                            horizontalalignment='center', fontsize=6, fontweight='bold')
 
-    # set indidual subplot stuff
-    fontsize = 8
-    # I'm doing it this way instead of just using "names" because I want to make sure the legend is in the correct
-    # order.
+            ymin, ymax  = 0.0, 0.3
+            axs[i].set_ylim([ymin, ymax])
+            axs[i].tick_params(axis='x', labelrotation=45, labelsize=6)
+            axs[i].tick_params(axis='y', labelsize=8)
+            axs[i].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+            # set tick labels to be every 0.2
+            axs[i].yaxis.set_major_locator(mticker.MultipleLocator(0.1))
+            axs[i].set_xticks(x, main_plot_labels, va='top', ha='center')
 
-    axs[0].set_ylabel("Probabilty", fontsize=8)
-    axs[1].tick_params(axis='y', labelleft=False)
+        # set indidual subplot stuff
+        fontsize = 8
+        # I'm doing it this way instead of just using "names" because I want to make sure the legend is in the correct
+        # order.
 
-    axs[0].set_title(f"Probability of exceeding {threshold} m uplift", fontsize=fontsize)
-    axs[1].set_title(f"Probability of exceeding {threshold} m subsidence", fontsize=fontsize)
+        axs[0].set_ylabel("Probabilty", fontsize=8)
+        axs[1].tick_params(axis='y', labelleft=False)
 
-    fig.suptitle(f"{model_version} {extension1} (100 yrs)")
-    fig.tight_layout()
+        axs[0].set_title(f"Probability of exceeding {threshold} m uplift", fontsize=fontsize)
+        axs[1].set_title(f"Probability of exceeding {threshold} m subsidence", fontsize=fontsize)
 
-    outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_figures"
-    if not os.path.exists(f"{outfile_directory}"):
-        os.mkdir(f"{outfile_directory}")
+        fig.suptitle(f"{model_version} {extension1} (100 yrs)")
+        fig.tight_layout()
 
-    for file_type in file_type_list:
-        fig.savefig(f"{outfile_directory}/probs_chart_{extension1}{taper_extension}.{file_type}", dpi=300)
+        outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_figures"
+        if not os.path.exists(f"{outfile_directory}"):
+            os.mkdir(f"{outfile_directory}")
+
+        for file_type in file_type_list:
+            fig.savefig(f"{outfile_directory}/probs_chart_{extension1}{taper_extension}_{plot_n + 1}.{file_type}", dpi=300)
