@@ -566,9 +566,9 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
 def plot_many_hazard_curves(file_suffix_list, slip_taper, gf_name, fault_type, model_version_results_directory, model_version,
                             color_map): #, plot_order=plot_order):
 
-#    plot_order = ["Paraparaumu", "Porirua CBD north", "South Coast", "Wellington Airport", "Wellington CBD", "Petone",
-#                  "Seaview", "Eastbourne", "Turakirae Head", "Lake Ferry", "Cape Palliser",
-#                  "Flat Point"]
+    plot_order = ["Paraparaumu", "Porirua CBD north", "South Coast", "Wellington Airport", "Wellington CBD", "Petone",
+                  "Seaview", "Eastbourne", "Turakirae Head", "Lake Ferry", "Cape Palliser",
+                  "Flat Point"]
 
     exceed_type_list = ["total_abs"]
 
@@ -637,7 +637,7 @@ def plot_many_hazard_curves(file_suffix_list, slip_taper, gf_name, fault_type, m
     return fig, axs
 
 def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, exceed_type_list,
-                                  model_version_title, out_directory, file_type_list, slip_taper): #, plot_order=plot_order):
+                                  model_version_title, out_directory, file_type_list, slip_taper, plot_order):
     """
     Plots the weighted mean hazard curve for each site, for each exceedance type (total_abs, up, down)
     :param weighted_mean_PPE_dictionary: dictionary containing the weighted mean exceedance probabilities for each site.
@@ -771,7 +771,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
 
 def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dictionary, exceed_type_list,
                                            model_version_title, out_directory, file_type_list, slip_taper, file_name,
-                                           string_list): #, plot_order=plot_order):
+                                           string_list, plot_order):
     """
     Plots the weighted mean hazard curve for each site, for each exceedance type (total_abs, up, down)
     :param weighted_mean_PPE_dictionary: dictionary containing the weighted mean exceedance probabilities for each site.
@@ -1065,6 +1065,10 @@ def make_prob_bar_chart(extension1,  slip_taper, model_version, model_version_re
         :param threshold: float, displacement threshold to determine exceedance probability
         :param results_directory: string, name of directory where results are stored
     """
+
+    plot_order = ["Paraparaumu", "Porirua CBD north", "South Coast", "Wellington Airport", "Wellington CBD", "Petone",
+                  "Seaview", "Eastbourne", "Turakirae Head", "Lake Ferry", "Cape Palliser",
+                  "Flat Point"]
 
     exceed_type_list = ["up", "down"]
 
