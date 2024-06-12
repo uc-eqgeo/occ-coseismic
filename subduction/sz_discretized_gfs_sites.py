@@ -43,10 +43,8 @@ elif gentler_dip:
     version_extension += "_gentlerdip"
 
 if sz_zone == 'hikkerk':
-    neighbours_file = '../data/hik_kerk3k_neighbours.txt'
     prefix = 'sz'
 elif sz_zone == 'puysegur':
-    neighbours_file = '../data/puysegur_neighbours.txt'
     prefix = 'py'
 else:
     print("Please define a valid subduction zone (hikkerk / puysegur).")
