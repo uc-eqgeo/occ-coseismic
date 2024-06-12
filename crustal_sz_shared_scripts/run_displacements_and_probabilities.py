@@ -136,35 +136,39 @@ if fault_type == "crustal":
 elif fault_type == "sz":
     model_version = sz_model_version
     slip_taper = False
-    if not single_branch:
-        file_suffix_list_i = ["_sz_MzE5", "_sz_MzIw", "_sz_MzI1", "_sz_MzI2", "_sz_MzMx", "_sz_MzMy", "_sz_MzE3",
-                              "_sz_MzE4", "_sz_MzIx", "_sz_MzIy", "_sz_MzIz", "_sz_MzI0", "_sz_MzI3", "_sz_MzI4",
-                              "_sz_MzI5", "_sz_MzMw", "_sz_MzIy", "_sz_MzIy"]
-        NSHM_directory_list_i = ["sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE3",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE4",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE5",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIw",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIx",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIy",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIz",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI0",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI1",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI2",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI3",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI4",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI5",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMw",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMx",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMy",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMz",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzM0"]
-        file_suffix_list.extend(file_suffix_list_i)
-        NSHM_directory_list.extend(NSHM_directory_list_i)
-    if single_branch:
-        file_suffix_list_i = ["_sz_MzMx"]
-        NSHM_directory_list_i = ["sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMx"]
-        file_suffix_list.extend(file_suffix_list_i)
-        NSHM_directory_list.extend(NSHM_directory_list_i)
+    if sz_zone == 'hikkerk':
+        if not single_branch:
+            file_suffix_list_i = ["_sz_MzE5", "_sz_MzIw", "_sz_MzI1", "_sz_MzI2", "_sz_MzMx", "_sz_MzMy", "_sz_MzE3",
+                                "_sz_MzE4", "_sz_MzIx", "_sz_MzIy", "_sz_MzIz", "_sz_MzI0", "_sz_MzI3", "_sz_MzI4",
+                                "_sz_MzI5", "_sz_MzMw", "_sz_MzIy", "_sz_MzIy"]
+            NSHM_directory_list_i = ["sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE3",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE4",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE5",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIw",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIx",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIy",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIz",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI0",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI1",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI2",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI3",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI4",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI5",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMw",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMx",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMy",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMz",
+                                    "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzM0"]
+            file_suffix_list.extend(file_suffix_list_i)
+            NSHM_directory_list.extend(NSHM_directory_list_i)
+        if single_branch:
+            file_suffix_list_i = ["_sz_MzMx"]
+            NSHM_directory_list_i = ["sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMx"]
+            file_suffix_list.extend(file_suffix_list_i)
+            NSHM_directory_list.extend(NSHM_directory_list_i)
+    else:
+        print('Currently no Puysegeur results availiable')
+        exit()
 
 if len(file_suffix_list) != len(NSHM_directory_list):
     raise ValueError("Number of file suffixes and NSHM directories must be equal")
