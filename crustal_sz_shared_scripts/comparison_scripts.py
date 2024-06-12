@@ -84,7 +84,7 @@ def get_exceedance_plot_data(site_PPE_dictionary, probability, exceed_type, site
 
 # Chris pointed out that using a bar chart of this isn't really a good idea
 def make_branch_compare_prob_barchart(crustal_file_suffix, sz_file_suffix, slip_taper,
-                              results_directory="results_files", threshold=0.2):
+                              results_directory="results_files", threshold=0.2, plot_order=plot_order):
     """ What is the probability of exceeding 0.2 m subsidence, 0.2 m uplift at each site?
     pickle files are a string with the path
     """
@@ -395,8 +395,7 @@ def make_branch_compare_prob_barchart(crustal_file_suffix, sz_file_suffix, slip_
 
 
 def compare_faultmodel_prob_plot(PPE_paths, plot_name, title, names, outfile_directory,
-                                 file_type_list=["png"],
-                                      threshold=0.2):
+                                 file_type_list=["png"], threshold=0.2, plot_order=plot_order):
     """ """
 
     exceed_type_list = ["up", "down"]

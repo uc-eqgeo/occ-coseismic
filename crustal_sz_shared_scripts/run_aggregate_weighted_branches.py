@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, \
     make_sz_crustal_paired_PPE_dict, make_fault_model_PPE_dict, get_weighted_mean_PPE_dict, \
@@ -8,25 +9,33 @@ import pickle as pkl
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal or "sz"; only matters for single fault model
-crustal_model_version = "_CFM"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_deblob_steeperdip"                    # must match suffix in the subduction directory with gfs
-outfile_extension = "deblob_steeperdip"               # Optional; something to tack on to the end so you don't overwrite files
+crustal_model_version = "_Model_CFM_50km"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_multi50"                    # must match suffix in the subduction directory with gfs
+outfile_extension = "50km_testing"               # Optional; something to tack on to the end so you don't overwrite files
+default_plot_order = True
+plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
+
+testing = True
 
 probability_plot = True                # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
 displacement_chart = True                 # plots the displacement at the 10% and 2% probability of exceedance
 # thresholds
-make_hazcurves = False
-make_colorful_hazcurves = False
+make_hazcurves = True
+make_colorful_hazcurves = True
 #make_map = True
 
+if testing:
+    n_samples = 10000
+else:
+    n_samples = 1000000
 
 # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
-paired_crustal_sz = True                   # True or False
+paired_crustal_sz = False                 # True or False
 
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = True            # True or False
+calculate_fault_model_PPE = False           # True or False
 
 figure_file_type_list = ["png", "pdf"]             # file types for figures
 
@@ -39,6 +48,10 @@ unique_id_keyphrase_list = ["N165", "N279"]         # sz
 crustal_directory = "crustal"
 sz_directory = "subduction"
 results_directory = "results"
+
+if not default_plot_order and not os.path.exists(plot_order_csv):
+    print("Manual plot order selected but no plot order csv found. Please create a csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId)")
+    exit()
 
 #plot_order_temp = ["Porirua CBD north", "Porirua CBD south"]
 ######################################################
@@ -128,22 +141,32 @@ sz_extension1_list = [gf_name + suffix for suffix in sz_file_suffix_list]
 ### make a dictionary of all the branch probabilities, oranized by site within each branch
 # option to skip this step if you've already run it once and saved to a pickle file
 if not paired_crustal_sz:
-    n_samples = 1000000
     model_version_results_directory = f"{results_directory}/{fault_type}{fault_model_version}"
+
+    fault_model_PPE_filepath = f"../{model_version_results_directory}/allbranch_PPE_dict_{outfile_extension}{taper_extension}.pkl"
+    if not os.path.exists(fault_model_PPE_filepath):
+        print('No fault model PPE pkl file found. Making a new one...')
+        calculate_fault_model_PPE = True
+
     if calculate_fault_model_PPE:
         make_fault_model_PPE_dict(
             branch_weight_dict=fault_model_branch_weight_dict,
             model_version_results_directory=model_version_results_directory, n_samples=n_samples,
             slip_taper=slip_taper, outfile_extension=outfile_extension)
 
-    fault_model_PPE_filepath = f"../{model_version_results_directory}/allbranch_PPE_dict_{outfile_extension}{taper_extension}.pkl"
     with open(fault_model_PPE_filepath, 'rb') as f:
         PPE_dict = pkl.load(f)
 
 ##### paired crustal and sz PPE
 if paired_crustal_sz:
-    n_samples = 100000
     model_version_results_directory = f"{results_directory}/paired_c{crustal_model_version}_sz{sz_model_version}"
+
+    paired_PPE_pickle_name = f"sz_crustal_paired_PPE_dict_{outfile_extension}{taper_extension}.pkl"
+    paired_PPE_filepath = f"../{model_version_results_directory}/{paired_PPE_pickle_name}"
+
+    if not os.path.exists(paired_PPE_filepath):
+        print('No sz-crustal paired PPE pkl file found. Making a new one...')
+        calculate_fault_model_PPE = True
 
     #### skip this part if you've already run it once and saved to a pickle file
     if calculate_fault_model_PPE:
@@ -154,8 +177,6 @@ if paired_crustal_sz:
             slip_taper=slip_taper, n_samples=n_samples,
             out_directory=model_version_results_directory, outfile_extension=outfile_extension)
 
-    paired_PPE_pickle_name = f"sz_crustal_paired_PPE_dict_{outfile_extension}{taper_extension}.pkl"
-    paired_PPE_filepath = f"../{model_version_results_directory}/{paired_PPE_pickle_name}"
     with open(paired_PPE_filepath, 'rb') as f:
         PPE_dict = pkl.load(f)
 
@@ -178,20 +199,27 @@ if paired_crustal_sz:
 else:
     model_version_title = f"{fault_type}{fault_model_version}"
 
+if default_plot_order:
+    plot_order = [key for key in weighted_mean_PPE_dict.keys()]
+else:
+    print('Using custom plot order from', plot_order_csv)
+    plot_order = pd.read_csv(plot_order_csv)
+    plot_order = list(plot_order['siteId'])
+
 if make_hazcurves:
+    print(f"\nMaking hazard curves...")
     plot_weighted_mean_haz_curves(
         PPE_dictionary=PPE_dict, weighted_mean_PPE_dictionary=weighted_mean_PPE_dict,
         model_version_title=model_version_title, exceed_type_list=["up", "down", "total_abs"],
-        out_directory=model_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper)
+        out_directory=model_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)
 
 if make_colorful_hazcurves:
+    print(f"\nMaking colourful hazard curves...")
     plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary=weighted_mean_PPE_dict, PPE_dictionary=PPE_dict,
                                            exceed_type_list=["down"],
                                            model_version_title=model_version_title,
                                            out_directory=model_version_results_directory,
                                            file_type_list=figure_file_type_list,
                                            slip_taper=slip_taper, file_name=f"colorful_lines{fault_model_version}",
-                                           string_list=unique_id_keyphrase_list)
-
-
+                                           string_list=unique_id_keyphrase_list, plot_order=plot_order)
 

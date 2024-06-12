@@ -7,8 +7,9 @@ subduction/out_files*
 subduction/displacements/
 crustal/out_file*/
 
-# __pycache__ directories
+# __pycache__ and vscode directories
 */__pycache__/
+./.vscode/
 
 # Other files
 FaultSections.qgz
@@ -18,3 +19,5 @@ array_operations.py
 QGIS/
 *.csv
 FaultSectionsTesting.qgz
+for_jaime.zip
+.vscode/launch.json
