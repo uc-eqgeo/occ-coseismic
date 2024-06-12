@@ -14,13 +14,13 @@ import platform
 
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
-mesh_version = "_Model_CFM_jde"
+mesh_version = "_Model_CFM_50km"
 #out_extension = f"_{mesh_version}_v1"
 
 steeper_dip, gentler_dip = False, False
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'JDE_sites.csv')
+site_list_csv = os.path.join('..', 'national_50km_grid_points.csv')
 sites_df = pd.read_csv(site_list_csv)
 
 site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])

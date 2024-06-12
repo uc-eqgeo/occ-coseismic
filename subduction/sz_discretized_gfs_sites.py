@@ -10,11 +10,11 @@ from time import time
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_deblob"
+version_extension = "_multi50"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
-steeper_dip, gentler_dip = True, False
+steeper_dip, gentler_dip = False, False
 # in list form for one coord or list of lists for multiple (in NZTM)
-csvfile = 'JDE_sites.csv'
+csvfile = 'national_50km_grid_points.csv'
 try:
     site_list_csv = os.path.join('/mnt/', 'c', 'Users', 'jmc753', 'Work', 'occ-coseismic', csvfile)
     sites_df = pd.read_csv(site_list_csv)
