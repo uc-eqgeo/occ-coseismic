@@ -104,6 +104,8 @@ if fault_type == "crustal" and not paired_crustal_sz:
 elif fault_type == "sz" and not paired_crustal_sz:
     fault_model_version = sz_model_version
     slip_taper = False
+else:
+    fault_model_version = '_paired'
 
 if slip_taper:
     taper_extension = "_tapered"
