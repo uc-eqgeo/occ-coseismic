@@ -20,7 +20,7 @@ testing = True
 probability_plot = True                # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
 displacement_chart = True                 # plots the displacement at the 10% and 2% probability of exceedance
 # thresholds
-make_hazcurves = False
+make_hazcurves = True
 make_colorful_hazcurves = True
 #make_map = True
 
@@ -35,7 +35,7 @@ paired_crustal_sz = False                 # True or False
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = False            # True or False
+calculate_fault_model_PPE = False           # True or False
 
 figure_file_type_list = ["png", "pdf"]             # file types for figures
 
@@ -207,14 +207,14 @@ else:
     plot_order = list(plot_order['siteId'])
 
 if make_hazcurves:
-    print(f"Making hazard curves...")
+    print(f"\nMaking hazard curves...")
     plot_weighted_mean_haz_curves(
         PPE_dictionary=PPE_dict, weighted_mean_PPE_dictionary=weighted_mean_PPE_dict,
         model_version_title=model_version_title, exceed_type_list=["up", "down", "total_abs"],
         out_directory=model_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)
 
 if make_colorful_hazcurves:
-    print(f"Making colourful hazard curves...")
+    print(f"\nMaking colourful hazard curves...")
     plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary=weighted_mean_PPE_dict, PPE_dictionary=PPE_dict,
                                            exceed_type_list=["down"],
                                            model_version_title=model_version_title,

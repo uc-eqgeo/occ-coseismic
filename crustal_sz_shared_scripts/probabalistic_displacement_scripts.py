@@ -90,6 +90,27 @@ def get_site_disp_dict(extension1, slip_taper, model_version_results_directory):
     #     pkl.dump(site_disp_dictionary, f)
     return site_disp_dictionary
 
+def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
+    # Print New Line on Complete
+    if iteration == total: 
+        print()
+
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict,  n_samples,
                  extension1, branch_key="nan", time_interval=100, sd=0.4):
     """
@@ -117,8 +138,10 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
+    printProgressBar(0, len(branch_site_disp_dict.keys()), prefix = '\tProcessing Sites:', suffix = 'Complete', length = 50)
     for i, site_of_interest in enumerate(branch_site_disp_dict.keys()):
-        print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
+        printProgressBar(i + 1, len(branch_site_disp_dict.keys()), prefix = '\tProcessing Sites:', suffix = 'Complete', length = 50)
+        # print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
         # if i == 0:
         #     if branch_key not in ["nan", ""]:
         #         print(f"calculating {branch_key} PPE for site {i} of {len(branch_site_disp_dict.keys())}")
@@ -222,7 +245,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
     fault_model_allbranch_PPE_dict = {}
     for branch_id in branch_weight_dict.keys():
 
-        print(f"calculating {branch_id} PPE ({counter} of {len(branch_weight_dict.keys())} branches)")
+        print(f"calculating {branch_id} PPE\t({counter} of {len(branch_weight_dict.keys())} branches)")
         counter += 1
 
         # get site displacement dictionary and branch weights
@@ -391,7 +414,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         crustal_unique_id, sz_unique_id = pair[0], pair[1]
         pair_unique_id = crustal_unique_id + "_" + sz_unique_id
 
-        print(f"calculating {pair_unique_id} PPE ({counter} of {len(crustal_sz_branch_pairs)} branches)")
+        print(f"calculating {pair_unique_id} PPE\t({counter} of {len(crustal_sz_branch_pairs)} branches)")
         counter += 1
 
         site_names = list(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"].keys())
@@ -507,9 +530,9 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
         plot_order = [key for key in PPE_dictionary.keys()]
 
     n_plots = int(np.ceil(len(plot_order) / 12))
+    printProgressBar(0, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
+
     for plot_n in range(n_plots):
-        if (plot_n + 1) % 10 == 0:
-            print(f"\t\t{plot_n + 1}/{n_plots}")
         sites = plot_order[plot_n*12:(plot_n+1)*12]
         if len(sites) >= 5 or len(sites) == 3:
             n_cols = 3
@@ -561,6 +584,7 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
             plt.savefig(f"../{model_version_results_directory}/{extension1}/probability_figures/hazard_curve_{extension1}"
                         f"{taper_extension}_{plot_n + 1}.{file_type}", dpi=300)
         plt.close()
+        printProgressBar(plot_n + 1, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
 
 
 def plot_many_hazard_curves(file_suffix_list, slip_taper, gf_name, fault_type, model_version_results_directory, model_version,
@@ -656,9 +680,9 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
     plt.close("all")
 
     n_plots = int(np.ceil(len(plot_order) / 12))
+    printProgressBar(0, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
+
     for plot_n in range(n_plots):
-        if (plot_n + 1) % 10 == 0:
-            print(f"\t\t{plot_n + 1}/{n_plots}")
         sites = plot_order[plot_n*12:(plot_n+1)*12]
         if len(sites) >= 5 or len(sites) == 3:
             n_cols = 3
@@ -738,6 +762,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
                 plt.savefig(
                     f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurve_{exceed_type}{taper_extension}_{plot_n}.{file_type}", dpi=300)
             plt.close()
+            printProgressBar(plot_n + 0.5, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
 
         # make a second graph with just the shaded envelope and weighted mean lines
         if len(exceed_type_list) > 1:
@@ -785,6 +810,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
                 plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves{taper_extension}_{plot_n}"
                             f".{file_type}", dpi=300)
             plt.close()
+            printProgressBar(plot_n + 1, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
 
 def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dictionary, exceed_type_list,
                                            model_version_title, out_directory, file_type_list, slip_taper, file_name,
@@ -807,9 +833,9 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
     plt.close("all")
 
     n_plots = int(np.ceil(len(plot_order) / 12))
+    printProgressBar(0, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
+
     for plot_n in range(n_plots):
-        if (plot_n + 1) % 10 == 0:
-            print(f"\t\t{plot_n + 1}/{n_plots}")
         sites = plot_order[plot_n*12:(plot_n+1)*12]
         if len(sites) >= 5 or len(sites) == 3:
             n_cols = 3
@@ -822,7 +848,7 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
             n_rows = len(sites)
 
         for exceed_type in exceed_type_list:
-            fig, axs = plt.subplots(sharex=True, sharey=True, figsize=((n_cols + 1) * 2.63 + 0.12, n_rows * 2.32 + 0.71))  # Replicate 8x10 inch figure if there are less than 12 subplots
+            fig, axs = plt.subplots(n_rows, n_cols + 1, sharex=True, sharey=True, figsize=((n_cols + 1) * 2.63 + 0.12, n_rows * 2.32 + 0.71))  # Replicate 8x10 inch figure if there are less than 12 subplots
             plt.subplots_adjust(hspace=0.3, wspace=0.3)
             subplot_indices = [1, 2, 3, 5, 6, 7, 9, 10, 11, 13, 14, 15]
 
@@ -875,7 +901,7 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
                     site_exceedance_probs = site_exceedance_probs[1:]
 
                     # ax = plt.subplot(4, 3, i + 1)
-                    ax = plt.subplot(4, 4, subplot_indices[i])
+                    ax = plt.subplot(n_rows, n_cols + 1, subplot_indices[i])
 
                     #ax.plot(threshold_vals, site_exceedance_probs, color='0.7')
                     ax.plot(threshold_vals, site_exceedance_probs, color=line_color, linewidth=linewidth)
@@ -883,7 +909,7 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
             # loop through sites and add the weighted mean lines
             for i, site in enumerate(sites):
                 # ax = plt.subplot(4, 3, i + 1)
-                ax = plt.subplot(4, 4, subplot_indices[i])
+                ax = plt.subplot(n_rows, n_cols + 1, subplot_indices[i])
 
                 # plots all three types of exceedance (total_abs, up, down) on the same plot
                 weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"]
@@ -926,6 +952,7 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
                     f"../{out_directory}/weighted_mean_figures/"
                     f"{file_name}weighted_mean_hazcurve_{exceed_type}{taper_extension}_{plot_n}.{file_type}", dpi=300)
             plt.close()
+            printProgressBar(plot_n + 1, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
 
 # What is the displacement at 10% and 2% probability?
 def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory, file_type_list=["png", "pdf"], probability_list=[0.1, 0.02],
