@@ -104,6 +104,9 @@ if fault_type == "crustal" and not paired_crustal_sz:
 elif fault_type == "sz" and not paired_crustal_sz:
     fault_model_version = sz_model_version
     slip_taper = False
+elif fault_type == "py" and not paired_crustal_sz:
+    fault_model_version = sz_model_version
+    slip_taper = False
 
 if slip_taper:
     taper_extension = "_tapered"
@@ -117,7 +120,10 @@ sz_model_version_results_directory = f"{results_directory}/sz{sz_model_version}"
 # get branch weights from the saved Excel spreadsheet
 branch_weight_file_path = f"../data/branch_weight_data.xlsx"
 crustal_sheet_name = "crustal_weights_4_2"
-sz_sheet_name = "sz_weights_4_0"
+if fault_type == 'sz':
+    sz_sheet_name = "sz_weights_4_0"
+elif fault_type == 'py':
+    sz_sheet_name = "py_weights_4_0"
 crustal_branch_weight_dict = make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
                                                      sheet_name=crustal_sheet_name)
 sz_branch_weight_dict = make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
@@ -126,7 +132,7 @@ sz_branch_weight_dict = make_branch_weight_dict(branch_weight_file_path=branch_w
 # designate which branch weight dictionary to use based on the fault type
 if not paired_crustal_sz and fault_type=="crustal":
     fault_model_branch_weight_dict = crustal_branch_weight_dict
-if not paired_crustal_sz and fault_type=="sz":
+if not paired_crustal_sz and any([fault_type=="sz", fault_type=="py"]):
     fault_model_branch_weight_dict = sz_branch_weight_dict
 
 # extract the solution suffix based on the fault type and solution folder name

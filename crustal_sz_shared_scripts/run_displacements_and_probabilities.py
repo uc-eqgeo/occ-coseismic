@@ -3,6 +3,7 @@ import pandas as pd
 import random
 import os
 import matplotlib
+from shapely.geometry import Point
 from helper_scripts import get_rupture_disp_dict, save_target_rates
 from rupture_scenario_plotting_scripts import vertical_disp_figure
 from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE, plot_branch_hazard_curve, \
@@ -14,11 +15,11 @@ from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE,
 results_directory = "results"
 
 slip_taper = False                    # True or False, only matter if crustal otherwise it defaults to false later.
-fault_type = "crustal"                  # "crustal or "sz"
+fault_type = "py"                  # "crustal or "sz" or "py"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
-single_branch = False
+single_branch = True
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
@@ -26,6 +27,7 @@ specific_rupture_ids = True
 
 #can only run one type of GF and fault geometry at a time
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
+
 crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_multi50"                # must match suffix in the subduction directory with gfs
 
@@ -60,7 +62,7 @@ file_type_list=["png", "pdf"]
 # False: this calculates displacements (and makes disp figures) and probabilities
 skip_displacements = False
 
-################
+
 # this makes so when you export fonts as pdfs, they are editable in Illustrator
 matplotlib.rcParams['pdf.fonttype'] = 42
 
@@ -141,31 +143,54 @@ elif fault_type == "sz":
     slip_taper = False
     if not single_branch:
         file_suffix_list_i = ["_sz_MzE5", "_sz_MzIw", "_sz_MzI1", "_sz_MzI2", "_sz_MzMx", "_sz_MzMy", "_sz_MzE3",
-                              "_sz_MzE4", "_sz_MzIx", "_sz_MzIy", "_sz_MzIz", "_sz_MzI0", "_sz_MzI3", "_sz_MzI4",
-                              "_sz_MzI5", "_sz_MzMw", "_sz_MzIy", "_sz_MzIy"]
+                            "_sz_MzE4", "_sz_MzIx", "_sz_MzIy", "_sz_MzIz", "_sz_MzI0", "_sz_MzI3", "_sz_MzI4",
+                            "_sz_MzI5", "_sz_MzMw", "_sz_MzIy", "_sz_MzIy"]
         NSHM_directory_list_i = ["sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE3",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE4",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE5",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIw",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIx",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIy",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIz",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI0",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI1",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI2",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI3",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI4",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI5",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMw",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMx",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMy",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMz",
-                                 "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzM0"]
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE4",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE5",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIw",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIx",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIy",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzIz",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI0",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI1",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI2",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI3",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI4",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzI5",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMw",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMx",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMy",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMz",
+                                "sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzM0"]
         file_suffix_list.extend(file_suffix_list_i)
         NSHM_directory_list.extend(NSHM_directory_list_i)
     if single_branch:
         file_suffix_list_i = ["_sz_MzMx"]
         NSHM_directory_list_i = ["sz_solutions/NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzMx"]
+        file_suffix_list.extend(file_suffix_list_i)
+        NSHM_directory_list.extend(NSHM_directory_list_i)
+elif fault_type == "py":
+    model_version = sz_model_version
+    slip_taper = False
+    if not single_branch:
+        file_suffix_list_i = ["_py_MDM3", "_py_MDQ5", "_py_MDYx", "_py_MDM2", "_py_MDQ0", "_py_MDQ2", "_py_MDQ1", 
+                                "_py_MDQz", "_py_MDU4"]
+        NSHM_directory_list_i = ["sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDM3",
+                                    "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDQ5",
+                                    "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDYx",
+                                    "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDM2",
+                                    "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDQ0",
+                                    "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDQ2",
+                                    "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDQ1",
+                                    "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDQz",
+                                    "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDU4"]
+
+        file_suffix_list.extend(file_suffix_list_i)
+        NSHM_directory_list.extend(NSHM_directory_list_i)
+    if single_branch:
+        file_suffix_list_i = ["_py_MDM3"]
+        NSHM_directory_list_i = ["sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDM3"]
         file_suffix_list.extend(file_suffix_list_i)
         NSHM_directory_list.extend(NSHM_directory_list_i)
 
@@ -187,6 +212,7 @@ if not os.path.exists(f"../{model_version_results_directory}"):
     os.mkdir(f"../{model_version_results_directory}")
 
 if only_make_figures is False and skip_displacements is False:
+    Wellington = Point(1749150, 5428092)  # Wellington coordinates in NZTM
     # Calculate displacements and make displacement dictionary once per branch. Save to pickle file in branch directory.
     for i in range(len(extension1_list)):
         print (f"branch {i} in {len(extension1_list)}")
@@ -194,7 +220,7 @@ if only_make_figures is False and skip_displacements is False:
                               slip_taper=slip_taper, fault_type=fault_type, gf_name=gf_name,
                               results_version_directory=model_version_results_directory,
                               crustal_directory=crustal_directory, sz_directory=sz_directory,
-                              model_version=model_version)
+                              model_version=model_version, location=Wellington, search_radius=2.5e5)
 
 ### make vertical displacement figures (random sample of ~10 ruptures per branch)
 
@@ -214,12 +240,14 @@ if skip_displacements is False:
             target_rupture_ids = []
         else:
             if fault_type == "crustal": num_ruptures = 5
-            if fault_type == "sz": num_ruptures = 10
+            if fault_type == "sz" or fault_type == "py": num_ruptures = 10
             target_rupture_ids = random.sample(rupture_id, num_ruptures)
 
         # tack on a few rupture scenarios that we want to see results from. Only include if they are in the rupture list
         if fault_type == "sz":
             if 948 in rupture_id: target_rupture_ids.append(948)
+        elif fault_type == 'py':
+            if 20 in rupture_id: target_rupture_ids.append(20)
         elif fault_type == "crustal":
             ids = [20890, 96084, 97010, 166970, 305270, 368024, 375389, 401491]
             for id in ids:
@@ -229,7 +257,7 @@ if skip_displacements is False:
         print(f"\n*~ Making displacement figures for {extension1_list[i]} ~*")
         vertical_disp_figure(NSHM_directory=NSHM_directory_list[i], all_ruptures_disp_dict=all_ruptures_disp_dict,
                              target_rupture_ids=target_rupture_ids, extension1=extension1_list[i],
-                             extent="Wellington", slip_taper=slip_taper, grid=grid, fault_type=fault_type,
+                             extent="ruptured_rectangles", slip_taper=slip_taper, grid=grid, fault_type=fault_type,
                              results_version_directory=model_version_results_directory, crustal_directory=crustal_directory,
                              sz_directory=sz_directory, model_version=model_version, file_type_list=file_type_list, save_arrays=False)
 

@@ -138,11 +138,14 @@ def vertical_disp_figure(all_ruptures_disp_dict, NSHM_directory, target_rupture_
         rectangle_outlines_gdf = gpd.read_file(f"../crustal/out_files"
                                                f"{model_version}/all_rectangle_outlines.geojson")
         part_a_figure_extent = "ruptured_rectangles"
-    elif fault_type == "sz":
+    elif fault_type == "sz" or fault_type == "py":
         discretized_polygons_gdf = gpd.read_file(f"../{sz_directory}/out_files{model_version}/"
                                                  f"{fault_type}_discretized_polygons.geojson")
-        rectangle_outlines_gdf = gpd.read_file(f"../{sz_directory}/out_files{model_version}/all_rectangle_outlines.geojson")
-        part_a_figure_extent = "North Island"
+        rectangle_outlines_gdf = gpd.read_file(f"../{sz_directory}/out_files{model_version}/{fault_type}_all_rectangle_outlines.geojson")
+        if fault_type == "sz":
+            part_a_figure_extent = "North Island"
+        elif fault_type == "py":
+            part_a_figure_extent = "South Island"
     # for some reason it defaults values to string. Convert to integer.
     discretized_polygons_gdf['fault_id'] = discretized_polygons_gdf['fault_id'].astype('int64')
     rectangle_outlines_gdf['fault_id'] = rectangle_outlines_gdf['fault_id'].astype('int64')
