@@ -8,10 +8,10 @@ import pickle as pkl
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "sz"                       # "crustal or "sz"; only matters for single fault model
+fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_Model_CFM_50km"           # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_multi50"                    # must match suffix in the subduction directory with gfs
-outfile_extension = "50km_testing"               # Optional; something to tack on to the end so you don't overwrite files
+outfile_extension = "multi50"               # Optional; something to tack on to the end so you don't overwrite files
 default_plot_order = True
 plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 
@@ -30,12 +30,12 @@ else:
     n_samples = 1000000
 
 # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
-paired_crustal_sz = False                 # True or False
+paired_crustal_sz = True                 # True or False
 
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = False           # True or False
+calculate_fault_model_PPE = True          # True or False
 
 figure_file_type_list = ["png", "pdf"]             # file types for figures
 
@@ -51,6 +51,10 @@ results_directory = "results"
 
 if not default_plot_order and not os.path.exists(plot_order_csv):
     print("Manual plot order selected but no plot order csv found. Please create a csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId)")
+    exit()
+
+if paired_crustal_sz and not fault_type in ['sz', 'py']:
+    print("Paired crustal and subduction model selected but fault type is not sz or py. Please select sz or py as fault type.")
     exit()
 
 #plot_order_temp = ["Porirua CBD north", "Porirua CBD south"]
@@ -115,7 +119,7 @@ else:
 
 # these directories should already be made from calculating displacements in a previous script
 crustal_model_version_results_directory = f"{results_directory}/crustal{crustal_model_version}"
-sz_model_version_results_directory = f"{results_directory}/sz{sz_model_version}"
+sz_model_version_results_directory = f"{results_directory}/{fault_type}{sz_model_version}"
 
 # get branch weights from the saved Excel spreadsheet
 branch_weight_file_path = f"../data/branch_weight_data.xlsx"
@@ -167,7 +171,7 @@ if not paired_crustal_sz:
 if paired_crustal_sz:
     model_version_results_directory = f"{results_directory}/paired_c{crustal_model_version}_sz{sz_model_version}"
 
-    paired_PPE_pickle_name = f"sz_crustal_paired_PPE_dict_{outfile_extension}{taper_extension}.pkl"
+    paired_PPE_pickle_name = f"{fault_type}_crustal_paired_PPE_dict_{outfile_extension}{taper_extension}.pkl"
     paired_PPE_filepath = f"../{model_version_results_directory}/{paired_PPE_pickle_name}"
 
     if not os.path.exists(paired_PPE_filepath):

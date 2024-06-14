@@ -19,7 +19,7 @@ fault_type = "py"                  # "crustal or "sz" or "py"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
-single_branch = True
+single_branch = False
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
@@ -215,12 +215,12 @@ if only_make_figures is False and skip_displacements is False:
     Wellington = Point(1749150, 5428092)  # Wellington coordinates in NZTM
     # Calculate displacements and make displacement dictionary once per branch. Save to pickle file in branch directory.
     for i in range(len(extension1_list)):
-        print (f"branch {i} in {len(extension1_list)}")
+        print (f"\nbranch {i} of {len(extension1_list)}")
         get_rupture_disp_dict(NSHM_directory=NSHM_directory_list[i], extension1=extension1_list[i],
                               slip_taper=slip_taper, fault_type=fault_type, gf_name=gf_name,
                               results_version_directory=model_version_results_directory,
                               crustal_directory=crustal_directory, sz_directory=sz_directory,
-                              model_version=model_version, location=Wellington, search_radius=2.5e5)
+                              model_version=model_version, location=Wellington, search_radius=2.5e6)
 
 ### make vertical displacement figures (random sample of ~10 ruptures per branch)
 
