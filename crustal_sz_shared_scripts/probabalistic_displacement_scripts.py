@@ -341,7 +341,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
 
 def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight_dict,
                                     crustal_model_version_results_directory, sz_model_version_results_directory,
-                                    slip_taper, n_samples, out_directory, outfile_extension):
+                                    slip_taper, n_samples, out_directory, outfile_extension, sz_type="sz"):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -358,7 +358,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         taper_extension = "_tapered"
     else:
         taper_extension = "_uniform"
-    paired_PPE_pickle_name = f"sz_crustal_paired_PPE_dict_{outfile_extension}{taper_extension}.pkl"
+    paired_PPE_pickle_name = f"{sz_type}_crustal_paired_PPE_dict_{outfile_extension}{taper_extension}.pkl"
 
     # make a dictionary of displacements at each site from all the crustal earthquake scenarios
 

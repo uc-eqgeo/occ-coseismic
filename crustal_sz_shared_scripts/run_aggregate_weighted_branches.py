@@ -35,7 +35,7 @@ paired_crustal_sz = True                 # True or False
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = True          # True or False
+calculate_fault_model_PPE = False      # True or False
 
 figure_file_type_list = ["png", "pdf"]             # file types for figures
 
@@ -185,7 +185,7 @@ if paired_crustal_sz:
             crustal_model_version_results_directory=crustal_model_version_results_directory,
             sz_model_version_results_directory=sz_model_version_results_directory,
             slip_taper=slip_taper, n_samples=n_samples,
-            out_directory=model_version_results_directory, outfile_extension=outfile_extension)
+            out_directory=model_version_results_directory, outfile_extension=outfile_extension, sz_type=fault_type)
 
     with open(paired_PPE_filepath, 'rb') as f:
         PPE_dict = pkl.load(f)
