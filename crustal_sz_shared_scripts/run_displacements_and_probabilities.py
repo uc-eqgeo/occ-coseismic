@@ -167,8 +167,26 @@ elif fault_type == "sz":
             file_suffix_list.extend(file_suffix_list_i)
             NSHM_directory_list.extend(NSHM_directory_list_i)
     else:
-        print('Currently no Puysegeur results availiable')
-        exit()
+        if not single_branch:
+            file_suffix_list_i = ["_py_MDM3", "_py_MDQ5", "_py_MDYx", "_py_MDM2", "_py_MDQ0", "_py_MDQ2", "_py_MDQ1", 
+                                  "_py_MDQz", "_py_MDU4"]
+            NSHM_directory_list_i = ["sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDM3",
+                                     "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDQ5",
+                                     "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDYx",
+                                     "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDM2",
+                                     "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDQ0",
+                                     "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDQ2",
+                                     "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDQ1",
+                                     "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDQz",
+                                     "sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDU4"]
+
+            file_suffix_list.extend(file_suffix_list_i)
+            NSHM_directory_list.extend(NSHM_directory_list_i)
+        if single_branch:
+            file_suffix_list_i = ["_py_MDM3"]
+            NSHM_directory_list_i = ["sz_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDM3"]
+            file_suffix_list.extend(file_suffix_list_i)
+            NSHM_directory_list.extend(NSHM_directory_list_i)
 
 if len(file_suffix_list) != len(NSHM_directory_list):
     raise ValueError("Number of file suffixes and NSHM directories must be equal")
