@@ -17,7 +17,10 @@ x, y = 1760934, 5431096     # central location of grid; Seaview
 buffer_size = 12.e4         # in meters (area around wellington to calculate displacements)
 #x, y = 1625083, 5430914     # central location of grid; Center of New Zealand Monument
 
-steeper_dip, gentler_dip = False, True
+steeper_dip, gentler_dip = False, False
+
+# Define whch subduction zone (hikkerk / puysegur)
+sz_zone = 'puysegur'
 
 #######################
 gf_type = "grid"
@@ -30,8 +33,16 @@ elif steeper_dip:
 elif gentler_dip:
     version_extension += "_gentlerdip"
 
+if sz_zone == 'hikkerk':
+    prefix = 'sz'
+elif sz_zone == 'puysegur':
+    prefix = 'py'
+else:
+    print("Please define a valid subduction zone (hikkerk / puysegur).")
+    exit()
+
 # load files: open discretized dict of subduction interface to calculate grenns functions over
-with open(f"out_files{version_extension}/sz_discretised_dict.pkl", "rb") as f:
+with open(f"out_files{version_extension}/{prefix}_discretised_dict.pkl", "rb") as f:
     discretised_dict = pkl.load(f)
 
 # Grid of x and y to calculate sea surface displacements at
@@ -75,5 +86,5 @@ for fault_id in discretised_dict.keys():
     if fault_id % 1 == 0:
         print(f'discretized dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)')
 
-with open(f"out_files{version_extension}/sz_gf_dict_{gf_type}.pkl", "wb") as f:
+with open(f"out_files{version_extension}/{prefix}_gf_dict_{gf_type}.pkl", "wb") as f:
     pkl.dump(gf_dict, f)
