@@ -221,7 +221,7 @@ def filter_ruptures_by_rate(directory):
 # This runs a bit slowly
 def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, model_version,
                                 crustal_directory="crustal_files", sz_directory="subduction_files",
-                                location=Point(1749150, 5428092), search_radius=2.5e5, prefix='sz'):
+                                location=Point(1749150, 5428092), search_radius=2.5e5):
     """ filters the initial rupture scenarios by which patches are involved
         set a distance from interest area and cut out scenarios that don't intersect
 
@@ -236,7 +236,7 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
                                                       f"/named_rectangle_centroids.geojson")
     if fault_type == "sz" or fault_type == "py":
         fault_rectangle_centroids_gdf = gpd.read_file(
-            f"../{sz_directory}/out_files{model_version}/{prefix}_all_rectangle_centroids.geojson")
+            f"../{sz_directory}/out_files{model_version}/{fault_type}_all_rectangle_centroids.geojson")
 
     all_ruptures_patch_indices = read_rupture_csv(f"../data/{NSHM_directory}/ruptures/indices.csv")
 
