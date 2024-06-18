@@ -26,10 +26,10 @@ single_branch = False
 specific_rupture_ids = True
 
 #can only run one type of GF and fault geometry at a time
-gf_name = "grid"                       # "sites" or "grid" or "coastal"
+gf_name = "sites"                       # "sites" or "grid" or "coastal"
 
 crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_multi50"                # must match suffix in the subduction directory with gfs
+sz_model_version = "_southland_10km"                # must match suffix in the subduction directory with gfs
 
 default_plot_order = True
 plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
@@ -61,7 +61,9 @@ file_type_list=["png", "pdf"]
 # True: this skips calculating displacements and making displacement figures (assumes you've already done it)
 # False: this calculates displacements (and makes disp figures) and probabilities
 skip_displacements = False
+calculate_cumu_PPE = False
 
+testing = True
 
 # this makes so when you export fonts as pdfs, they are editable in Illustrator
 matplotlib.rcParams['pdf.fonttype'] = 42
@@ -243,7 +245,11 @@ if skip_displacements is False:
 
 if gf_name == "sites":
     ## calculate rupture branch probabilities and make plots
-    #for i in range(1):
+    if testing:
+        n_samples = 1e4
+    else:
+        n_samples = 1e6
+
     for i in range(len(extension1_list)):
 
         print(f"*~ Processing site information for {extension1_list[i]} ~*")
@@ -251,7 +257,7 @@ if gf_name == "sites":
         taper_extension = "_tapered" if slip_taper else "_uniform"
         pkl_file = f"../{model_version_results_directory}/{extension1_list[i]}/cumu_exceed_prob_{extension1_list[i]}{taper_extension}.pkl"
 
-        if not os.path.exists(pkl_file):
+        if not os.path.exists(pkl_file) or calculate_cumu_PPE:
             print('\tMaking exceedence probability dictionary for each site...')
             ## step 1: get site displacement dictionary
             branch_site_disp_dict = get_site_disp_dict(extension1_list[i], slip_taper=slip_taper,
@@ -260,7 +266,7 @@ if gf_name == "sites":
             ### step 2: get exceedance probability dictionary
             get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
                         model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-                        time_interval=100, n_samples=100000)  # n_samples reduced from 1e6 for testing speed
+                        time_interval=100, n_samples=n_samples)  # n_samples reduced from 1e6 for testing speed
 
         ## step 3 (optional): plot hazard curves
         print(f"*~ Making probability figures~*")
