@@ -127,7 +127,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     - need to decide on number of 100-yr simulations to run (n_samples = 1000000)
     """
 
-    # use random number generator to initial monte carlo sampling
+    # use random number generator to initialise monte carlo sampling
     rng = np.random.default_rng()
 
     # Load the displacement/rate data for all sites
@@ -198,7 +198,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             n_exceedances_down[thresholds_neg == threshold] = (cumulative_disp_scenarios < threshold).sum()
 
         # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
-        # quite high for low displacements (25%). Means there's a ~25% change an earthquake will exceed 0 m in next 100
+        # quite high for low displacements (25%). Means there's a ~25% chance an earthquake will exceed 0 m in next 100
         # years across all earthquakes in the catalogue (at that site).
         exceedance_probs_total_abs = n_exceedances_total_abs / n_samples
         exceedance_probs_up = n_exceedances_up / n_samples
@@ -1076,6 +1076,7 @@ def save_10_2_disp(extension1, slip_taper, model_version_results_directory):
         model_version_results_directory = "{results_directory}/{fault_type}{fault_model}"
     """
     probability_list = [0.1, 0.02]
+    displacement_list = [0.5, 1.0, 2.0, 2.5]
 
     if slip_taper is True:
         taper_extension = "_tapered"
@@ -1112,6 +1113,22 @@ def save_10_2_disp(extension1, slip_taper, model_version_results_directory):
 
         disp_gdf = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(xy_array[:, 0], xy_array[:, 1]), crs="EPSG:2193")
         disp_gdf.to_file(f"{outfile_directory}/{int(probability * 100)}perc_disps_{extension1}{taper_extension}.geojson", driver='GeoJSON')
+
+    for disp in displacement_list:
+        perc_up = \
+            get_probability_bar_chart_data(site_PPE_dictionary=site_PPE_dictionary, exceed_type="up",
+                                      threshold=disp, site_list=site_list)
+        perc_down= \
+            get_probability_bar_chart_data(site_PPE_dictionary=site_PPE_dictionary, exceed_type="down",
+                                      threshold=disp, site_list=site_list)
+        perc_abs= \
+            get_probability_bar_chart_data(site_PPE_dictionary=site_PPE_dictionary, exceed_type="total_abs",
+                                      threshold=disp, site_list=site_list)
+        
+        data = {'sites': site_list, 'uplift': perc_up, 'subsidence': perc_down, 'total_abs': perc_abs}
+
+        perc_gdf = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(xy_array[:, 0], xy_array[:, 1]), crs="EPSG:2193")
+        perc_gdf.to_file(f"{outfile_directory}/{disp}mdisp_perc_{extension1}{taper_extension}.geojson", driver='GeoJSON')
 
 # What is the probability of exceeding 0.2 m subsidence, 0.2 m uplift at each site?
 def make_prob_bar_chart(extension1,  slip_taper, model_version, model_version_results_directory,
