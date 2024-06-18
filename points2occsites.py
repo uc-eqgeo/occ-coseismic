@@ -10,7 +10,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 
-searise_csv = 'national_2km_grid.csv'
+searise_csv = 'southland_10km_grid.csv'
 
 data = pd.read_csv(searise_csv)
 
@@ -23,13 +23,13 @@ else:  # For QGIS point exports
 data['Lon'] = data.geometry.x
 data['Lat'] = data.geometry.y
 
-ix = np.unique(data['siteId'].to_numpy(), return_index=True)[1] # Remove duplicate siteIds for different searise scenarios
+ix = np.unique(data['siteId'].to_numpy(), return_index=True)[1]  # Remove duplicate siteIds for different searise scenarios
 data = data[['siteId', 'Lon', 'Lat']].iloc[ix]
 
 data['Height'] = 0
-
-data = data.sort_values(by = ['Lat', 'Lon']).reset_index(drop=True)  # Sort based on Latitude, then longitude
-data['siteId'] = np.array(data.index) # Reset siteIds
+data = data.sort_values(by=['Lat', 'Lon']).reset_index(drop=True)  # Sort based on Latitude, then longitude
+data['siteId'] = [f"{round(data.loc[ix, 'Lon']/1e3)}_{round(data.loc[ix, 'Lat']/1e3)}" for ix in range(data.shape[0])]  # Set siteId to be based on NZTM location
+# data['siteId'] = np.array(data.index) # Reset siteIds
 
 searise_out = searise_csv.replace('.csv', '_points.csv')
 
