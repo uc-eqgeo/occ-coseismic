@@ -23,10 +23,10 @@ single_branch = False
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
-specific_rupture_ids = False
+specific_rupture_ids = True
 
 #can only run one type of GF and fault geometry at a time
-gf_name = "sites"                       # "sites" or "grid" or "coastal"
+gf_name = "grid"                       # "sites" or "grid" or "coastal"
 
 crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_multi50"                # must match suffix in the subduction directory with gfs
@@ -221,7 +221,7 @@ if skip_displacements is False:
         if fault_type == "sz":
             if 948 in rupture_id: target_rupture_ids.append(948)
         elif fault_type == 'py':
-            if 4060 in rupture_id: target_rupture_ids.append(4060)
+            if 247 in rupture_id: target_rupture_ids.append(247)
         elif fault_type == "crustal":
             ids = [20890, 96084, 97010, 166970, 305270, 368024, 375389, 401491]
             for id in ids:
@@ -234,7 +234,7 @@ if skip_displacements is False:
         print(f"\n*~ Making displacement figures for {extension1_list[i]} ~*")
         vertical_disp_figure(NSHM_directory=NSHM_directory_list[i], all_ruptures_disp_dict=all_ruptures_disp_dict,
                              target_rupture_ids=target_rupture_ids, extension1=extension1_list[i],
-                             extent="ruptured_rectangles", slip_taper=slip_taper, grid=grid, fault_type=fault_type,
+                             extent="same", slip_taper=slip_taper, grid=grid, fault_type=fault_type,
                              results_version_directory=model_version_results_directory, crustal_directory=crustal_directory,
                              sz_directory=sz_directory, model_version=model_version, file_type_list=file_type_list, save_arrays=False)
 
