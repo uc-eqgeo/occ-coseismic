@@ -102,7 +102,7 @@ def plot_vert_difference(NSHM_directory, rupture_slip_dict, target_rupture_ids, 
 
 
 def vertical_disp_figure(all_ruptures_disp_dict, NSHM_directory, target_rupture_ids, extension1, slip_taper,
-                         grid, fault_type, results_version_directory, model_version, extent="Wellington",
+                         grid, fault_type, results_version_directory, model_version, extent="ruptured_rectangles",
                          crustal_directory="crustal_files",
                          sz_directory="sz_files", file_type_list=["png", "pdf"], save_arrays=False):
     """ makes two-part figure with ruptures patches on left and vertical deformation on right
@@ -158,6 +158,8 @@ def vertical_disp_figure(all_ruptures_disp_dict, NSHM_directory, target_rupture_
     all_ruptures = read_rupture_csv(f"../data/{NSHM_directory}/ruptures/indices.csv")
 
     # get displacement figure bounds
+    if extent == "same":
+        extent = part_a_figure_extent
     plot_b_xmin, plot_b_ymin, plot_b_xmax, plot_b_ymax, \
         xmin_b_tick, xmax_b_tick, ymin_b_tick, ymax_b_tick, tick_b_separation \
         = get_figure_bounds(extent=extent, polygon_gdf=discretized_polygons_gdf)

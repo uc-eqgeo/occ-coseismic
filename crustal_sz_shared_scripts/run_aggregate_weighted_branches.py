@@ -30,12 +30,12 @@ else:
     n_samples = 1000000
 
 # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
-paired_crustal_sz = True                 # True or False
+paired_crustal_sz = False                # True or False
 
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = False      # True or False
+calculate_fault_model_PPE = True   # True or False
 
 figure_file_type_list = ["png", "pdf"]             # file types for figures
 
@@ -217,6 +217,9 @@ else:
     print('Using custom plot order from', plot_order_csv)
     plot_order = pd.read_csv(plot_order_csv)
     plot_order = list(plot_order['siteId'])
+
+if make_hazcurves or make_colorful_hazcurves:
+    print(f"\nOutput Directory: {model_version_results_directory}/weighted_mean_figures...")
 
 if make_hazcurves:
     print(f"\nMaking hazard curves...")

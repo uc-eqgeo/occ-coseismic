@@ -11,11 +11,13 @@ except:
 from time import time
 
 ##### USER INPUTS #####
-version_extension = "_deblob"
+version_extension = "_multi50"
 cell_size = 4000            # in meters
 x, y = 1760934, 5431096     # central location of grid; Seaview
 buffer_size = 12.e4         # in meters (area around wellington to calculate displacements)
-#x, y = 1625083, 5430914     # central location of grid; Center of New Zealand Monument
+cell_size = 25000           # in meters
+x, y = 1625083, 5430914     # central location of grid; Center of New Zealand Monument
+buffer_size = 900.e3        # in meters (area around wellington to calculate displacements)
 
 steeper_dip, gentler_dip = False, False
 

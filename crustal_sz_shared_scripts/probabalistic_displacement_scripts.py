@@ -138,9 +138,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
-    printProgressBar(0, len(branch_site_disp_dict.keys()), prefix = '\tProcessing Sites:', suffix = 'Complete', length = 50)
+    printProgressBar(0, len(branch_site_disp_dict.keys()), prefix = f'\tProcessing {len(branch_site_disp_dict.keys())} Sites:', suffix = 'Complete', length = 50)
     for i, site_of_interest in enumerate(branch_site_disp_dict.keys()):
-        printProgressBar(i + 1, len(branch_site_disp_dict.keys()), prefix = '\tProcessing Sites:', suffix = 'Complete', length = 50)
+        printProgressBar(i + 1, len(branch_site_disp_dict.keys()), prefix = f'\tProcessing {len(branch_site_disp_dict.keys())} Sites:', suffix = 'Complete', length = 50)
         # print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
         # if i == 0:
         #     if branch_key not in ["nan", ""]:
