@@ -10,7 +10,7 @@ from time import time
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_multi50"
+version_extension = "_southland_10km"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
@@ -18,7 +18,7 @@ steeper_dip, gentler_dip = False, False
 sz_zone = 'puysegur'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-csvfile = 'national_50km_grid_points.csv'
+csvfile = 'southland_10km_grid_points.csv'
 try:
     site_list_csv = os.path.join('/mnt/', 'c', 'Users', 'jmc753', 'Work', 'occ-coseismic', csvfile)
     sites_df = pd.read_csv(site_list_csv)
@@ -84,3 +84,6 @@ for fault_id in discretised_dict.keys():
 
 with open(f"out_files{version_extension}/{prefix}_gf_dict_{gf_type}.pkl", "wb") as f:
     pkl.dump(gf_dict, f)
+
+gdf = gpd.GeoDataFrame(sites_df, geometry=gpd.points_from_xy(sites_df.Lon, sites_df.Lat), crs='EPSG:2193')
+gdf.to_file(f"out_files{version_extension}/{prefix}_site_locations.geojson", driver="GeoJSON")
