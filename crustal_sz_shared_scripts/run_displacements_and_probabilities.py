@@ -16,7 +16,7 @@ from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE,
 results_directory = "results"
 
 slip_taper = False                    # True or False, only matter if crustal otherwise it defaults to false later.
-fault_type = "py"                  # "crustal or "sz" or "py"
+fault_type = "sz"                  # "crustal or "sz" or "py"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
@@ -24,13 +24,13 @@ single_branch = False
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
-specific_rupture_ids = True
+specific_rupture_ids = False
 
 #can only run one type of GF and fault geometry at a time
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
 
 crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_southland_10km"                # must match suffix in the subduction directory with gfs
+sz_model_version = "_national_50km"                # must match suffix in the subduction directory with gfs
 
 default_plot_order = True
 plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
@@ -269,38 +269,43 @@ if gf_name == "sites":
                         model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
                         time_interval=100, n_samples=n_samples)  # n_samples reduced from 1e6 for testing speed
 
+        # Save results to tif files
+        print(f"*~ Writing results to geotiffs~*")
+        save_site_prob_tifs(extension1_list[i], slip_taper=slip_taper, 
+                            model_version_results_directory=model_version_results_directory,
+                            thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True,
+                            probs_lims = [0.02, 0.5], probs_step=0.02, output_probs=True)
         ## step 3 (optional): plot hazard curves
-        print(f"*~ Making probability figures~*")
-        print(f"\tBranch Hazard Curves....")
-        plot_branch_hazard_curve(extension1=extension1_list[i],
-                            model_version_results_directory=model_version_results_directory,
-                            slip_taper=slip_taper, file_type_list=file_type_list, plot_order=plot_order)
+        make_figures = False
+        if make_figures:
+            print(f"*~ Making probability figures~*")
+            print(f"\tBranch Hazard Curves....")
+            plot_branch_hazard_curve(extension1=extension1_list[i],
+                                model_version_results_directory=model_version_results_directory,
+                                slip_taper=slip_taper, file_type_list=file_type_list, plot_order=plot_order)
 
-        # step 4 (optional): plot hazard maps (Needs to be imported from subduction/sz_probability_plotting_scripts.py)
-        #plot_cumu_disp_hazard_map(extension1=extension1_list[i], slip_taper=slip_taper, grid=grid, fault_type=fault_type,
-        #                          model_version_results_directory=model_version_results_directory,
-        #                          crustal_directory=crustal_directory,
-        #                          sz_directory=sz_directory, model_version=model_version)
+            # step 4 (optional): plot hazard maps (Needs to be imported from subduction/sz_probability_plotting_scripts.py)
+            #plot_cumu_disp_hazard_map(extension1=extension1_list[i], slip_taper=slip_taper, grid=grid, fault_type=fault_type,
+            #                          model_version_results_directory=model_version_results_directory,
+            #                          crustal_directory=crustal_directory,
+            #                          sz_directory=sz_directory, model_version=model_version)
 
-        ## step 5: plot bar charts
-        max_sites = 12  # Max number of sites to show on one bar chart [default 12]
-        print(f"\tBranch Probability Plots....")
-        save_site_prob_tifs(extension1_list[i], slip_taper=slip_taper, thresh_lims=[0, 3], thresh_step=0.25,
-                              model_version_results_directory=model_version_results_directory)
-        breakpoint()
-        make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
-                            model_version_results_directory=model_version_results_directory,
-                            model_version=model_version, plot_order=plot_order, max_sites=max_sites)
+            ## step 5: plot bar charts
+            max_sites = 12  # Max number of sites to show on one bar chart [default 12]
+            print(f"\tBranch Probability Plots....")
+            make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
+                                model_version_results_directory=model_version_results_directory,
+                                model_version=model_version, plot_order=plot_order, max_sites=max_sites)
 
-        print(f"\t10/2 Displacement Plots....")
-        make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
-                                 model_version_results_directory=model_version_results_directory,
-                                 file_type_list=["png", "pdf"], probability_list=[0.1, 0.02],
-                                 plot_order=plot_order, max_sites=max_sites)
+            print(f"\t10/2 Displacement Plots....")
+            make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
+                                    model_version_results_directory=model_version_results_directory,
+                                    file_type_list=["png", "pdf"], probability_list=[0.1, 0.02],
+                                    plot_order=plot_order, max_sites=max_sites)
 
-        print('\tWriting 10/2 Displacement to geoJSON...\n')
-        save_10_2_disp(extension1=extension1_list[i], slip_taper=slip_taper,
-                                    model_version_results_directory=model_version_results_directory)
+            print('\tWriting 10/2 Displacement to geoJSON...\n')
+            save_10_2_disp(extension1=extension1_list[i], slip_taper=slip_taper,
+                                        model_version_results_directory=model_version_results_directory)
 
 if gf_name == "grid":
     ## calculate rupture branch probabilities and make plots
@@ -338,9 +343,8 @@ if gf_name == "grid":
         ## step 5: plot bar charts
         max_sites = 12  # Max number of sites to show on one bar chart [default 12]
         print(f"\tBranch Probability Plots....")
-        make_branch_prob_grid(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
-                            model_version_results_directory=model_version_results_directory,
-                            model_version=model_version, plot_order=plot_order, max_sites=max_sites)
+        make_branch_prob_grid(extension1_list[i], slip_taper=slip_taper, thresh_lims=[0, 3], thresh_step=0.25,
+                              model_version_results_directory=model_version_results_directory)
 
         print(f"\t10/2 Displacement Plots....")
         make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,

@@ -1353,12 +1353,13 @@ def make_branch_prob_grid(extension1,  slip_taper, model_version_results_directo
             dst.write(thresh_grd)
             dst.descriptions = [str(threshold) for threshold in thresholds]
 
-def save_site_prob_tifs(extension1,  slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0.25):
+def save_site_prob_tifs(extension1,  slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0.25, thresholds=None, \
+                        probs_lims = [0.02, 0.5], probs_step=0.02, probabilites=None, output_thresh=True, output_probs=True):
     """ 
     Create multiband geotiffs of the probability of exceeding given displacements across all sites.
     This assumes that sites are derived from a regularly spaced grid
     """
-    thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
+
     exceed_type_list = ["up", "down"]
 
     if slip_taper is True:
@@ -1370,16 +1371,9 @@ def save_site_prob_tifs(extension1,  slip_taper, model_version_results_directory
               f"{taper_extension}.pkl",
               "rb") as fid:
         PPE_dict = pkl.load(fid)
-    
+
     sites = [*PPE_dict]
-    if not all(np.in1d(thresholds, PPE_dict[sites[0]]['thresholds'])):
-        thresholds = thresholds[np.in1d(thresholds, PPE_dict[sites[0]]['thresholds'])]
-        if len(thresholds) == 0:
-            print('No requested thresholds were in the PPE dictionary. Change requested thresholds')
-        else:
-            print('Not all requested thresholds were in PPE dictionary. Running available thresholds...')
-            print('Available thresholds are:', thresholds)
-    
+
     site_x = [pixel['site_coords'][0] for _, pixel in PPE_dict.items()]
     site_y = [pixel['site_coords'][1] for _, pixel in PPE_dict.items()]
 
@@ -1406,18 +1400,53 @@ def save_site_prob_tifs(extension1,  slip_taper, model_version_results_directory
     if not os.path.exists(f"{outfile_directory}"):
         os.mkdir(f"{outfile_directory}")
 
-    for exceed_type in exceed_type_list:
-        thresh_grd = np.zeros([len(thresholds), len(y_data), len(x_data)]) * np.nan
-        probs = np.zeros([len(sites), len(thresholds)])
-        for ii, threshold in enumerate(thresholds):
-            probs[:, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
-                                            threshold=threshold, site_list=sites)
+    if output_thresh:
+        print(f"\tCreating displacement probability geoTifs....")
+        if thresholds is None:
+            thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
+    
+        if not all(np.in1d(thresholds, PPE_dict[sites[0]]['thresholds'])):
+            thresholds = thresholds[np.in1d(thresholds, PPE_dict[sites[0]]['thresholds'])]
+        if len(thresholds) == 0:
+            print('No requested thresholds were in the PPE dictionary. Change requested thresholds')
+        else:
+            print('Not all requested thresholds were in PPE dictionary. Running available thresholds...')
+            print('Available thresholds are:', thresholds)
+    
+        for exceed_type in exceed_type_list:
+            thresh_grd = np.zeros([len(thresholds), len(y_data), len(x_data)]) * np.nan
+            probs = np.zeros([len(sites), len(thresholds)])
+            for ii, threshold in enumerate(thresholds):
+                probs[:, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
+                                                threshold=threshold, site_list=sites)
 
-        for jj in range(len(sites)):
-            thresh_grd[:, int(site_y[jj]), int(site_x[jj])] = probs[jj, :]
-        print(f"{outfile_directory}/{extension1}{taper_extension}_{exceed_type}_disp_prob_sites.tif")
-        with rasterio.open(f"{outfile_directory}/{extension1}{taper_extension}_{exceed_type}_disp_prob_sites.tif", 'w', \
-                           driver='GTiff', count=thresh_grd.shape[0], height=thresh_grd.shape[1], width=thresh_grd.shape[2], \
-                           dtype=thresh_grd.dtype, crs='EPSG:2193', transform=transform) as dst:
-            dst.write(thresh_grd)
-            dst.descriptions = [str(threshold) for threshold in thresholds]
+            for jj in range(len(sites)):
+                thresh_grd[:, int(site_y[jj]), int(site_x[jj])] = probs[jj, :]
+
+            with rasterio.open(f"{outfile_directory}/{extension1}{taper_extension}_{exceed_type}_disp_prob_sites.tif", 'w', \
+                            driver='GTiff', count=thresh_grd.shape[0], height=thresh_grd.shape[1], width=thresh_grd.shape[2], \
+                            dtype=thresh_grd.dtype, crs='EPSG:2193', transform=transform) as dst:
+                dst.write(thresh_grd)
+                dst.descriptions = [str(threshold) for threshold in thresholds]
+
+
+    if output_probs:
+        print(f"\tCreating probability exceedence geoTifs....")
+        if probabilites is None:
+            probabilites = np.arange(probs_lims[0], probs_lims[1] + probs_step, probs_step)
+
+        # Now do the probabilities
+        for exceed_type in exceed_type_list:
+            thresh_grd = np.zeros([len(probabilites), len(y_data), len(x_data)]) * np.nan
+            disps = np.zeros([len(sites), len(probabilites)])
+            for ii, probability in enumerate(probabilites):
+                disps[:, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
+                                                            site_list=sites, probability=probability)
+            for jj in range(len(sites)):
+                thresh_grd[:, int(site_y[jj]), int(site_x[jj])] = disps[jj, :]
+            
+            with rasterio.open(f"{outfile_directory}/{extension1}{taper_extension}_{exceed_type}_prob_disp_sites.tif", 'w', \
+                            driver='GTiff', count=thresh_grd.shape[0], height=thresh_grd.shape[1], width=thresh_grd.shape[2], \
+                            dtype=thresh_grd.dtype, crs='EPSG:2193', transform=transform) as dst:
+                dst.write(thresh_grd)
+                dst.descriptions = [str(probability) for probability in probabilites]
