@@ -2,16 +2,16 @@ import os
 import pandas as pd
 from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, \
     make_sz_crustal_paired_PPE_dict, make_fault_model_PPE_dict, get_weighted_mean_PPE_dict, \
-    plot_weighted_mean_haz_curves_colorful
+    plot_weighted_mean_haz_curves_colorful, save_site_prob_tifs
 import pickle as pkl
 
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_Model_CFM_50km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_multi50"                    # must match suffix in the subduction directory with gfs
-outfile_extension = "multi50"               # Optional; something to tack on to the end so you don't overwrite files
+sz_model_version = "_national_50km"                    # must match suffix in the subduction directory with gfs
+outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 default_plot_order = True
 plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 
@@ -20,8 +20,9 @@ testing = True
 probability_plot = True                # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
 displacement_chart = True                 # plots the displacement at the 10% and 2% probability of exceedance
 # thresholds
-make_hazcurves = True
-make_colorful_hazcurves = True
+make_hazcurves = False
+make_colorful_hazcurves = False
+make_geotiffs = True
 #make_map = True
 
 if testing:
@@ -30,12 +31,12 @@ else:
     n_samples = 1000000
 
 # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
-paired_crustal_sz = False                # True or False
+paired_crustal_sz = True                # True or False
 
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = True   # True or False
+calculate_fault_model_PPE = False   # True or False
 
 figure_file_type_list = ["png", "pdf"]             # file types for figures
 
@@ -220,6 +221,14 @@ else:
 
 if make_hazcurves or make_colorful_hazcurves:
     print(f"\nOutput Directory: {model_version_results_directory}/weighted_mean_figures...")
+
+if make_geotiffs:
+    print(f"\nMaking hazard curves...")
+    save_site_prob_tifs(outfile_extension, slip_taper=slip_taper, 
+                            model_version_results_directory=model_version_results_directory,
+                            thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True,
+                            probs_lims = [0.02, 0.5], probs_step=0.02, output_probs=True,
+                            weighted=True)
 
 if make_hazcurves:
     print(f"\nMaking hazard curves...")

@@ -465,22 +465,28 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         pkl.dump(paired_crustal_sz_PPE_dict, f)
     return paired_crustal_sz_PPE_dict
 
-def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type, site_list):
+def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type, site_list, weighted=False):
     """returns displacements at the X% probabilities of exceedance for each site
 
     define exceedance type. Options are "total_abs", "up", "down"
     """
 
+    if weighted:
+        prefix = 'weighted_'
+        thresh = 'threshold_vals'
+    else:
+        prefix, thresh = '', 'thresholds'
+
     # get disp threshold (x-value) at defined probability (y-value)
     disps = []
     for site in site_list:
-        threshold_vals = site_PPE_dictionary[site]["thresholds"]
+        threshold_vals = site_PPE_dictionary[site][thresh]
 
         # displacement thresholds are negative for "down" exceedances
         if exceed_type == "down":
             threshold_vals = -threshold_vals
 
-        site_PPE = site_PPE_dictionary[site][f"exceedance_probs_{exceed_type}"]
+        site_PPE = site_PPE_dictionary[site][f"{prefix}exceedance_probs_{exceed_type}"]
 
         # get first index that is < 10% (ideally we would interpolate for exact value but don't have a function)
         exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= probability), -1)
@@ -489,7 +495,7 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
 
     return disps
 
-def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, site_list=None):
+def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, site_list=None, weighted=False):
     """ function that finds the probability at each site for the specified displacement threshold on the hazard curve
         Inputs:
         :param: dictionary of exceedance probabilities for each site (key = site)
@@ -501,14 +507,20 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
         :return    probs_threshold: list of probabilities of exceeding the specified threshold (one per site)
             """
 
+    if weighted:
+        prefix = 'weighted_'
+        thresh = 'threshold_vals'
+    else:
+        prefix, thresh = '', 'thresholds'	
+
     if site_list == None:
         site_list = list(site_PPE_dictionary.keys())
 
     # get list of probabilities at defined displacement threshold (one for each site)
     probs_threshold = []
     for site in site_list:
-        site_PPE = site_PPE_dictionary[site][f"exceedance_probs_{exceed_type}"]
-        threshold_vals = list(site_PPE_dictionary[site]["thresholds"])
+        site_PPE = site_PPE_dictionary[site][f"{prefix}exceedance_probs_{exceed_type}"]
+        threshold_vals = list(site_PPE_dictionary[site][thresh])
 
         # find index in threshold_vals where the value matches the parameter threshold
         index = threshold_vals.index(threshold)
@@ -1236,10 +1248,9 @@ def make_branch_prob_plot(extension1,  slip_taper, model_version, model_version_
         plot_order = [key for key in PPE_dict.keys()]
     
     n_plots = int(np.ceil(len(plot_order) / max_sites))
-
+    printProgressBar(0, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
     for plot_n in range(n_plots):
-        if (plot_n + 1) % 10 == 0:
-            print(f"\t\t{plot_n + 1}/{n_plots}")
+        printProgressBar(plot_n, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
         sites = plot_order[plot_n * max_sites:(plot_n + 1) * max_sites]
         main_plot_labels = [site.replace("CBD ", "CBD").replace(" ", "\n").replace("CBD", "CBD ") if isinstance(site, str) else site for site in sites]
 
@@ -1354,7 +1365,7 @@ def make_branch_prob_grid(extension1,  slip_taper, model_version_results_directo
             dst.descriptions = [str(threshold) for threshold in thresholds]
 
 def save_site_prob_tifs(extension1,  slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0.25, thresholds=None, \
-                        probs_lims = [0.02, 0.5], probs_step=0.02, probabilites=None, output_thresh=True, output_probs=True):
+                        probs_lims = [0.02, 0.5], probs_step=0.02, probabilites=None, output_thresh=True, output_probs=True, weighted=False):
     """ 
     Create multiband geotiffs of the probability of exceeding given displacements across all sites.
     This assumes that sites are derived from a regularly spaced grid
@@ -1366,10 +1377,17 @@ def save_site_prob_tifs(extension1,  slip_taper, model_version_results_directory
         taper_extension = "_tapered"
     else:
         taper_extension = "_uniform"
-
-    with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
-              f"{taper_extension}.pkl",
-              "rb") as fid:
+    
+    if weighted:
+        dict_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict_{extension1}{taper_extension}.pkl"
+        outfile_directory = f"../{model_version_results_directory}/weighted_mean_tifs"
+        threshold_key = 'threshold_vals'
+    else:
+        dict_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.pkl"
+        outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
+        threshold_key = 'thresholds'
+    
+    with open(dict_file, "rb") as fid:
         PPE_dict = pkl.load(fid)
 
     sites = [*PPE_dict]
@@ -1396,7 +1414,6 @@ def save_site_prob_tifs(extension1,  slip_taper, model_version_results_directory
     site_x = (np.array(site_x) - x_data[0]) / x_res
     site_y = (np.array(site_y) - y_data[0]) / y_res
 
-    outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
     if not os.path.exists(f"{outfile_directory}"):
         os.mkdir(f"{outfile_directory}")
 
@@ -1405,8 +1422,8 @@ def save_site_prob_tifs(extension1,  slip_taper, model_version_results_directory
         if thresholds is None:
             thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
     
-        if not all(np.in1d(thresholds, PPE_dict[sites[0]]['thresholds'])):
-            thresholds = thresholds[np.in1d(thresholds, PPE_dict[sites[0]]['thresholds'])]
+        if not all(np.in1d(thresholds, PPE_dict[sites[0]][threshold_key])):
+            thresholds = thresholds[np.in1d(thresholds, PPE_dict[sites[0]][threshold_key])]
         if len(thresholds) == 0:
             print('No requested thresholds were in the PPE dictionary. Change requested thresholds')
         else:
@@ -1418,12 +1435,13 @@ def save_site_prob_tifs(extension1,  slip_taper, model_version_results_directory
             probs = np.zeros([len(sites), len(thresholds)])
             for ii, threshold in enumerate(thresholds):
                 probs[:, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
-                                                threshold=threshold, site_list=sites)
+                                                threshold=threshold, site_list=sites, weighted=weighted)
 
             for jj in range(len(sites)):
                 thresh_grd[:, int(site_y[jj]), int(site_x[jj])] = probs[jj, :]
 
-            with rasterio.open(f"{outfile_directory}/{extension1}{taper_extension}_{exceed_type}_disp_prob_sites.tif", 'w', \
+            file_name=f"{extension1}{taper_extension}_{exceed_type}_disp_prob_sites.tif".strip('_')
+            with rasterio.open(f"{outfile_directory}/{file_name}", 'w', \
                             driver='GTiff', count=thresh_grd.shape[0], height=thresh_grd.shape[1], width=thresh_grd.shape[2], \
                             dtype=thresh_grd.dtype, crs='EPSG:2193', transform=transform) as dst:
                 dst.write(thresh_grd)
@@ -1435,17 +1453,17 @@ def save_site_prob_tifs(extension1,  slip_taper, model_version_results_directory
         if probabilites is None:
             probabilites = np.arange(probs_lims[0], probs_lims[1] + probs_step, probs_step)
 
-        # Now do the probabilities
         for exceed_type in exceed_type_list:
             thresh_grd = np.zeros([len(probabilites), len(y_data), len(x_data)]) * np.nan
             disps = np.zeros([len(sites), len(probabilites)])
             for ii, probability in enumerate(probabilites):
                 disps[:, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
-                                                            site_list=sites, probability=probability)
+                                                            site_list=sites, probability=probability, weighted=weighted)
             for jj in range(len(sites)):
                 thresh_grd[:, int(site_y[jj]), int(site_x[jj])] = disps[jj, :]
             
-            with rasterio.open(f"{outfile_directory}/{extension1}{taper_extension}_{exceed_type}_prob_disp_sites.tif", 'w', \
+            file_name=f"{extension1}{taper_extension}_{exceed_type}_prob_disp_sites.tif".strip('_')
+            with rasterio.open(f"{outfile_directory}/{file_name}", 'w', \
                             driver='GTiff', count=thresh_grd.shape[0], height=thresh_grd.shape[1], width=thresh_grd.shape[2], \
                             dtype=thresh_grd.dtype, crs='EPSG:2193', transform=transform) as dst:
                 dst.write(thresh_grd)
