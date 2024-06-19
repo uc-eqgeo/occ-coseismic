@@ -1300,10 +1300,11 @@ def make_branch_prob_plot(extension1,  slip_taper, model_version, model_version_
         
         plt.close()
 
-def make_branch_prob_grid(extension1,  slip_taper, model_version, model_version_results_directory,
-                      file_type_list=["png", "pdf"], threshold=0.2, plot_order=None, max_sites=12):
-    """ """
-    thresholds = np.arange(0, 3, 0.25)
+def make_branch_prob_grid(extension1,  slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0.25):
+    """ 
+    Create multiband geotiffs of the probability of exceeding given displacements across the grid
+    """
+    thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
     exceed_type_list = ["up", "down"]
 
     if slip_taper is True:
@@ -1315,6 +1316,15 @@ def make_branch_prob_grid(extension1,  slip_taper, model_version, model_version_
               f"{taper_extension}.pkl",
               "rb") as fid:
         PPE_dict = pkl.load(fid)
+    
+    sites = [*PPE_dict]
+    if not all(np.in1d(thresholds, PPE_dict[sites[0]]['thresholds'])):
+        thresholds = thresholds[np.in1d(thresholds, PPE_dict[sites[0]]['thresholds'])]
+        if len(thresholds) == 0:
+            print('No requested thresholds were in the PPE dictionary. Change requested thresholds')
+        else:
+            print('Not all requested thresholds were in PPE dictionary. Running available thresholds...')
+            print('Available thresholds are:', thresholds)
 
     with open(f"../{model_version_results_directory}/{extension1}/grid_limits.pkl", "rb") as fid:
         grid_meta = pkl.load(fid)  
@@ -1332,18 +1342,82 @@ def make_branch_prob_grid(extension1,  slip_taper, model_version, model_version_
 
     for exceed_type in exceed_type_list:
         thresh_grd = np.zeros([len(thresholds), len(y_data), len(x_data)])
-        sites = [*PPE_dict]
         for i, threshold in enumerate(thresholds):
             probs = get_probability_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
                                             threshold=threshold, site_list=sites)
             thresh_grd[i, :, :] = np.reshape(probs, (len(y_data), len(x_data)))
 
-
-
-        with rasterio.open(f"{outfile_directory}/{extension1}{taper_extension}_{exceed_type}_prob_grid.tif", 'w', \
+        with rasterio.open(f"{outfile_directory}/{extension1}{taper_extension}_{exceed_type}_disp_prob_grid.tif", 'w', \
                            driver='GTiff', count=thresh_grd.shape[0], height=thresh_grd.shape[1], width=thresh_grd.shape[2], \
                            dtype=thresh_grd.dtype, crs='EPSG:2193', transform=transform) as dst:
             dst.write(thresh_grd)
             dst.descriptions = [str(threshold) for threshold in thresholds]
-        
-        np.save(f"{outfile_directory}/{extension1}{taper_extension}_{exceed_type}_prob_grid.npy", thresh_grd)
+
+def save_site_prob_tifs(extension1,  slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0.25):
+    """ 
+    Create multiband geotiffs of the probability of exceeding given displacements across all sites.
+    This assumes that sites are derived from a regularly spaced grid
+    """
+    thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
+    exceed_type_list = ["up", "down"]
+
+    if slip_taper is True:
+        taper_extension = "_tapered"
+    else:
+        taper_extension = "_uniform"
+
+    with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
+              f"{taper_extension}.pkl",
+              "rb") as fid:
+        PPE_dict = pkl.load(fid)
+    
+    sites = [*PPE_dict]
+    if not all(np.in1d(thresholds, PPE_dict[sites[0]]['thresholds'])):
+        thresholds = thresholds[np.in1d(thresholds, PPE_dict[sites[0]]['thresholds'])]
+        if len(thresholds) == 0:
+            print('No requested thresholds were in the PPE dictionary. Change requested thresholds')
+        else:
+            print('Not all requested thresholds were in PPE dictionary. Running available thresholds...')
+            print('Available thresholds are:', thresholds)
+    
+    site_x = [pixel['site_coords'][0] for _, pixel in PPE_dict.items()]
+    site_y = [pixel['site_coords'][1] for _, pixel in PPE_dict.items()]
+
+    x_data = np.unique(site_x)
+    y_data = np.unique(site_y)
+
+    xmin, xmax = min(x_data), max(x_data)
+    ymin, ymax = min(y_data), max(y_data)
+    x_res, y_res = min(np.diff(x_data)), min(np.diff(y_data))
+
+    x_data = np.arange(xmin, xmax + x_res, x_res)
+    y_data = np.arange(ymin, ymax + y_res, y_res)
+    
+    transform = Affine.translation(x_data[0] - x_res / 2, y_data[0] - y_res / 2) * Affine.scale(x_res, y_res)
+
+    if not all(np.in1d(site_x, x_data)) or not all(np.in1d(site_y, y_data)):
+        print('Site coordinates do not match grid coordinates. Check grid and site coordinates. Skipping step...')
+        return
+
+    site_x = (np.array(site_x) - x_data[0]) / x_res
+    site_y = (np.array(site_y) - y_data[0]) / y_res
+
+    outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
+    if not os.path.exists(f"{outfile_directory}"):
+        os.mkdir(f"{outfile_directory}")
+
+    for exceed_type in exceed_type_list:
+        thresh_grd = np.zeros([len(thresholds), len(y_data), len(x_data)]) * np.nan
+        probs = np.zeros([len(sites), len(thresholds)])
+        for ii, threshold in enumerate(thresholds):
+            probs[:, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
+                                            threshold=threshold, site_list=sites)
+
+        for jj in range(len(sites)):
+            thresh_grd[:, int(site_y[jj]), int(site_x[jj])] = probs[jj, :]
+        print(f"{outfile_directory}/{extension1}{taper_extension}_{exceed_type}_disp_prob_sites.tif")
+        with rasterio.open(f"{outfile_directory}/{extension1}{taper_extension}_{exceed_type}_disp_prob_sites.tif", 'w', \
+                           driver='GTiff', count=thresh_grd.shape[0], height=thresh_grd.shape[1], width=thresh_grd.shape[2], \
+                           dtype=thresh_grd.dtype, crs='EPSG:2193', transform=transform) as dst:
+            dst.write(thresh_grd)
+            dst.descriptions = [str(threshold) for threshold in thresholds]

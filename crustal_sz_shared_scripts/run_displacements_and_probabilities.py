@@ -8,7 +8,7 @@ from helper_scripts import get_rupture_disp_dict, save_target_rates
 from rupture_scenario_plotting_scripts import vertical_disp_figure
 from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE, plot_branch_hazard_curve, \
     make_10_2_disp_plot, make_branch_prob_plot, save_10_2_disp , \
-    make_branch_prob_grid
+    make_branch_prob_grid, save_site_prob_tifs
     # plot_cumu_disp_hazard_map
 
 ##### USER INPUTS   #####
@@ -27,7 +27,7 @@ single_branch = False
 specific_rupture_ids = True
 
 #can only run one type of GF and fault geometry at a time
-gf_name = "grid"                       # "sites" or "grid" or "coastal"
+gf_name = "sites"                       # "sites" or "grid" or "coastal"
 
 crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_southland_10km"                # must match suffix in the subduction directory with gfs
@@ -285,6 +285,9 @@ if gf_name == "sites":
         ## step 5: plot bar charts
         max_sites = 12  # Max number of sites to show on one bar chart [default 12]
         print(f"\tBranch Probability Plots....")
+        save_site_prob_tifs(extension1_list[i], slip_taper=slip_taper, thresh_lims=[0, 3], thresh_step=0.25,
+                              model_version_results_directory=model_version_results_directory)
+        breakpoint()
         make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
                             model_version_results_directory=model_version_results_directory,
                             model_version=model_version, plot_order=plot_order, max_sites=max_sites)
