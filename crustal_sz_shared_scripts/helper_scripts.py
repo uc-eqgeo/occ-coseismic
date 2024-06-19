@@ -104,20 +104,24 @@ def make_total_slip_dictionary(gf_dict_pkl):
 
     # Makes a new total gf displacement dictionary using rake
     gf_adjusted_dict = {}
+    grid_meta = None
     for i in gf_dict.keys():
-        # greens functions are just for the vertical component
-        ss_gf = gf_dict[i]["ss"]
-        ds_gf = gf_dict[i]["ds"]
-        rake = gf_dict[i]["rake"]
+        if i == 'grid_meta':
+            grid_meta = gf_dict[i]
+        else:
+            # greens functions are just for the vertical component
+            ss_gf = gf_dict[i]["ss"]
+            ds_gf = gf_dict[i]["ds"]
+            rake = gf_dict[i]["rake"]
 
-        site_name_list = gf_dict[i]["site_name_list"]
-        site_coords = gf_dict[i]["site_coords"]
+            site_name_list = gf_dict[i]["site_name_list"]
+            site_coords = gf_dict[i]["site_coords"]
 
-        # calculate combined vertical from strike slip and dip slip using rake
-        combined_gf = np.sin(np.radians(rake)) * ds_gf + np.cos(np.radians(rake)) * ss_gf
-        gf_adjusted_dict[i] = {"combined_gf": combined_gf, "site_name_list": site_name_list, "site_coords": site_coords}
+            # calculate combined vertical from strike slip and dip slip using rake
+            combined_gf = np.sin(np.radians(rake)) * ds_gf + np.cos(np.radians(rake)) * ss_gf
+            gf_adjusted_dict[i] = {"combined_gf": combined_gf, "site_name_list": site_name_list, "site_coords": site_coords}
 
-    return gf_adjusted_dict
+    return gf_adjusted_dict, grid_meta
 
 
 def merge_rupture_attributes(directory, trimmed=True):
@@ -407,7 +411,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
 
     # Makes a new total gf displacement dictionary using rake. If points don't have a name (e.g., for whole coastline
     # calculations), the site name list is just a list of numbers
-    gf_total_slip_dict = make_total_slip_dictionary(gf_dict_pkl)
+    gf_total_slip_dict, grid_meta = make_total_slip_dictionary(gf_dict_pkl)
     first_key = list(gf_total_slip_dict.keys())[0]
     site_name_list = gf_total_slip_dict[first_key]["site_name_list"]
     site_coords = gf_total_slip_dict[first_key]["site_coords"]
@@ -457,6 +461,10 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     with open(f"../{results_version_directory}/{extension1}/all_rupture_disps_{extension1}{extension3}.pkl",
               "wb") as f:
         pkl.dump(disp_dictionary, f)
+
+    if grid_meta:
+        with open(f"../{results_version_directory}/{extension1}/grid_limits.pkl", "wb") as f:
+            pkl.dump(grid_meta, f)
 
     return disp_dictionary
 

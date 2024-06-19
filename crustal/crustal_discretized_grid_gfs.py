@@ -8,9 +8,14 @@ from array_operations import write_tiff, write_gmt_grd
 ### USER INPUTS ###
 mesh_version = "_Model_testing"
 steeper_dip, gentler_dip = False, False
-cell_size = 4000  # in meters
-x, y = 1760934, 5431096  # central location of grid; Seaview
-buffer = 12.e4  # in meters (area around wellington to calculate displacements)
+#center locations:
+#    Seaview: x, y, buffer_size = 1760934, 5431096, 12.e4
+#    Center of New Zealand Monument: x, y, buffer_size = 1625083, 5430914, 900.e3
+
+version_extension = "_southland_10km"
+cell_size = 10000
+x, y = 1190000, 4913000
+buffer_size = 165e3
 
 #########################
 gf_type = "grid"
@@ -32,8 +37,10 @@ with open(f"out_files{mesh_version}/crustal_discretized_dict.pkl", "rb") as f:
 #buffer_size = 1.e5  # in meters
 
 # Grid of x and y to calculate sea surface displacements at
-x_data = np.arange(round(x-buffer, -3), round(x+buffer, -3), cell_size)
-y_data = np.arange(round(y-buffer, -3), round(y+buffer, -3), cell_size)
+x_data = np.arange(round(x - buffer_size, -3), round(x + buffer_size, -3), cell_size)
+y_data = np.arange(round(y - buffer_size, -3), round(y + buffer_size, -3), cell_size)
+
+grid_meta = {'cell_size': cell_size, 'buffer_size': buffer_size, 'x': x, 'y': y}
 
 xmesh, ymesh = np.meshgrid(x_data, y_data)
 # xmesh is organized by grid rows (one item is one row). Each item is a duplicate of the x_data array.
@@ -114,6 +121,7 @@ for fault_id in discretized_dict.keys():
     #     gf_dict[i] = disp_dict
     #     print(f"discretised dict {i}")
 
+gf_dict['grid_meta'] = grid_meta
 
 with open(f"out_files{mesh_version}/crustal_gf_dict_{gf_type}.pkl", "wb") as f:
     pkl.dump(gf_dict, f)

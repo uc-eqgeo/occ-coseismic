@@ -11,13 +11,14 @@ except:
 from time import time
 
 ##### USER INPUTS #####
-version_extension = "_multi50"
-cell_size = 4000            # in meters
-x, y = 1760934, 5431096     # central location of grid; Seaview
-buffer_size = 12.e4         # in meters (area around wellington to calculate displacements)
-cell_size = 25000           # in meters
-x, y = 1625083, 5430914     # central location of grid; Center of New Zealand Monument
-buffer_size = 900.e3        # in meters (area around wellington to calculate displacements)
+#center locations:
+#    Seaview: x, y, buffer_size = 1760934, 5431096, 12.e4
+#    Center of New Zealand Monument: x, y, buffer_size = 1625083, 5430914, 900.e3
+
+version_extension = "_southland_10km"
+cell_size = 10000
+x, y = 1190000, 4913000
+buffer_size = 165e3
 
 steeper_dip, gentler_dip = False, False
 
@@ -50,6 +51,8 @@ with open(f"out_files{version_extension}/{prefix}_discretised_dict.pkl", "rb") a
 # Grid of x and y to calculate sea surface displacements at
 x_data = np.arange(round(x - buffer_size, -3), round(x + buffer_size, -3), cell_size)
 y_data = np.arange(round(y - buffer_size, -3), round(y + buffer_size, -3), cell_size)
+
+grid_meta = {'cell_size': cell_size, 'buffer_size': buffer_size, 'x': x, 'y': y}
 
 xmesh, ymesh = np.meshgrid(x_data, y_data)
 points_x_test = xmesh.flatten()
@@ -87,6 +90,8 @@ for fault_id in discretised_dict.keys():
     gf_dict[fault_id] = disp_dict
     if fault_id % 1 == 0:
         print(f'discretized dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)')
+
+gf_dict['grid_meta'] = grid_meta
 
 with open(f"out_files{version_extension}/{prefix}_gf_dict_{gf_type}.pkl", "wb") as f:
     pkl.dump(gf_dict, f)

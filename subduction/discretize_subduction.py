@@ -7,7 +7,7 @@ import pickle as pkl
 import os
 
 #### USER INPUT #####
-version_extension  = "_multi50"
+version_extension  = "_southland_10km"
 
 #this can be any working branch, should be the same for all.
 NSHM_directory = "NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE5"
