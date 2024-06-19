@@ -1313,7 +1313,7 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
     """
 
     # Define File Paths
-    exceed_type_list = ["up", "down"]
+    exceed_type_list = ["total_abs", "up", "down"]
 
     if slip_taper is True:
         taper_extension = "_tapered"
