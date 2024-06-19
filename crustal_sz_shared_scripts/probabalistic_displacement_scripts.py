@@ -5,6 +5,8 @@ import os
 import itertools
 import pickle as pkl
 import matplotlib.ticker as mticker
+import rasterio
+from rasterio.transform import Affine
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -168,11 +170,11 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         # Generate n_samples of possible earthquake ruptures for random 100 year intervals
         # returns boolean array where 0 means "no event" and 1 means "event". rows = 100 yr window, columns = earthquake
         # rupture
-        scenarios = rng.poisson(lambdas, size=(n_samples, lambdas.size))
+        scenarios = rng.poisson(lambdas, size=(int(n_samples), lambdas.size))
 
         # assigns a normal distribution with a mean of 1 and a standard deviation of sd
         # effectively a multiplier for the displacement value
-        disp_uncertainty = rng.normal(1., sd, size=(n_samples, lambdas.size))
+        disp_uncertainty = rng.normal(1., sd, size=(int(n_samples), lambdas.size))
 
         # for each 100 yr scenario, get displacements from EQs that happened
         disp_scenarios = scenarios * site_dict_i["disps"]
@@ -1265,6 +1267,8 @@ def make_branch_prob_plot(extension1,  slip_taper, model_version, model_version_
                             horizontalalignment='center', fontsize=6, fontweight='bold')
 
             ymin, ymax  = 0.0, 0.3
+            if ymax < max(probs) + 0.05:
+                ymax = np.ceil((max(probs) + 0.05) * 20) / 20
             axs[i].set_ylim([ymin, ymax])
             axs[i].tick_params(axis='x', labelrotation=45, labelsize=6)
             axs[i].tick_params(axis='y', labelsize=8)
@@ -1295,3 +1299,51 @@ def make_branch_prob_plot(extension1,  slip_taper, model_version, model_version_
             fig.savefig(f"{outfile_directory}/probs_chart_{extension1}{taper_extension}_{plot_n + 1}.{file_type}", dpi=300)
         
         plt.close()
+
+def make_branch_prob_grid(extension1,  slip_taper, model_version, model_version_results_directory,
+                      file_type_list=["png", "pdf"], threshold=0.2, plot_order=None, max_sites=12):
+    """ """
+    thresholds = np.arange(0, 3, 0.25)
+    exceed_type_list = ["up", "down"]
+
+    if slip_taper is True:
+        taper_extension = "_tapered"
+    else:
+        taper_extension = "_uniform"
+
+    with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
+              f"{taper_extension}.pkl",
+              "rb") as fid:
+        PPE_dict = pkl.load(fid)
+
+    with open(f"../{model_version_results_directory}/{extension1}/grid_limits.pkl", "rb") as fid:
+        grid_meta = pkl.load(fid)  
+
+    x, y, buffer_size, cell_size = grid_meta['x'], grid_meta['y'], grid_meta['buffer_size'], grid_meta['cell_size'] 
+
+    x_data = np.arange(round(x - buffer_size, -3), round(x + buffer_size, -3), cell_size)
+    y_data = np.arange(round(y - buffer_size, -3), round(y + buffer_size, -3), cell_size)
+    
+    transform = Affine.translation(x_data[0] - cell_size / 2, y_data[0] - cell_size / 2) * Affine.scale(cell_size, cell_size)
+
+    outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
+    if not os.path.exists(f"{outfile_directory}"):
+        os.mkdir(f"{outfile_directory}")
+
+    for exceed_type in exceed_type_list:
+        thresh_grd = np.zeros([len(thresholds), len(y_data), len(x_data)])
+        sites = [*PPE_dict]
+        for i, threshold in enumerate(thresholds):
+            probs = get_probability_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
+                                            threshold=threshold, site_list=sites)
+            thresh_grd[i, :, :] = np.reshape(probs, (len(y_data), len(x_data)))
+
+
+
+        with rasterio.open(f"{outfile_directory}/{extension1}{taper_extension}_{exceed_type}_prob_grid.tif", 'w', \
+                           driver='GTiff', count=thresh_grd.shape[0], height=thresh_grd.shape[1], width=thresh_grd.shape[2], \
+                           dtype=thresh_grd.dtype, crs='EPSG:2193', transform=transform) as dst:
+            dst.write(thresh_grd)
+            dst.descriptions = [str(threshold) for threshold in thresholds]
+        
+        np.save(f"{outfile_directory}/{extension1}{taper_extension}_{exceed_type}_prob_grid.npy", thresh_grd)

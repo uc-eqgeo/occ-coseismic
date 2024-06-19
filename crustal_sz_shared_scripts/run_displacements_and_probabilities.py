@@ -7,7 +7,8 @@ from shapely.geometry import Point
 from helper_scripts import get_rupture_disp_dict, save_target_rates
 from rupture_scenario_plotting_scripts import vertical_disp_figure
 from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE, plot_branch_hazard_curve, \
-    make_10_2_disp_plot, make_branch_prob_plot, save_10_2_disp #, \
+    make_10_2_disp_plot, make_branch_prob_plot, save_10_2_disp , \
+    make_branch_prob_grid
     # plot_cumu_disp_hazard_map
 
 ##### USER INPUTS   #####
@@ -26,7 +27,7 @@ single_branch = False
 specific_rupture_ids = True
 
 #can only run one type of GF and fault geometry at a time
-gf_name = "sites"                       # "sites" or "grid" or "coastal"
+gf_name = "grid"                       # "sites" or "grid" or "coastal"
 
 crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_southland_10km"                # must match suffix in the subduction directory with gfs
@@ -243,13 +244,13 @@ if skip_displacements is False:
         # save_target_rates(NSHM_directory_list[i], target_rupture_ids=target_rupture_ids, extension1=extension1_list[i],
         #                   results_version_directory=model_version_results_directory)
 
+if testing:
+    n_samples = 1e4
+else:
+    n_samples = 1e6
+
 if gf_name == "sites":
     ## calculate rupture branch probabilities and make plots
-    if testing:
-        n_samples = 1e4
-    else:
-        n_samples = 1e6
-
     for i in range(len(extension1_list)):
 
         print(f"*~ Processing site information for {extension1_list[i]} ~*")
@@ -285,6 +286,56 @@ if gf_name == "sites":
         max_sites = 12  # Max number of sites to show on one bar chart [default 12]
         print(f"\tBranch Probability Plots....")
         make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
+                            model_version_results_directory=model_version_results_directory,
+                            model_version=model_version, plot_order=plot_order, max_sites=max_sites)
+
+        print(f"\t10/2 Displacement Plots....")
+        make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
+                                 model_version_results_directory=model_version_results_directory,
+                                 file_type_list=["png", "pdf"], probability_list=[0.1, 0.02],
+                                 plot_order=plot_order, max_sites=max_sites)
+
+        print('\tWriting 10/2 Displacement to geoJSON...\n')
+        save_10_2_disp(extension1=extension1_list[i], slip_taper=slip_taper,
+                                    model_version_results_directory=model_version_results_directory)
+
+if gf_name == "grid":
+    ## calculate rupture branch probabilities and make plots
+    for i in range(len(extension1_list)):
+
+        print(f"*~ Processing site information for {extension1_list[i]} ~*")
+
+        taper_extension = "_tapered" if slip_taper else "_uniform"
+        pkl_file = f"../{model_version_results_directory}/{extension1_list[i]}/cumu_exceed_prob_{extension1_list[i]}{taper_extension}.pkl"
+
+        if not os.path.exists(pkl_file) or calculate_cumu_PPE:
+            print('\tMaking exceedence probability dictionary for each site...')
+            ## step 1: get site displacement dictionary (where each site is a grid pixel)
+            branch_site_disp_dict = get_site_disp_dict(extension1_list[i], slip_taper=slip_taper,
+                                model_version_results_directory=model_version_results_directory)
+
+            ### step 2: get exceedance probability dictionary
+            get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
+                        model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
+                        time_interval=100, n_samples=n_samples)  # n_samples reduced from 1e6 for testing speed
+
+        ## step 3 (optional): plot hazard curves
+        print(f"*~ Making probability figures~*")
+        print(f"\tBranch Hazard Curves....")
+        #plot_branch_hazard_curve(extension1=extension1_list[i],
+        #                    model_version_results_directory=model_version_results_directory,
+        #                    slip_taper=slip_taper, file_type_list=file_type_list, plot_order=plot_order)
+
+        # step 4 (optional): plot hazard maps (Needs to be imported from subduction/sz_probability_plotting_scripts.py)
+        #plot_cumu_disp_hazard_map(extension1=extension1_list[i], slip_taper=slip_taper, grid=grid, fault_type=fault_type,
+        #                          model_version_results_directory=model_version_results_directory,
+        #                          crustal_directory=crustal_directory,
+        #                          sz_directory=sz_directory, model_version=model_version)
+
+        ## step 5: plot bar charts
+        max_sites = 12  # Max number of sites to show on one bar chart [default 12]
+        print(f"\tBranch Probability Plots....")
+        make_branch_prob_grid(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
                             model_version_results_directory=model_version_results_directory,
                             model_version=model_version, plot_order=plot_order, max_sites=max_sites)
 
