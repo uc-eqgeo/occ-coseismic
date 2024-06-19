@@ -445,6 +445,9 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     # print statement about how many scenarios have displacement > 0 at each site
     print(f"scenarios with displacement > 0: {len(disp_dictionary)}")
 
+    if 'grid_meta' in gf_dict_pkl.keys():
+        disp_dictionary['grid_meta'] = gf_dict_pkl['grid_meta']
+
     if slip_taper is True:
         extension3 = "_tapered"
     else:

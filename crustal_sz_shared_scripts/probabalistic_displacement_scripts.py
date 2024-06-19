@@ -84,6 +84,9 @@ def get_site_disp_dict(extension1, slip_taper, model_version_results_directory):
         extension3 = "_tapered"
     else:
         extension3 = "_uniform"
+    
+    if 'grid_meta' in rupture_disp_dictionary.keys():
+        site_disp_dictionary['grid_meta'] = rupture_disp_dictionary['grid_meta']
 
     # with open(f"../{results_version_directory}/{extension1}/site_disp_dict_{extension1}{extension3}.pkl",
     #           "wb") as f:
@@ -212,7 +215,10 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "exceedance_probs_down": exceedance_probs_down,
                                            "site_coords": site_dict_i["site_coords"],
                                            "standard_deviation": sd}
-
+    
+    if 'grid_meta' in branch_site_disp_dict.keys():
+            site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
+    
     if extension1 != "":
         with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
               f"{taper_extension}.pkl", "wb") as f:
