@@ -56,6 +56,7 @@ time_independent = True     # True or False
 # False: calculate displacements and probabilities and saves them as dictionaries (and continues with figures)
 # True: uses saved displacement and probability dictionaries to make probability and displacement figures
 only_make_figures = False
+dont_make_figures = True
 file_type_list=["png", "pdf"]
 
 # Skip the displacements and jump to probabilities
@@ -203,7 +204,7 @@ if only_make_figures is False and skip_displacements is False:
 
 ### make vertical displacement figures (random sample of ~10 ruptures per branch)
 print(f"\nOut Directory: {model_version_results_directory}")
-if skip_displacements is False:
+if skip_displacements is False and not dont_make_figures:
     if slip_taper:
         taper_extension = "_tapered"
     else:
@@ -278,8 +279,7 @@ if gf_name == "sites":
                             thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True,
                             probs_lims = [0.02, 0.5], probs_step=0.02, output_probs=True)
         ## step 3 (optional): plot hazard curves
-        make_figures = True
-        if make_figures:
+        if not dont_make_figures:
             print(f"*~ Making probability figures~*")
             print(f"\tBranch Hazard Curves....")
             plot_branch_hazard_curve(extension1=extension1_list[i],
