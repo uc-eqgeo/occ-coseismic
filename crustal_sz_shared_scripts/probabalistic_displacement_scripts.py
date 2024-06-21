@@ -1415,6 +1415,8 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
             for ii, probability in enumerate(probabilites):
                 disps[:, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
                                                             site_list=sites, probability=probability, weighted=weighted)
+                if exceed_type == 'down':
+                    disps[:, ii] = -1 * disps[:, ii]
             if grid:
                 thresh_grd[ii, :, :] = np.reshape(disps, (len(y_data), len(x_data)))
             else:
