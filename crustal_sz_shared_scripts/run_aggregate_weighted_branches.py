@@ -8,9 +8,9 @@ import pickle as pkl
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_Model_CFM_50km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_southland_10km"                    # must match suffix in the subduction directory with gfs
+fault_type = "crustal"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+crustal_model_version = "_Model_CFM_10km"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_national_10km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 default_plot_order = True
 plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
@@ -26,7 +26,7 @@ make_geotiffs = True
 #make_map = True
 
 if testing:
-    n_samples = 10000
+    n_samples = 100000
 else:
     n_samples = 1000000
 
@@ -131,10 +131,13 @@ if fault_type == 'sz':
     sz_sheet_name = "sz_weights_4_0"
 elif fault_type == 'py':
     sz_sheet_name = "py_weights_4_0"
-crustal_branch_weight_dict = make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
-                                                     sheet_name=crustal_sheet_name)
-sz_branch_weight_dict = make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
-                                                sheet_name=sz_sheet_name)
+
+if paired_crustal_sz or fault_type=="crustal":
+    crustal_branch_weight_dict = make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
+                                                        sheet_name=crustal_sheet_name)
+if fault_type in ['sz', 'py']:
+    sz_branch_weight_dict = make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
+                                                    sheet_name=sz_sheet_name)
 
 # designate which branch weight dictionary to use based on the fault type
 if not paired_crustal_sz and fault_type=="crustal":
@@ -142,13 +145,14 @@ if not paired_crustal_sz and fault_type=="crustal":
 if not paired_crustal_sz and any([fault_type=="sz", fault_type=="py"]):
     fault_model_branch_weight_dict = sz_branch_weight_dict
 
-# extract the solution suffix based on the fault type and solution folder name
-crustal_file_suffix_list = [crustal_branch_weight_dict[key]["file_suffix"] for key in crustal_branch_weight_dict.keys()]
-sz_file_suffix_list = [sz_branch_weight_dict[key]["file_suffix"] for key in sz_branch_weight_dict.keys()]
-
-# make list of file extensions with green's function type and solution suffix
-crustal_extension1_list = [gf_name + suffix for suffix in crustal_file_suffix_list]
-sz_extension1_list = [gf_name + suffix for suffix in sz_file_suffix_list]
+# Is this section necessary?
+## extract the solution suffix based on the fault type and solution folder name
+#crustal_file_suffix_list = [crustal_branch_weight_dict[key]["file_suffix"] for key in crustal_branch_weight_dict.keys()]
+#sz_file_suffix_list = [sz_branch_weight_dict[key]["file_suffix"] for key in sz_branch_weight_dict.keys()]
+#
+## make list of file extensions with green's function type and solution suffix
+#crustal_extension1_list = [gf_name + suffix for suffix in crustal_file_suffix_list]
+#sz_extension1_list = [gf_name + suffix for suffix in sz_file_suffix_list]
 
 
 ### make a dictionary of all the branch probabilities, oranized by site within each branch
