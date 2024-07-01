@@ -1401,7 +1401,7 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
                             driver='GTiff', count=thresh_grd.shape[0], height=thresh_grd.shape[1], width=thresh_grd.shape[2], \
                             dtype=thresh_grd.dtype, crs='EPSG:2193', transform=transform) as dst:
                 dst.write(thresh_grd)
-                dst.descriptions = [str(threshold) for threshold in thresholds]
+                dst.descriptions = [f"{threshold:.2f}" for threshold in thresholds]
 
 
     if output_probs:
