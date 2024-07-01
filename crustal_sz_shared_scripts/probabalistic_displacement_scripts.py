@@ -18,7 +18,7 @@ from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean
 
 matplotlib.rcParams['pdf.fonttype'] = 42
 
-def get_site_disp_dict(extension1, slip_taper, model_version_results_directory):
+def get_site_disp_dict(extension1, slip_taper, model_version_results_directory, nesi=False):
     """
         inputs: uses extension naming scheme to load displacement dictionary created with the
         get_rupture_disp_dict function. State slip taper (True or False).
@@ -75,18 +75,15 @@ def get_site_disp_dict(extension1, slip_taper, model_version_results_directory):
     for i, site in enumerate(site_names):
         site_disp_dictionary[site] = {"disps": disps_by_location[i], "rates": annual_rates_by_location[i],
                                            "site_coords": site_coords[i]}
-
-    if slip_taper is True:
-        extension3 = "_tapered"
-    else:
-        extension3 = "_uniform"
-    
+   
     if 'grid_meta' in rupture_disp_dictionary.keys():
         site_disp_dictionary['grid_meta'] = rupture_disp_dictionary['grid_meta']
 
-    # with open(f"../{results_version_directory}/{extension1}/site_disp_dict_{extension1}{extension3}.pkl",
-    #           "wb") as f:
-    #     pkl.dump(site_disp_dictionary, f)
+    if nesi:
+        with open(f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}.pkl",
+                "wb") as f:
+            pkl.dump(site_disp_dictionary, f)
+
     return site_disp_dictionary
 
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
