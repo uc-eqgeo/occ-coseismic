@@ -10,12 +10,15 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 
-searise_csv = 'southland_10km_grid.csv'
+searise_csv = 'nz_sea_rise_sites_grid.csv'
 
 data = pd.read_csv(searise_csv)
 
 if 'lon' in data.columns:  # For searise point exports
     data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.lon, data.lat), crs='EPSG:4326')
+elif 'Lon' in data.columns:  # For Hamling VLM coast sites from paper
+    data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.Lon, data.Lat), crs='EPSG:4326')
+    data.rename(columns={'index': 'siteId'}, inplace=True)
 else:  # For QGIS point exports
     data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.X, data.Y), crs='EPSG:4326')
     data.rename(columns={'id': 'siteId'}, inplace=True)
