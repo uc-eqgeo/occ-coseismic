@@ -5,6 +5,7 @@ import os
 import matplotlib
 from shapely.geometry import Point
 from helper_scripts import get_rupture_disp_dict, save_target_rates
+from nesi_scripts import prep_cumu_PPE_NESI, compile_site_cumu_PPE
 from rupture_scenario_plotting_scripts import vertical_disp_figure
 from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE, plot_branch_hazard_curve, \
     make_10_2_disp_plot, make_branch_prob_plot, save_10_2_disp , \
@@ -252,6 +253,9 @@ if testing:
 else:
     n_samples = 1e6
 
+
+nesi = True
+nesi_step = 'prep'  # 'prep' or 'combine'
 if gf_name == "sites":
     ## calculate rupture branch probabilities and make plots
     for i in range(len(extension1_list)):
@@ -265,12 +269,21 @@ if gf_name == "sites":
             print('\tMaking exceedence probability dictionary for each site...')
             ## step 1: get site displacement dictionary
             branch_site_disp_dict = get_site_disp_dict(extension1_list[i], slip_taper=slip_taper,
-                                model_version_results_directory=model_version_results_directory)
+                                model_version_results_directory=model_version_results_directory,nesi=nesi)
+            if nesi:
+                if nesi_step == 'prep':
+                    prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, i, 
+                       hours = 0, mins=15, mem=2, cpus=1, account='uc03610',
+                       time_interval=100, n_samples=n_samples, sd=0.4)
 
-            ### step 2: get exceedance probability dictionary
-            get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
-                        model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-                        time_interval=100, n_samples=n_samples)  # n_samples reduced from 1e6 for testing speed
+                elif nesi_step == 'combine':
+                    compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, i, taper_extension=taper_extension)
+
+            else:
+                ### step 2: get exceedance probability dictionary
+                get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
+                            model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
+                            time_interval=100, n_samples=n_samples)  # n_samples reduced from 1e6 for testing speed
 
         # Save results to tif files
         print(f"*~ Writing results to geotiffs~*")
