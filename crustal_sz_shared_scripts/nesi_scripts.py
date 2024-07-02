@@ -5,7 +5,7 @@ import numpy as np
 from time import time
 
 def prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, extension1, 
-                       hours : int = 0, mins: int= 3, mem: int= 40, cpus: int= 1, account: str= 'uc03610',
+                       hours : int = 0, mins: int= 3, mem: int= 45, cpus: int= 1, account: str= 'uc03610',
                        time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4, S=""):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
@@ -23,36 +23,37 @@ def prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, e
 
     sites_of_interest = list(branch_site_disp_dict.keys())
 
-    os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/nesi_scripts", exist_ok=True)
+    branchdir = f"../{model_version_results_directory}/{extension1}"
 
-    with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/site_name_list.txt", "w") as f:
+    os.makedirs(f"{branchdir}/site_cumu_exceed{S}/nesi_scripts", exist_ok=True)
+
+    with open(f"{branchdir}/site_cumu_exceed{S}/site_name_list.txt", "w") as f:
         for site in sites_of_interest:
             f.write(f"{site}\n")
-    
-    for site_of_interest in sites_of_interest:
-        with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/nesi_scripts/{site_of_interest}.sl", "wb") as f:
-            f.write(f"#!/bin/bash -e\n".encode())
-            f.write(f"#SBATCH --job-name=occ-{site_of_interest}\n".encode())
-            f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
-            f.write(f"#SBATCH --mem-per-cpu={mem}GB\n".encode())
-            f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
-            f.write(f"#SBATCH --account={account}\n".encode())
+    print(f"{branchdir}/site_cumu_exceed{S}/nesi_scripts/branch_array_job.sl")
+    with open(f"{branchdir}/site_cumu_exceed{S}/nesi_scripts/branch_array_job.sl", "wb") as f:
+        f.write(f"#!/bin/bash -e\n".encode())
+        f.write(f"#SBATCH --job-name=occ-{extension1}\n".encode())
+        f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
+        f.write(f"#SBATCH --mem={mem}GB\n".encode())
+        f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
+        f.write(f"#SBATCH --account={account}\n".encode())
+        f.write(f"#SBATCH --partition=large\n".encode())
+        f.write(f"#SBATCH --array=1-{len(sites_of_interest)}\n".encode())
 
-            f.write(f"#SBATCH -o logs/{site_of_interest}_%j.out\n".encode())
-            f.write(f"#SBATCH -e logs/{site_of_interest}_%j.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/{extension1}{S}_site%a_%j.out\n".encode())
+        f.write(f"#SBATCH -e logs/{extension1}{S}_site%a_%j.err\n\n".encode())
 
-            f.write(f"# Activate the conda environment\n".encode())
-            f.write(f"mkdir -p logs\n".encode())
-            f.write(f"module purge && module load Miniconda3\n".encode())
-            f.write(f"module load Python/3.11.3-gimkl-2022a\n\n".encode())
+        f.write(f"# Activate the conda environment\n".encode())
+        f.write(f"mkdir -p logs\n".encode())
+        f.write(f"module purge  2>/dev/null\n".encode())
+        f.write(f"module load Python/3.11.6-foss-2023a\n\n".encode())
 
-            if S:
-                f.write(f"python nesi_scripts.py --site {site_of_interest} --branchdir {f'../{model_version_results_directory}/{extension1}'} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd}\n\n".encode())
-            else:
-                f.write(f"python nesi_scripts.py --site {site_of_interest} --branchdir {f'../{model_version_results_directory}/{extension1}'} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} --scaling {S}\n\n".encode())
+        if S:
+            f.write(f"python nesi_scripts.py --site `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"]' {branchdir}/site_cumu_exceed{S}/site_name_list.txt` --branchdir {branchdir} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} --scaling {S}\n\n".encode())
+        else:
+            f.write(f"python nesi_scripts.py --site `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"]' {branchdir}/site_cumu_exceed{S}/site_name_list.txt` --branchdir {branchdir} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd}\n\n".encode())
 
-            f.write(f"# to call:\n".encode())
-            f.write(f"# sbatch slurm_example.sl\n".encode())
 
 def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension="", S="", return_dict=False):
     """
