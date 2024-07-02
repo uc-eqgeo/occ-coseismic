@@ -2,9 +2,10 @@ import os
 import argparse
 import pickle as pkl
 import numpy as np
+from time import time
 
 def prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, extension1, 
-                       hours : int = 0, mins: int= 15, mem: int= 2, cpus: int= 1, account: str= 'uc03610',
+                       hours : int = 0, mins: int= 3, mem: int= 40, cpus: int= 1, account: str= 'uc03610',
                        time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
@@ -45,7 +46,7 @@ def prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, e
             f.write(f"module purge && module load Miniconda3\n".encode())
             f.write(f"module load Python/3.11.3-gimkl-2022a\n\n".encode())
 
-            f.write(f"python nesi_scripts.py --site {site_of_interest} --branchdir {os.path.abspath(f'../{model_version_results_directory}/{extension1}')} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd}\n\n".encode())
+            f.write(f"python nesi_scripts.py --site {site_of_interest} --branchdir {f'../{model_version_results_directory}/{extension1}'} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd}\n\n".encode())
 
             f.write(f"# to call:\n".encode())
             f.write(f"# sbatch slurm_example.sl\n".encode())
@@ -88,6 +89,7 @@ if __name__ == "__main__":
     parser.add_argument("--sd", type=float, default=0.4, help="Standard deviation of the normal distribution to use for uncertainty in displacements")
     args = parser.parse_args()
 
+    start = time()
     site_of_interest = args.site
     branch_results_directory = args.branchdir
     investigation_time = args.time_interval
@@ -167,3 +169,6 @@ if __name__ == "__main__":
 
     with open(f"{branch_results_directory}/site_cumu_exceed/{site_of_interest}.pkl", "wb") as f:
         pkl.dump(single_site_dict, f)
+    
+    print(f"Time taken: {time() - start:.2f} seconds")
+    print(f"Site: {site_of_interest} complete")

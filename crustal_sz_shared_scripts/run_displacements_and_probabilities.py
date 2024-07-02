@@ -274,13 +274,13 @@ if gf_name == "sites":
                 if nesi_step == 'prep':
                     print(f"\tPrepping for NESI....")
                     prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, extension1_list[i], 
-                       hours = 0, mins=15, mem=2, cpus=1, account='uc03610',
+                       hours = 0, mins=3, mem=40, cpus=1, account='uc03610',
                        time_interval=100, n_samples=n_samples, sd=0.4)
+                    continue
 
                 elif nesi_step == 'combine':
                     print(f"\tCombining site dictionaries....")
                     compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1_list[i], taper_extension=taper_extension)
-                break
 
             else:
                 ### step 2: get exceedance probability dictionary
@@ -290,7 +290,7 @@ if gf_name == "sites":
 
         # Save results to tif files
         print(f"*~ Writing results to geotiffs~*")
-        save_disp_prob_tifs(extension1_list[i], slip_taper=slip_taper, 
+        save_disp_prob_tifs(extension1_list[i], slip_taper=slip_taper,
                             model_version_results_directory=model_version_results_directory,
                             thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True,
                             probs_lims = [0.02, 0.5], probs_step=0.02, output_probs=True)
