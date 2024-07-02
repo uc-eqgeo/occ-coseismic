@@ -6,7 +6,7 @@ from time import time
 
 def prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, extension1, 
                        hours : int = 0, mins: int= 3, mem: int= 40, cpus: int= 1, account: str= 'uc03610',
-                       time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4):
+                       time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4, S=""):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
 
@@ -23,14 +23,14 @@ def prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, e
 
     sites_of_interest = list(branch_site_disp_dict.keys())
 
-    os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed/nesi_scripts", exist_ok=True)
+    os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/nesi_scripts", exist_ok=True)
 
-    with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed/site_name_list.txt", "w") as f:
+    with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/site_name_list.txt", "w") as f:
         for site in sites_of_interest:
             f.write(f"{site}\n")
     
     for site_of_interest in sites_of_interest:
-        with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed/nesi_scripts/{site_of_interest}.sl", "wb") as f:
+        with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/nesi_scripts/{site_of_interest}.sl", "wb") as f:
             f.write(f"#!/bin/bash -e\n".encode())
             f.write(f"#SBATCH --job-name=occ-{site_of_interest}\n".encode())
             f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
@@ -46,12 +46,15 @@ def prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, e
             f.write(f"module purge && module load Miniconda3\n".encode())
             f.write(f"module load Python/3.11.3-gimkl-2022a\n\n".encode())
 
-            f.write(f"python nesi_scripts.py --site {site_of_interest} --branchdir {f'../{model_version_results_directory}/{extension1}'} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd}\n\n".encode())
+            if S:
+                f.write(f"python nesi_scripts.py --site {site_of_interest} --branchdir {f'../{model_version_results_directory}/{extension1}'} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd}\n\n".encode())
+            else:
+                f.write(f"python nesi_scripts.py --site {site_of_interest} --branchdir {f'../{model_version_results_directory}/{extension1}'} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} --scaling {S}\n\n".encode())
 
             f.write(f"# to call:\n".encode())
             f.write(f"# sbatch slurm_example.sl\n".encode())
 
-def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension="", return_dict=False):
+def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension="", S="", return_dict=False):
     """
     Script to recompile all individual site PPE dictionaries into a single branch dictionary
     """
@@ -63,11 +66,11 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
         sites.remove('grid_meta')
 
     for site_of_interest in sites:
-        with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed/{site_of_interest}.pkl", "rb") as f:
+        with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.pkl", "rb") as f:
             single_site_dict = pkl.load(f)
         site_PPE_dict[site_of_interest] = single_site_dict
-        os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed/{site_of_interest}.pkl")
-    os.rmdir(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed")
+        os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.pkl")
+    os.rmdir(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
 
     if 'grid_meta' in branch_site_disp_dict.keys():
             site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
@@ -87,6 +90,7 @@ if __name__ == "__main__":
     parser.add_argument("--time_interval", type=int, default=100, help="Time interval to calculate exceedance probabilities over")
     parser.add_argument("--n_samples", type=int, default=1e6, help="Number of samples to use for the poissonian simulation")
     parser.add_argument("--sd", type=float, default=0.4, help="Standard deviation of the normal distribution to use for uncertainty in displacements")
+    parser.add_argument("--scaling", type=str, default="", help="Scaling factor for the displacements")
     args = parser.parse_args()
 
     start = time()
@@ -95,6 +99,7 @@ if __name__ == "__main__":
     investigation_time = args.time_interval
     n_samples = args.n_samples
     sd = args.sd
+    scaling = args.scaling
 
     rng = np.random.default_rng()
 
@@ -167,7 +172,7 @@ if __name__ == "__main__":
                                     "site_coords": site_dict_i["site_coords"],
                                     "standard_deviation": sd}
 
-    with open(f"{branch_results_directory}/site_cumu_exceed/{site_of_interest}.pkl", "wb") as f:
+    with open(f"{branch_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.pkl", "wb") as f:
         pkl.dump(single_site_dict, f)
     
     print(f"Time taken: {time() - start:.2f} seconds")

@@ -263,7 +263,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 site]["rates"]]
 
         if nesi:
-            with open(f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}.pkl",
+            with open(f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.pkl",
                 "wb") as f:
                 pkl.dump(branch_site_disp_dict, f)
 
@@ -273,13 +273,13 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 print(f"\tPrepping for NESI....")
                 prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, extension1, 
                     hours = 0, mins=3, mem=40, cpus=1, account='uc03610',
-                    time_interval=100, n_samples=n_samples, sd=0.4)
+                    time_interval=100, n_samples=n_samples, sd=0.4, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
                 continue
 
             elif nesi_step == 'combine':
                 print(f"\tCombining site dictionaries....")
                 branch_cumu_PPE_dict = compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1,
-                                                             taper_extension=taper_extension, return_dict=True)
+                                                             taper_extension=taper_extension, return_dict=True, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
 
         else:
             branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict,
