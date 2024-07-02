@@ -21,7 +21,7 @@ fault_type = "py"                  # "crustal or "sz" or "py"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
-single_branch = True
+single_branch = False
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
@@ -64,7 +64,7 @@ file_type_list=["png", "pdf"]
 # True: this skips calculating displacements and making displacement figures (assumes you've already done it)
 # False: this calculates displacements (and makes disp figures) and probabilities
 skip_displacements = False
-calculate_cumu_PPE = False
+calculate_cumu_PPE = True
 
 testing = True
 
@@ -272,12 +272,15 @@ if gf_name == "sites":
                                 model_version_results_directory=model_version_results_directory,nesi=nesi)
             if nesi:
                 if nesi_step == 'prep':
-                    prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, i, 
+                    print(f"\tPrepping for NESI....")
+                    prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, extension1_list[i], 
                        hours = 0, mins=15, mem=2, cpus=1, account='uc03610',
                        time_interval=100, n_samples=n_samples, sd=0.4)
 
                 elif nesi_step == 'combine':
-                    compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, i, taper_extension=taper_extension)
+                    print(f"\tCombining site dictionaries....")
+                    compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1_list[i], taper_extension=taper_extension)
+                break
 
             else:
                 ### step 2: get exceedance probability dictionary

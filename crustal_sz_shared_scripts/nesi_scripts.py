@@ -30,25 +30,25 @@ def prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, e
     
     for site_of_interest in sites_of_interest:
         with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed/nesi_scripts/{site_of_interest}.sl", "wb") as f:
-            f.write(b"#!/bin/bash -e\n")
-            f.write(b"#SBATCH", f"--job-name=cutdeA100Mw8 # job name (shows up in the queue)\n")
-            f.write(b"#SBATCH", f"--time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n")
-            f.write(b"#SBATCH", f"--mem-per-cpu={mem}GB\n")
-            f.write(b"#SBATCH", f"--cpus-per-task={cpus}\n")
-            f.write(b"#SBATCH", f"--account={account}\n")
+            f.write(f"#!/bin/bash -e\n".encode())
+            f.write(f"#SBATCH --job-name=occ-{site_of_interest}\n".encode())
+            f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
+            f.write(f"#SBATCH --mem-per-cpu={mem}GB\n".encode())
+            f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
+            f.write(f"#SBATCH --account={account}\n".encode())
 
-            f.write(b"#SBATCH", f" -o logs/{site_of_interest}_%j.out\n")
-            f.write(b"#SBATCH", f" -e logs/{site_of_interest}_%j.err\n")
+            f.write(f"#SBATCH -o logs/{site_of_interest}_%j.out\n".encode())
+            f.write(f"#SBATCH -e logs/{site_of_interest}_%j.err\n\n".encode())
 
-            f.write(b"# Activate the conda environment\n")
-            f.write(f"mkdir -p logs\n")
-            f.write(f"module purge && module load Miniconda3\n")
-            f.write(f"module load Python/3.11.3-gimkl-2022a\n")
+            f.write(f"# Activate the conda environment\n".encode())
+            f.write(f"mkdir -p logs\n".encode())
+            f.write(f"module purge && module load Miniconda3\n".encode())
+            f.write(f"module load Python/3.11.3-gimkl-2022a\n\n".encode())
 
-            f.write(f"python nesi_scripts.py --site {site_of_interest} --branchdir {os.path.abspath(f"../{model_version_results_directory}/{extension1}")} --time_interval {time_interval} --n_samples {n_samples} --sd {sd})\n")
+            f.write(f"python nesi_scripts.py --site {site_of_interest} --branchdir {os.path.abspath(f'../{model_version_results_directory}/{extension1}')} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd}\n\n".encode())
 
-            f.write(b"# to call:\n")
-            f.write(b"# sbatch slurm_example.sl\n")
+            f.write(f"# to call:\n".encode())
+            f.write(f"# sbatch slurm_example.sl\n".encode())
 
 def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension=""):
     """
@@ -98,8 +98,7 @@ if __name__ == "__main__":
 
     extension1 = os.path.basename(branch_results_directory)
 
-    with open(f"../{branch_results_directory}/branch_site_disp_dict{extension1}.pkl",
-                "wb") as fid:
+    with open(f"{branch_results_directory}/branch_site_disp_dict_{extension1}.pkl", "rb") as fid:
             branch_disp_dict = pkl.load(fid)
 
     site_dict_i = branch_disp_dict[site_of_interest]
@@ -166,5 +165,5 @@ if __name__ == "__main__":
                                     "site_coords": site_dict_i["site_coords"],
                                     "standard_deviation": sd}
 
-    with open(f"../{branch_results_directory}/site_cumu_exceed/{site_of_interest}.pkl", "wb") as f:
+    with open(f"{branch_results_directory}/site_cumu_exceed/{site_of_interest}.pkl", "wb") as f:
         pkl.dump(single_site_dict, f)
