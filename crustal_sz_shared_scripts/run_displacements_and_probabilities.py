@@ -17,11 +17,11 @@ from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE,
 results_directory = "results"
 
 slip_taper = False                    # True or False, only matter if crustal otherwise it defaults to false later.
-fault_type = "py"                  # "crustal or "sz" or "py"
+fault_type = "crustal"                  # "crustal or "sz" or "py"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
-single_branch = False
+single_branch = True
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
@@ -31,7 +31,7 @@ specific_rupture_ids = False
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
 
 crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_southland_10km"                # must match suffix in the subduction directory with gfs
+sz_model_version = "_national_10km"                # must match suffix in the subduction directory with gfs
 
 default_plot_order = True
 plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
@@ -66,7 +66,7 @@ file_type_list=["png", "pdf"]
 skip_displacements = False
 calculate_cumu_PPE = True
 
-testing = True
+testing = False
 
 # this makes so when you export fonts as pdfs, they are editable in Illustrator
 matplotlib.rcParams['pdf.fonttype'] = 42
@@ -254,7 +254,7 @@ else:
     n_samples = 1e6
 
 
-nesi = True
+nesi = False
 nesi_step = 'prep'  # 'prep' or 'combine'
 if gf_name == "sites":
     ## calculate rupture branch probabilities and make plots
@@ -270,6 +270,7 @@ if gf_name == "sites":
             ## step 1: get site displacement dictionary
             branch_site_disp_dict = get_site_disp_dict(extension1_list[i], slip_taper=slip_taper,
                                 model_version_results_directory=model_version_results_directory,nesi=nesi)
+            ### step 2: get exceedance probability dictionary
             if nesi:
                 if nesi_step == 'prep':
                     print(f"\tPrepping for NESI....")
@@ -283,7 +284,6 @@ if gf_name == "sites":
                     compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1_list[i], taper_extension=taper_extension)
 
             else:
-                ### step 2: get exceedance probability dictionary
                 get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
                             model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
                             time_interval=100, n_samples=n_samples)  # n_samples reduced from 1e6 for testing speed
@@ -341,9 +341,22 @@ if gf_name == "grid":
                                 model_version_results_directory=model_version_results_directory)
 
             ### step 2: get exceedance probability dictionary
-            get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
-                        model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-                        time_interval=100, n_samples=n_samples)  # n_samples reduced from 1e6 for testing speed
+            if nesi:
+                if nesi_step == 'prep':
+                    print(f"\tPrepping for NESI....")
+                    prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, extension1_list[i], 
+                       hours = 0, mins=3, mem=40, cpus=1, account='uc03610',
+                       time_interval=100, n_samples=n_samples, sd=0.4)
+                    continue
+
+                elif nesi_step == 'combine':
+                    print(f"\tCombining site dictionaries....")
+                    compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1_list[i], taper_extension=taper_extension)
+
+            else:
+                get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
+                            model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
+                            time_interval=100, n_samples=n_samples)  # n_samples reduced from 1e6 for testing speed
 
         ## step 3 (optional): plot hazard curves
         print(f"*~ Making probability figures~*")
