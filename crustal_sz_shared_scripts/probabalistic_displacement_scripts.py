@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color
+from nesi_scripts import prep_cumu_PPE_NESI, compile_site_cumu_PPE
 from matplotlib.patches import Rectangle
 from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
 
@@ -221,7 +222,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         return site_PPE_dict
 
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples,
-                              outfile_extension):
+                              outfile_extension, nesi=False, nesi_step = None):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -261,19 +262,42 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             branch_site_disp_dict[site]["scaled_rates"] = [rate * rate_scaling_factor for rate in branch_site_disp_dict[
                 site]["rates"]]
 
+        if nesi:
+            with open(f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}.pkl",
+                "wb") as f:
+                pkl.dump(branch_site_disp_dict, f)
+
         ### get exceedance probability dictionary
-        branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict,
-                    model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-                    time_interval=100, n_samples=n_samples, extension1="")
+        if nesi:
+            if nesi_step == 'prep':
+                print(f"\tPrepping for NESI....")
+                prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, extension1, 
+                    hours = 0, mins=3, mem=40, cpus=1, account='uc03610',
+                    time_interval=100, n_samples=n_samples, sd=0.4)
+                continue
+
+            elif nesi_step == 'combine':
+                print(f"\tCombining site dictionaries....")
+                branch_cumu_PPE_dict = compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1,
+                                                             taper_extension=taper_extension, return_dict=True)
+
+        else:
+            branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict,
+                        model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
+                        time_interval=100, n_samples=n_samples, extension1="")
 
         fault_model_allbranch_PPE_dict[branch_id] = {"cumu_PPE_dict": branch_cumu_PPE_dict, "branch_weight":
             branch_weight}
 
-    outfile_name = f"allbranch_PPE_dict_{outfile_extension}{taper_extension}"
+    if nesi and nesi_step == 'prep':
+        return
+    else:
+        outfile_name = f"allbranch_PPE_dict_{outfile_extension}{taper_extension}"
 
-    with open(f"../{model_version_results_directory}/{outfile_name}.pkl", "wb") as f:
-        pkl.dump(fault_model_allbranch_PPE_dict, f)
-    return fault_model_allbranch_PPE_dict
+        with open(f"../{model_version_results_directory}/{outfile_name}.pkl", "wb") as f:
+            pkl.dump(fault_model_allbranch_PPE_dict, f)
+
+        return fault_model_allbranch_PPE_dict
 
 def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper):
     """takes all the branch PPEs and combines them based on the branch weights into a weighted mean PPE dictionary

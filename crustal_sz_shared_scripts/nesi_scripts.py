@@ -51,7 +51,7 @@ def prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, e
             f.write(f"# to call:\n".encode())
             f.write(f"# sbatch slurm_example.sl\n".encode())
 
-def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension=""):
+def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension="", return_dict=False):
     """
     Script to recompile all individual site PPE dictionaries into a single branch dictionary
     """
@@ -72,7 +72,7 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
     if 'grid_meta' in branch_site_disp_dict.keys():
             site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
 
-    if extension1 != "":
+    if not return_dict:
         with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
               f"{taper_extension}.pkl", "wb") as f:
             pkl.dump(site_PPE_dict, f)

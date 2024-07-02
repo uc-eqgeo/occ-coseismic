@@ -8,13 +8,14 @@ import pickle as pkl
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "crustal"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_Model_CFM_10km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_national_10km"                    # must match suffix in the subduction directory with gfs
+sz_model_version = "_southland_10km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 default_plot_order = True
 plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
-
+nesi = True
+nesi_step = 'prep'  # 'prep' or 'combine'
 testing = True
 
 probability_plot = True                # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
@@ -36,7 +37,7 @@ paired_crustal_sz = False                # True or False
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = False   # True or False
+calculate_fault_model_PPE = True   # True or False
 
 figure_file_type_list = ["png", "pdf"]             # file types for figures
 
@@ -169,7 +170,10 @@ if not paired_crustal_sz:
         make_fault_model_PPE_dict(
             branch_weight_dict=fault_model_branch_weight_dict,
             model_version_results_directory=model_version_results_directory, n_samples=n_samples,
-            slip_taper=slip_taper, outfile_extension=outfile_extension)
+            slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step)
+        if nesi and nesi_step == 'prep':
+            print('site_cumu_PPE dictionaries ready to be made in HPC. Ending main script....')
+            exit()
 
     with open(fault_model_PPE_filepath, 'rb') as f:
         PPE_dict = pkl.load(f)
