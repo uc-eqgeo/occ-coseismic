@@ -5,7 +5,7 @@ import os
 import matplotlib
 from shapely.geometry import Point
 from helper_scripts import get_rupture_disp_dict, save_target_rates
-from nesi_scripts import prep_cumu_PPE_NESI, compile_site_cumu_PPE
+from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE
 from rupture_scenario_plotting_scripts import vertical_disp_figure
 from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE, plot_branch_hazard_curve, \
     make_10_2_disp_plot, make_branch_prob_plot, save_10_2_disp , \
@@ -21,7 +21,7 @@ fault_type = "crustal"                  # "crustal or "sz" or "py"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
-single_branch = True
+single_branch = False
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
@@ -30,8 +30,11 @@ specific_rupture_ids = False
 #can only run one type of GF and fault geometry at a time
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
 
-crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_national_10km"                # must match suffix in the subduction directory with gfs
+crustal_model_extension = "_Model_CFM_50km_nesi"         # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_national_50km_nesi"                # must match suffix in the subduction directory with gfs
+
+nesi = True
+nesi_step = 'prep'  # 'prep' or 'combine'
 
 default_plot_order = True
 plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
@@ -254,15 +257,49 @@ else:
     n_samples = 1e6
 
 
-nesi = False
-nesi_step = 'prep'  # 'prep' or 'combine'
 if gf_name == "sites":
+    taper_extension = "_tapered" if slip_taper else "_uniform"
+
+    if nesi:
+        if nesi_step == 'prep':
+            if os.path.exists(f"../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl"):
+                os.remove(f"../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
+
+            if os.path.exists(f"../{model_version_results_directory}/site_name_list.txt"):
+                os.remove(f"../{model_version_results_directory}/site_name_list.txt")
+
+            for i in range(len(extension1_list)):
+                print(f"*~ Processing site information for {extension1_list[i]} ~*")
+                pkl_file = f"../{model_version_results_directory}/{extension1_list[i]}/cumu_exceed_prob_{extension1_list[i]}{taper_extension}.pkl"
+
+                if not os.path.exists(pkl_file) or calculate_cumu_PPE:
+                    print('\tMaking exceedence probability dictionary for each site...')
+                    ## step 1: get site displacement dictionary
+                    branch_site_disp_dict = get_site_disp_dict(extension1_list[i], slip_taper=slip_taper,
+                                        model_version_results_directory=model_version_results_directory,nesi=nesi)
+                    
+                    ### step 2: get exceedance probability dictionary
+                    if nesi_step == 'prep':
+                        print('\tPreparing Data for NESI....')
+                        prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1_list[i])
+                        continue
+
+                    elif nesi_step == 'combine':
+                        print(f"\tCombining NESI site dictionaries....")
+                        compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1_list[i], taper_extension=taper_extension)
+
+            if nesi_step == 'prep':
+                print('\nCreating SLURM submission script....')
+                prep_SLURM_submission(model_version_results_directory, hours = 0, mins=3, mem=45, cpus=1, account='uc03610',
+                                        time_interval=100, n_samples=n_samples, sd=0.4)
+                print(f'Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl')
+                exit()
+
     ## calculate rupture branch probabilities and make plots
     for i in range(len(extension1_list)):
 
         print(f"*~ Processing site information for {extension1_list[i]} ~*")
-
-        taper_extension = "_tapered" if slip_taper else "_uniform"
+ 
         pkl_file = f"../{model_version_results_directory}/{extension1_list[i]}/cumu_exceed_prob_{extension1_list[i]}{taper_extension}.pkl"
 
         if not os.path.exists(pkl_file) or calculate_cumu_PPE:
@@ -271,22 +308,9 @@ if gf_name == "sites":
             branch_site_disp_dict = get_site_disp_dict(extension1_list[i], slip_taper=slip_taper,
                                 model_version_results_directory=model_version_results_directory,nesi=nesi)
             ### step 2: get exceedance probability dictionary
-            if nesi:
-                if nesi_step == 'prep':
-                    print(f"\tPrepping for NESI....")
-                    prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, extension1_list[i], 
-                       hours = 0, mins=3, mem=40, cpus=1, account='uc03610',
-                       time_interval=100, n_samples=n_samples, sd=0.4)
-                    continue
-
-                elif nesi_step == 'combine':
-                    print(f"\tCombining site dictionaries....")
-                    compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1_list[i], taper_extension=taper_extension)
-
-            else:
-                get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
-                            model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-                            time_interval=100, n_samples=n_samples)  # n_samples reduced from 1e6 for testing speed
+            get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
+                         model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
+                         time_interval=100, n_samples=n_samples)
 
         # Save results to tif files
         print(f"*~ Writing results to geotiffs~*")
@@ -345,7 +369,7 @@ if gf_name == "grid":
                 if nesi_step == 'prep':
                     print(f"\tPrepping for NESI....")
                     prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, extension1_list[i], 
-                       hours = 0, mins=3, mem=40, cpus=1, account='uc03610',
+                       hours = 0, mins=3, mem=45, cpus=1, account='uc03610',
                        time_interval=100, n_samples=n_samples, sd=0.4)
                     continue
 

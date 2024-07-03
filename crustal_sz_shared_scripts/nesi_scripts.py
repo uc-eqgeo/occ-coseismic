@@ -4,9 +4,7 @@ import pickle as pkl
 import numpy as np
 from time import time
 
-def prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, extension1, 
-                       hours : int = 0, mins: int= 3, mem: int= 45, cpus: int= 1, account: str= 'uc03610',
-                       time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4, S=""):
+def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1, S=""):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
 
@@ -25,34 +23,59 @@ def prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, e
 
     branchdir = f"../{model_version_results_directory}/{extension1}"
 
-    os.makedirs(f"{branchdir}/site_cumu_exceed{S}/nesi_scripts", exist_ok=True)
+    os.makedirs(f"{branchdir}/site_cumu_exceed{S}", exist_ok=True)
 
-    with open(f"{branchdir}/site_cumu_exceed{S}/site_name_list.txt", "w") as f:
+    site_file = f"../{model_version_results_directory}/site_name_list.txt"
+
+    if S == "":
+        S='_'
+
+    # Append site information for this branch to the main list
+    with open(site_file, "a") as f:
         for site in sites_of_interest:
-            f.write(f"{site}\n")
-    print(f"{branchdir}/site_cumu_exceed{S}/nesi_scripts/branch_array_job.sl")
-    with open(f"{branchdir}/site_cumu_exceed{S}/nesi_scripts/branch_array_job.sl", "wb") as f:
+            f.write(f"{site} {branchdir} {S}\n")
+
+def prep_SLURM_submission(model_version_results_directory,
+                          hours: int = 0, mins: int= 3, mem: int= 45, cpus: int= 1, account: str= 'uc03610',
+                          time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4):
+    """
+    Must first run get_site_disp_dict to get the dictionary of displacements and rates
+
+    inputs: runs for one logic tree branch
+    Time_interval is in years
+
+    function: calculates the poissonian probability of exceedance for each site for each displacement threshold value
+
+    outputs: pickle file with probability dictionary (probs, disps, site_coords)
+
+    CAVEATS/choices:
+    - need to decide on number of 100-yr simulations to run (n_samples = 1000000)
+    """
+
+    site_file = f"../{model_version_results_directory}/site_name_list.txt"
+
+    with open(site_file, "r") as f:
+        all_sites = f.read().splitlines()
+
+    with open(f"../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl", "wb") as f:
         f.write(f"#!/bin/bash -e\n".encode())
-        f.write(f"#SBATCH --job-name=occ-{extension1}\n".encode())
+        f.write(f"#SBATCH --job-name=occ-{os.path.basename(model_version_results_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
         f.write(f"#SBATCH --mem={mem}GB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
         f.write(f"#SBATCH --partition=large\n".encode())
-        f.write(f"#SBATCH --array=1-{len(sites_of_interest)}\n".encode())
+        f.write(f"#SBATCH --array=1-{len(all_sites)}\n".encode())
 
-        f.write(f"#SBATCH -o logs/{extension1}{S}_site%a_%j.out\n".encode())
-        f.write(f"#SBATCH -e logs/{extension1}{S}_site%a_%j.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_site%a_%j.out\n".encode())
+        f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_site%a_%j.err\n\n".encode())
 
         f.write(f"# Activate the conda environment\n".encode())
         f.write(f"mkdir -p logs\n".encode())
         f.write(f"module purge  2>/dev/null\n".encode())
         f.write(f"module load Python/3.11.6-foss-2023a\n\n".encode())
 
-        if S:
-            f.write(f"python nesi_scripts.py --site `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"]' {branchdir}/site_cumu_exceed{S}/site_name_list.txt` --branchdir {branchdir} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} --scaling {S}\n\n".encode())
-        else:
-            f.write(f"python nesi_scripts.py --site `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"]' {branchdir}/site_cumu_exceed{S}/site_name_list.txt` --branchdir {branchdir} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd}\n\n".encode())
+        f.write(f"python nesi_scripts.py --site `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"] {{print $1}}' {site_file}` --branchdir `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"] {{print $2}}' {site_file}` --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} --scaling `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"] {{print $3}}' {site_file}`\n\n".encode())
 
 
 def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension="", S="", return_dict=False):
@@ -100,7 +123,12 @@ if __name__ == "__main__":
     investigation_time = args.time_interval
     n_samples = args.n_samples
     sd = args.sd
-    scaling = args.scaling
+    if args.scaling == '_':
+        scaling = ""
+    else:
+        scaling = args.scaling
+
+    print(f"Running site {site_of_interest}....")
 
     rng = np.random.default_rng()
 
@@ -108,6 +136,11 @@ if __name__ == "__main__":
 
     with open(f"{branch_results_directory}/branch_site_disp_dict_{extension1}.pkl", "rb") as fid:
             branch_disp_dict = pkl.load(fid)
+
+    # Additional check for if keys are integers
+    if isinstance([key for key in branch_disp_dict.keys()][0], int):
+        if '_' not in site_of_interest:
+            site_of_interest = int(site_of_interest)
 
     site_dict_i = branch_disp_dict[site_of_interest]
 
