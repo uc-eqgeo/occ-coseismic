@@ -7,6 +7,7 @@ import pickle as pkl
 import matplotlib.ticker as mticker
 import rasterio
 from rasterio.transform import Affine
+from time import time
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -139,7 +140,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     site_PPE_dict = {}
     printProgressBar(0, len(branch_site_disp_dict.keys()), prefix = f'\tProcessing {len(branch_site_disp_dict.keys())} Sites:', suffix = 'Complete', length = 50)
     for i, site_of_interest in enumerate(branch_site_disp_dict.keys()):
-        printProgressBar(i + 1, len(branch_site_disp_dict.keys()), prefix = f'\tProcessing {len(branch_site_disp_dict.keys())} Sites:', suffix = 'Complete', length = 50)
+        #printProgressBar(i + 1, len(branch_site_disp_dict.keys()), prefix = f'\tProcessing {len(branch_site_disp_dict.keys())} Sites:', suffix = 'Complete', length = 50)
         # print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
         # if i == 0:
         #     if branch_key not in ["nan", ""]:
@@ -147,6 +148,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         #     if extension1 not in ["nan", ""]:
         #         print(f"calculating {extension1} PPE for site {i} of {len(branch_site_disp_dict.keys())}")
         # print(f"calculating {branch_key} PPE ({i} of {len(branch_site_disp_dict.keys())} branches)")
+        start = time()
         site_dict_i = branch_site_disp_dict[site_of_interest]
 
         ## Set up params for sampling
@@ -157,6 +159,15 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             scaled_rates = site_dict_i["rates"]
         else:
             scaled_rates = site_dict_i["scaled_rates"]
+
+        # Drop ruptures that don't cause slip at this site
+        drop_noslip = True
+        if drop_noslip:
+            no_slip = [ix for ix, slip in enumerate(site_dict_i["disps"]) if slip == 0]
+            disps = [slip for ix, slip in enumerate(site_dict_i['disps']) if ix not in no_slip]
+            scaled_rates = [rate for ix, rate in enumerate(scaled_rates) if ix not in no_slip]
+        else:
+            disps = site_dict_i['disps']
 
         # average number of events per time interval (effectively R*T from Ned's guide)
         lambdas = investigation_time * np.array(scaled_rates)
@@ -171,7 +182,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         disp_uncertainty = rng.normal(1., sd, size=(int(n_samples), lambdas.size))
 
         # for each 100 yr scenario, get displacements from EQs that happened
-        disp_scenarios = scenarios * site_dict_i["disps"]
+        disp_scenarios = scenarios * disps
         # multiplies displacement by the uncertainty multiplier
         disp_scenarios = disp_scenarios * disp_uncertainty
         # sum all displacement values at that site in that 100 yr interval
@@ -211,7 +222,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "exceedance_probs_down": exceedance_probs_down,
                                            "site_coords": site_dict_i["site_coords"],
                                            "standard_deviation": sd}
-    
+        print(f"Site {site_of_interest} done in {time() - start:.2f} seconds")
+
+
     if 'grid_meta' in branch_site_disp_dict.keys():
             site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
     
