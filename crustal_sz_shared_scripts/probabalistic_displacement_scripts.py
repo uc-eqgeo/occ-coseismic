@@ -111,10 +111,10 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total: 
         print()
 
-def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict,  n_samples,
-                 extension1, branch_key="nan", time_interval=100, sd=0.4):
+def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, n_samples,
+                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000):
     """
-    Must first run get_site_disp_dict to get the dictionary of displacements and rates
+    Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 2 sigma error bars
 
     inputs: runs for one logic tree branch
     Time_interval is in years
@@ -140,7 +140,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     site_PPE_dict = {}
     printProgressBar(0, len(branch_site_disp_dict.keys()), prefix = f'\tProcessing {len(branch_site_disp_dict.keys())} Sites:', suffix = 'Complete', length = 50)
     for i, site_of_interest in enumerate(branch_site_disp_dict.keys()):
-        #printProgressBar(i + 1, len(branch_site_disp_dict.keys()), prefix = f'\tProcessing {len(branch_site_disp_dict.keys())} Sites:', suffix = 'Complete', length = 50)
+        printProgressBar(i + 1, len(branch_site_disp_dict.keys()), prefix = f'\tProcessing {len(branch_site_disp_dict.keys())} Sites:', suffix = 'Complete', length = 50)
         # print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
         # if i == 0:
         #     if branch_key not in ["nan", ""]:
@@ -148,7 +148,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         #     if extension1 not in ["nan", ""]:
         #         print(f"calculating {extension1} PPE for site {i} of {len(branch_site_disp_dict.keys())}")
         # print(f"calculating {branch_key} PPE ({i} of {len(branch_site_disp_dict.keys())} branches)")
-        start = time()
         site_dict_i = branch_site_disp_dict[site_of_interest]
 
         ## Set up params for sampling
@@ -196,6 +195,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         n_exceedances_total_abs = np.zeros_like(thresholds)
         n_exceedances_up = np.zeros_like(thresholds)
         n_exceedances_down = np.zeros_like(thresholds)
+        # Initially use all samples to come up with a best estimate of exceedence probability
         # for threshold value:
         for threshold in thresholds:
             # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
@@ -214,6 +214,34 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         exceedance_probs_up = n_exceedances_up / n_samples
         exceedance_probs_down = n_exceedances_down / n_samples
 
+        # Now chunk the scenarios to get a better estimate of the exceedance probability
+        n_chunks = int(n_samples / error_chunking)
+
+        n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
+        n_exceedances_up = np.zeros((len(thresholds), n_chunks))
+        n_exceedances_down = np.zeros((len(thresholds), n_chunks))
+
+        cumulative_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)
+        for tix, threshold in enumerate(thresholds):
+            # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
+            # across all of the 100 yr scenarios
+            # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
+            n_exceedances_total_abs[tix, :] = (np.abs(cumulative_disp_scenarios) > threshold).sum(axis=1)
+            n_exceedances_up[tix, :] = (cumulative_disp_scenarios > threshold).sum(axis=1)
+            n_exceedances_down[tix, :] = (cumulative_disp_scenarios < -threshold).sum(axis=1)
+
+        # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
+        # quite high for low displacements (25%). Means there's a ~25% chance an earthquake will exceed 0 m in next 100
+        # years across all earthquakes in the catalogue (at that site).
+        exceedance_errs_total_abs = n_exceedances_total_abs / error_chunking
+        exceedance_errs_up = n_exceedances_up / error_chunking
+        exceedance_errs_down = n_exceedances_down / error_chunking
+
+        # Output 2sigma error limits
+        error_abs = np.std(exceedance_errs_total_abs, axis=1) * 2
+        error_up = np.std(exceedance_errs_up, axis=1) * 2
+        error_down = np.std(exceedance_errs_down, axis=1) * 2
+
         # CAVEAT: at the moment only absolute value thresholds are stored, but for "down" the thresholds are
         # actually negative.
         site_PPE_dict[site_of_interest] = {"thresholds": thresholds,
@@ -221,8 +249,10 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "exceedance_probs_up": exceedance_probs_up,
                                            "exceedance_probs_down": exceedance_probs_down,
                                            "site_coords": site_dict_i["site_coords"],
-                                           "standard_deviation": sd}
-        print(f"Site {site_of_interest} done in {time() - start:.2f} seconds")
+                                           "standard_deviation": sd,
+                                           "error_abs": error_abs,
+                                           "error_up": error_up,
+                                           "error_down": error_down}
 
 
     if 'grid_meta' in branch_site_disp_dict.keys():
