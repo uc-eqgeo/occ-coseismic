@@ -26,13 +26,13 @@ make_colorful_hazcurves = False
 make_geotiffs = True
 #make_map = True
 
-if testing:
-    n_samples = 100000
-else:
-    n_samples = 1000000
-
 # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
-paired_crustal_sz = False                # True or False
+paired_crustal_sz = True                # True or False
+
+if testing or not paired_crustal_sz:
+    n_samples = 1e5
+else:
+    n_samples = 1e6
 
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
@@ -219,7 +219,7 @@ else:
     model_version_title = f"{fault_type}{fault_model_version}"
 
 if default_plot_order:
-    plot_order = [key for key in weighted_mean_PPE_dict.keys()]
+    plot_order = [key for key in weighted_mean_PPE_dict.keys() if key != 'branch_weights']
 else:
     print('Using custom plot order from', plot_order_csv)
     plot_order = pd.read_csv(plot_order_csv)
@@ -252,4 +252,3 @@ if make_colorful_hazcurves:
                                            file_type_list=figure_file_type_list,
                                            slip_taper=slip_taper, file_name=f"colorful_lines{fault_model_version}",
                                            string_list=unique_id_keyphrase_list, plot_order=plot_order)
-

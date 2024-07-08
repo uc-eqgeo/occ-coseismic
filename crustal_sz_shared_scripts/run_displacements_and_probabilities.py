@@ -85,15 +85,15 @@ if fault_type == "crustal":
             file_suffix_list_i = ["_c_MDA2", "_c_MDEz", "_c_MDE1", "_c_MDA3", "_c_MDA4", "_c_MDA5", "_c_MDEw",
                                   "_c_MDEx", "_c_MDEy"]
             NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA2",
-                                   "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz",
-                                   "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE1",
-                                   "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA3",
-                                   "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA4",
-                                   "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA5",
-                                   "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEw",
-                                   "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEx",
-                                   "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEy",
-                                    ]
+                                     "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz",
+                                     "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE1",
+                                     "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA3",
+                                     "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA4",
+                                     "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA5",
+                                     "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEw",
+                                     "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEx",
+                                     "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEy",
+                                     ]
             file_suffix_list.extend(file_suffix_list_i)
             NSHM_directory_list.extend(NSHM_directory_list_i)
         if "geodetic" in deformation_model:
@@ -310,16 +310,19 @@ if gf_name == "sites":
                                 model_version_results_directory=model_version_results_directory,nesi=nesi)
             ### step 2: get exceedance probability dictionary
             get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
-                         site_ids=branch_site_disp_dict.keys(),
-                         model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-                         time_interval=100, n_samples=n_samples)
+                        model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
+                        time_interval=100, n_samples=n_samples, sd=0.4)  # n_samples reduced from 1e6 for testing speed
 
         # Save results to tif files
         print(f"*~ Writing results to geotiffs~*")
-        save_disp_prob_tifs(extension1_list[i], slip_taper=slip_taper,
-                            model_version_results_directory=model_version_results_directory,
-                            thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True,
-                            probs_lims = [0.02, 0.5], probs_step=0.02, output_probs=True)
+        try:
+            save_disp_prob_tifs(extension1_list[i], slip_taper=slip_taper, 
+                                model_version_results_directory=model_version_results_directory,
+                                thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True,
+                                probs_lims = [0.02, 0.5], probs_step=0.02, output_probs=True)
+        except:
+            print('No Tif')
+
         ## step 3 (optional): plot hazard curves
         if not dont_make_figures:
             print(f"*~ Making probability figures~*")
@@ -335,21 +338,23 @@ if gf_name == "sites":
             #                          sz_directory=sz_directory, model_version=model_version)
 
             ## step 5: plot bar charts
-            max_sites = 12  # Max number of sites to show on one bar chart [default 12]
-            print(f"\tBranch Probability Plots....")
-            make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
-                                model_version_results_directory=model_version_results_directory,
-                                model_version=model_version, plot_order=plot_order, max_sites=max_sites)
-
-            print(f"\t10/2 Displacement Plots....")
-            make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
+            write_out=False
+            if write_out:
+                max_sites = 12  # Max number of sites to show on one bar chart [default 12]
+                print(f"\tBranch Probability Plots....")
+                make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
                                     model_version_results_directory=model_version_results_directory,
-                                    file_type_list=["png", "pdf"], probability_list=[0.1, 0.02],
-                                    plot_order=plot_order, max_sites=max_sites)
-
-            print('\tWriting 10/2 Displacement to geoJSON...\n')
-            save_10_2_disp(extension1=extension1_list[i], slip_taper=slip_taper,
-                                        model_version_results_directory=model_version_results_directory)
+                                    model_version=model_version, plot_order=plot_order, max_sites=max_sites)
+    
+                print(f"\t10/2 Displacement Plots....")
+                make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
+                                        model_version_results_directory=model_version_results_directory,
+                                        file_type_list=["png", "pdf"], probability_list=[0.1, 0.02],
+                                        plot_order=plot_order, max_sites=max_sites)
+    
+                print('\tWriting 10/2 Displacement to geoJSON...\n')
+                save_10_2_disp(extension1=extension1_list[i], slip_taper=slip_taper,
+                                            model_version_results_directory=model_version_results_directory)
 
 if gf_name == "grid":
     ## calculate rupture branch probabilities and make plots
