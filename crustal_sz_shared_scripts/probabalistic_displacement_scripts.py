@@ -114,7 +114,7 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, n_samples,
                  extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000):
     """
-    Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 2 sigma error bars
+    Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
 
     inputs: runs for one logic tree branch
     Time_interval is in years
@@ -191,7 +191,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         thresholds = np.arange(0, 3, 0.01)
         thresholds_neg = thresholds * -1
         # sum all the displacements in the 100 year window that exceed threshold
-       # n_exceedances_total = np.zeros_like(thresholds)
         n_exceedances_total_abs = np.zeros_like(thresholds)
         n_exceedances_up = np.zeros_like(thresholds)
         n_exceedances_down = np.zeros_like(thresholds)
@@ -216,6 +215,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
         # Now chunk the scenarios to get a better estimate of the exceedance probability
         n_chunks = int(n_samples / error_chunking)
+        if n_chunks < 10:
+            error_chunking = int(n_samples / 10)
+            print(f'\nToo few chunks for accurate error estimation. Decreasing error_chunking to {error_chunking}\n')
 
         n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
         n_exceedances_up = np.zeros((len(thresholds), n_chunks))
@@ -237,10 +239,10 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         exceedance_errs_up = n_exceedances_up / error_chunking
         exceedance_errs_down = n_exceedances_down / error_chunking
 
-        # Output 2sigma error limits
-        error_abs = np.std(exceedance_errs_total_abs, axis=1) * 2
-        error_up = np.std(exceedance_errs_up, axis=1) * 2
-        error_down = np.std(exceedance_errs_down, axis=1) * 2
+        # Output 1 sigma error limits
+        error_abs = np.std(exceedance_errs_total_abs, axis=1)
+        error_up = np.std(exceedance_errs_up, axis=1)
+        error_down = np.std(exceedance_errs_down, axis=1)
 
         # CAVEAT: at the moment only absolute value thresholds are stored, but for "down" the thresholds are
         # actually negative.
@@ -250,10 +252,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "exceedance_probs_down": exceedance_probs_down,
                                            "site_coords": site_dict_i["site_coords"],
                                            "standard_deviation": sd,
-                                           "error_abs": error_abs,
+                                           "error_total_abs": error_abs,
                                            "error_up": error_up,
                                            "error_down": error_down}
-
 
     if 'grid_meta' in branch_site_disp_dict.keys():
             site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
