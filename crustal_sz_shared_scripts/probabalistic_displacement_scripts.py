@@ -13,7 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
-from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color
+from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile
 from matplotlib.patches import Rectangle
 from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
 
@@ -338,6 +338,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
         taper_extension = "_uniform"
 
     unique_id_list = list(fault_model_PPE_dict.keys())
+    n_branches = len(unique_id_list)
     site_list = fault_model_PPE_dict[unique_id_list[0]]["cumu_PPE_dict"].keys()
 
     # weight the probabilities by NSHM branch weights to get a weighted mean
@@ -354,31 +355,63 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
         site_coords_dict[site] = site_coords
 
     weighted_mean_site_probs_dictionary = {}
+    weighted_mean_site_probs_dictionary['branch_weights'] = branch_weights
     for site in site_list:
         weighted_mean_site_probs_dictionary[site] = {}
 
     for exceed_type in ["total_abs", "up", "down"]:
         for i, site in enumerate(site_list):
-
             site_df = {}
+            errors_df = {}
             for unique_id in unique_id_list:
                 probabilities_i_site = fault_model_PPE_dict[unique_id]["cumu_PPE_dict"][site][
                     f"exceedance_probs_{exceed_type}"]
                 site_df[unique_id] = probabilities_i_site
+                errors_df[unique_id] = fault_model_PPE_dict[unique_id]["cumu_PPE_dict"][site][
+                    f"error_{exceed_type}"]
             site_probabilities_df = pd.DataFrame(site_df)
 
             # collapse each row into a weighted mean value
-            site_weighted_mean_probs = site_probabilities_df.apply(
+            branch_weighted_mean_probs = site_probabilities_df.apply(
                 lambda x: np.average(x, weights=branch_weights), axis=1)
             site_max_probs = site_probabilities_df.max(axis=1)
             site_min_probs = site_probabilities_df.min(axis=1)
 
             weighted_mean_site_probs_dictionary[site]["threshold_vals"] = threshold_vals
-
-            weighted_mean_site_probs_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"] = site_weighted_mean_probs
+            weighted_mean_site_probs_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"] = branch_weighted_mean_probs
             weighted_mean_site_probs_dictionary[site][f"{exceed_type}_max_vals"] = site_max_probs
             weighted_mean_site_probs_dictionary[site][f"{exceed_type}_min_vals"] = site_min_probs
             weighted_mean_site_probs_dictionary[site]["site_coords"] = site_coords_dict[site]
+
+            # Calculate errors based on 1 and 2 sigma percentiles of all of the branches for each threshold
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_97_725_vals"] = np.percentile(site_probabilities_df, 97.725, axis=1)
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_84_135_vals"] = np.percentile(site_probabilities_df, 84.135, axis=1)
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_15_865_vals"] = np.percentile(site_probabilities_df, 15.865, axis=1)
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_2_275_vals"] = np.percentile(site_probabilities_df, 2.275, axis=1)
+
+            # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w97_725_vals"] = percentile(site_probabilities_df, 97.725, axis=1, weights=branch_weights)
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w84_135_vals"] = percentile(site_probabilities_df, 84.135, axis=1, weights=branch_weights)
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w15_865_vals"] = percentile(site_probabilities_df, 15.865, axis=1, weights=branch_weights)
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w2_275_vals"] = percentile(site_probabilities_df, 2.275, axis=1, weights=branch_weights)
+
+            calc_uc_weighting = True
+            # This method uses the uncertainty calculated for each branch, as well as the branch weights, to calculate the weighted mean and error.
+            # However, it's not great, and using the branch weighting seems to work better for calculating the exceedence probabilities.
+            # Additionally, when combining all the errors, the error is seemingly so small it only surrounds the weighted mean value branch, and doesn't
+            # really reflect the variation in branches. Keeping the calculation anyway though, just so you can plot it if you want to.
+            if calc_uc_weighting:
+                site_errors_df = pd.DataFrame(errors_df)
+                full_weights = branch_weights/((site_errors_df) ** 2)
+                full_weights[full_weights == np.inf] = 0
+                zero_weights = np.where(np.sum(full_weights, axis=1) == 0)[0]
+                full_weights.loc[zero_weights] = 1
+                site_probabilities_df = pd.concat([site_probabilities_df, full_weights], axis='columns')
+                site_weighted_mean_probs = site_probabilities_df.apply(lambda x: np.average(x[:n_branches], weights=x[n_branches:]), axis=1)
+                site_weighted_error = np.sqrt(1 / full_weights.sum(axis=1))
+                site_weighted_error[zero_weights] = 0
+                weighted_mean_site_probs_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"] = site_weighted_mean_probs
+                weighted_mean_site_probs_dictionary[site][f"{exceed_type}_error"] = site_weighted_error
 
     with open(f"../{out_directory}/weighted_mean_PPE_dict_{outfile_extension}{taper_extension}.pkl", "wb") as f:
         pkl.dump(weighted_mean_site_probs_dictionary, f)
