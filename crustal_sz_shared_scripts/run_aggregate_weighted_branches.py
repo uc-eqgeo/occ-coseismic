@@ -25,13 +25,13 @@ make_colorful_hazcurves = False
 make_geotiffs = False
 #make_map = True
 
-if testing:
-    n_samples = 100000
-else:
-    n_samples = 1000000
-
 # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 paired_crustal_sz = True                # True or False
+
+if testing or not paired_crustal_sz:
+    n_samples = 1e5
+else:
+    n_samples = 1e6
 
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
