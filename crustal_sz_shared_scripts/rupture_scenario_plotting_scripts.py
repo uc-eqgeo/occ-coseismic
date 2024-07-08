@@ -193,7 +193,10 @@ def vertical_disp_figure(all_ruptures_disp_dict, NSHM_directory, target_rupture_
             np.save(f"../{results_version_directory}/{extension1}/displacement_arrays/rupture{rupture_id}_disps_{extension1}{extension3}.npy", save_array)
 
         max_vert_disp = np.max(np.abs(disps_scenario))
-        ruptured_discretized_polygons_gdf["slip"] = patch_slips
+        try:
+            ruptured_discretized_polygons_gdf["slip"] = patch_slips
+        except:
+            breakpoint()
 
         if slip_taper is False:
             max_slip_color_val = np.max(patch_slips) / 0.76276

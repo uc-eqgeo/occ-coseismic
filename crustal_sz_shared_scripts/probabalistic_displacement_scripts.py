@@ -7,12 +7,13 @@ import pickle as pkl
 import matplotlib.ticker as mticker
 import rasterio
 from rasterio.transform import Affine
+from time import time
 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
-from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color
+from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile
 from matplotlib.patches import Rectangle
 from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
 
@@ -110,10 +111,10 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total: 
         print()
 
-def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict,  n_samples,
-                 extension1, branch_key="nan", time_interval=100, sd=0.4):
+def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, n_samples,
+                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000):
     """
-    Must first run get_site_disp_dict to get the dictionary of displacements and rates
+    Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
 
     inputs: runs for one logic tree branch
     Time_interval is in years
@@ -158,6 +159,15 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         else:
             scaled_rates = site_dict_i["scaled_rates"]
 
+        # Drop ruptures that don't cause slip at this site
+        drop_noslip = True
+        if drop_noslip:
+            no_slip = [ix for ix, slip in enumerate(site_dict_i["disps"]) if slip == 0]
+            disps = [slip for ix, slip in enumerate(site_dict_i['disps']) if ix not in no_slip]
+            scaled_rates = [rate for ix, rate in enumerate(scaled_rates) if ix not in no_slip]
+        else:
+            disps = site_dict_i['disps']
+
         # average number of events per time interval (effectively R*T from Ned's guide)
         lambdas = investigation_time * np.array(scaled_rates)
 
@@ -171,7 +181,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         disp_uncertainty = rng.normal(1., sd, size=(int(n_samples), lambdas.size))
 
         # for each 100 yr scenario, get displacements from EQs that happened
-        disp_scenarios = scenarios * site_dict_i["disps"]
+        disp_scenarios = scenarios * disps
         # multiplies displacement by the uncertainty multiplier
         disp_scenarios = disp_scenarios * disp_uncertainty
         # sum all displacement values at that site in that 100 yr interval
@@ -181,10 +191,10 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         thresholds = np.arange(0, 3, 0.01)
         thresholds_neg = thresholds * -1
         # sum all the displacements in the 100 year window that exceed threshold
-       # n_exceedances_total = np.zeros_like(thresholds)
         n_exceedances_total_abs = np.zeros_like(thresholds)
         n_exceedances_up = np.zeros_like(thresholds)
         n_exceedances_down = np.zeros_like(thresholds)
+        # Initially use all samples to come up with a best estimate of exceedence probability
         # for threshold value:
         for threshold in thresholds:
             # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
@@ -203,6 +213,37 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         exceedance_probs_up = n_exceedances_up / n_samples
         exceedance_probs_down = n_exceedances_down / n_samples
 
+        # Now chunk the scenarios to get a better estimate of the exceedance probability
+        n_chunks = int(n_samples / error_chunking)
+        if n_chunks < 10:
+            error_chunking = int(n_samples / 10)
+            print(f'\nToo few chunks for accurate error estimation. Decreasing error_chunking to {error_chunking}\n')
+
+        n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
+        n_exceedances_up = np.zeros((len(thresholds), n_chunks))
+        n_exceedances_down = np.zeros((len(thresholds), n_chunks))
+
+        cumulative_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)
+        for tix, threshold in enumerate(thresholds):
+            # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
+            # across all of the 100 yr scenarios
+            # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
+            n_exceedances_total_abs[tix, :] = (np.abs(cumulative_disp_scenarios) > threshold).sum(axis=1)
+            n_exceedances_up[tix, :] = (cumulative_disp_scenarios > threshold).sum(axis=1)
+            n_exceedances_down[tix, :] = (cumulative_disp_scenarios < -threshold).sum(axis=1)
+
+        # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
+        # quite high for low displacements (25%). Means there's a ~25% chance an earthquake will exceed 0 m in next 100
+        # years across all earthquakes in the catalogue (at that site).
+        exceedance_errs_total_abs = n_exceedances_total_abs / error_chunking
+        exceedance_errs_up = n_exceedances_up / error_chunking
+        exceedance_errs_down = n_exceedances_down / error_chunking
+
+        # Output 1 sigma error limits
+        error_abs = np.std(exceedance_errs_total_abs, axis=1)
+        error_up = np.std(exceedance_errs_up, axis=1)
+        error_down = np.std(exceedance_errs_down, axis=1)
+
         # CAVEAT: at the moment only absolute value thresholds are stored, but for "down" the thresholds are
         # actually negative.
         site_PPE_dict[site_of_interest] = {"thresholds": thresholds,
@@ -210,8 +251,11 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "exceedance_probs_up": exceedance_probs_up,
                                            "exceedance_probs_down": exceedance_probs_down,
                                            "site_coords": site_dict_i["site_coords"],
-                                           "standard_deviation": sd}
-    
+                                           "standard_deviation": sd,
+                                           "error_total_abs": error_abs,
+                                           "error_up": error_up,
+                                           "error_down": error_down}
+
     if 'grid_meta' in branch_site_disp_dict.keys():
             site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
     
@@ -294,6 +338,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
         taper_extension = "_uniform"
 
     unique_id_list = list(fault_model_PPE_dict.keys())
+    n_branches = len(unique_id_list)
     site_list = fault_model_PPE_dict[unique_id_list[0]]["cumu_PPE_dict"].keys()
 
     # weight the probabilities by NSHM branch weights to get a weighted mean
@@ -310,31 +355,66 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
         site_coords_dict[site] = site_coords
 
     weighted_mean_site_probs_dictionary = {}
+    weighted_mean_site_probs_dictionary['branch_weights'] = branch_weights
     for site in site_list:
         weighted_mean_site_probs_dictionary[site] = {}
 
     for exceed_type in ["total_abs", "up", "down"]:
         for i, site in enumerate(site_list):
-
             site_df = {}
+            errors_df = {}
             for unique_id in unique_id_list:
                 probabilities_i_site = fault_model_PPE_dict[unique_id]["cumu_PPE_dict"][site][
                     f"exceedance_probs_{exceed_type}"]
                 site_df[unique_id] = probabilities_i_site
+                errors_df[unique_id] = fault_model_PPE_dict[unique_id]["cumu_PPE_dict"][site][
+                    f"error_{exceed_type}"]
             site_probabilities_df = pd.DataFrame(site_df)
 
             # collapse each row into a weighted mean value
-            site_weighted_mean_probs = site_probabilities_df.apply(
+            branch_weighted_mean_probs = site_probabilities_df.apply(
                 lambda x: np.average(x, weights=branch_weights), axis=1)
             site_max_probs = site_probabilities_df.max(axis=1)
             site_min_probs = site_probabilities_df.min(axis=1)
 
             weighted_mean_site_probs_dictionary[site]["threshold_vals"] = threshold_vals
-
-            weighted_mean_site_probs_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"] = site_weighted_mean_probs
+            weighted_mean_site_probs_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"] = branch_weighted_mean_probs
             weighted_mean_site_probs_dictionary[site][f"{exceed_type}_max_vals"] = site_max_probs
             weighted_mean_site_probs_dictionary[site][f"{exceed_type}_min_vals"] = site_min_probs
             weighted_mean_site_probs_dictionary[site]["site_coords"] = site_coords_dict[site]
+
+            # Calculate errors based on 1 and 2 sigma percentiles of all of the branches for each threshold
+            percentiles = np.percentile(site_probabilities_df, [97.725, 84.135, 15.865, 2.275], axis=1)
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_97_725_vals"] = percentiles[0, :]
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_84_135_vals"] = percentiles[1, :]
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_15_865_vals"] = percentiles[2, :]
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_2_275_vals"] = percentiles[3, :]
+
+            # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
+            percentiles = percentile(site_probabilities_df, [97.725, 84.135, 15.865, 2.275], axis=1, weights=branch_weights)
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w97_725_vals"] = percentiles[0, :]
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w84_135_vals"] = percentiles[1, :]
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w15_865_vals"] = percentiles[2, :]
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w2_275_vals"] = percentiles[3, :]
+
+            calc_uc_weighting = False
+            # This method uses the uncertainty calculated for each branch, as well as the branch weights, to calculate the weighted mean and error.
+            # However, it's not great, and using the branch weighting seems to work better for calculating the exceedence probabilities.
+            # Additionally, when combining all the errors, the error is seemingly so small it only surrounds the weighted mean value branch, and doesn't
+            # really reflect the variation in branches. Keeping the calculation anyway though, just so you can plot it if you want to.
+            # Slowest step of this loop, so keep toggle off when processing nationally, then toggle on for individual sites.
+            if calc_uc_weighting:
+                site_errors_df = pd.DataFrame(errors_df)
+                full_weights = branch_weights/((site_errors_df) ** 2)
+                full_weights[full_weights == np.inf] = 0
+                zero_weights = np.where(np.sum(full_weights, axis=1) == 0)[0]
+                full_weights.loc[zero_weights] = 1
+                site_probabilities_df = pd.concat([site_probabilities_df, full_weights], axis='columns')
+                site_weighted_mean_probs = site_probabilities_df.apply(lambda x: np.average(x[:n_branches], weights=x[n_branches:]), axis=1)
+                site_weighted_error = np.sqrt(1 / full_weights.sum(axis=1))
+                site_weighted_error[zero_weights] = 0
+                weighted_mean_site_probs_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"] = site_weighted_mean_probs
+                weighted_mean_site_probs_dictionary[site][f"{exceed_type}_error"] = site_weighted_error
 
     with open(f"../{out_directory}/weighted_mean_PPE_dict_{outfile_extension}{taper_extension}.pkl", "wb") as f:
         pkl.dump(weighted_mean_site_probs_dictionary, f)
@@ -690,6 +770,15 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
         taper_extension = "_uniform"
 
     unique_id_list = list(PPE_dictionary.keys())
+    weights = weighted_mean_PPE_dictionary['branch_weights']
+    weight_order = np.argsort(weights)
+    weight_colouring = False
+    if weight_colouring:
+        colouring = "_c"
+        c_weight = weights / max(weights)
+        colours = plt.get_cmap('plasma')(c_weight)
+    else:
+        colouring = ""
 
     plt.close("all")
 
@@ -724,20 +813,31 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
                 max_probs = max_probs[1:]
                 min_probs = min_probs[1:]
 
-                ax.fill_between(threshold_vals, max_probs, min_probs, color='0.9')
+                # Shade based on max-min
+                #ax.fill_between(threshold_vals, max_probs, min_probs, color='0.9')
+                # Shade based on weighted errors
+                #ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
+                #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
+                # Shade based on weighted 2 sigma percentiles
+                ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w97_725_vals"][1:],
+                                weighted_mean_PPE_dictionary[site][f"{exceed_type}_w2_275_vals"][1:], color='0.8')
 
             # plot all the branches as light grey lines
             # for each branch, plot the exceedance probabilities for each site
-            for k, unique_id in enumerate(unique_id_list):
+            for k, unique_id in enumerate([unique_id_list[id] for id in weight_order]):
                 # this loop isn't really needed, but it's useful if you calculate Green's functions
                 # at more sites than you want to plot
-
                 for i, site in enumerate(sites):
                     threshold_vals = PPE_dictionary[unique_id]["cumu_PPE_dict"][site]["thresholds"]
                     site_exceedance_probs = PPE_dictionary[unique_id]["cumu_PPE_dict"][site][f"exceedance_probs_{exceed_type}"]
-
                     ax = plt.subplot(n_rows, n_cols, i + 1)
-                    ax.plot(threshold_vals, site_exceedance_probs, color='0.7')
+                    #ax.plot(threshold_vals, site_exceedance_probs, color=[weights[weight_order[k]] / max_weight, 1-(weights[weight_order[k]] / max_weight), 0],
+                    #        linewidth=0.1)
+                    if weight_colouring:
+                        ax.plot(threshold_vals, site_exceedance_probs, color=colours[weight_order[k]], linewidth=0.2, alpha=0.5)
+                    else:
+                        ax.plot(threshold_vals, site_exceedance_probs, color='grey', linewidth=0.2, alpha=0.5)
+
 
             # loop through sites and add the weighted mean lines
             for i, site in enumerate(sites):
@@ -748,7 +848,25 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
                 threshold_vals = weighted_mean_PPE_dictionary[site]["threshold_vals"]
 
                 line_color = get_probability_color(exceed_type)
-                ax.plot(threshold_vals, weighted_mean_exceedance_probs, color=line_color, linewidth=2)
+               
+                # Unweighted 1 sigma lines
+                # ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_84_135_vals"], color=line_color, linewidth=0.75, linestyle='-.')
+                # ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_15_865_vals"], color=line_color, linewidth=0.75, linestyle='-.')
+                # Unweighted 2 sigma lines
+                # ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_97_725_vals"], color=line_color, linewidth=0.75, linestyle='--')
+                # ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_2_275_vals"], color=line_color, linewidth=0.75, linestyle='--')
+
+                # Weighted 1 sigma lines
+                # ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w84_135_vals"], color=line_color, linewidth=0.75, linestyle=':')
+                # ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w15_865_vals"], color=line_color, linewidth=0.75, linestyle=':')
+                # Weighted 2 sigma lines
+                ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w97_725_vals"], color='black', linewidth=0.75, linestyle='-.')
+                ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w2_275_vals"], color='black', linewidth=0.75, linestyle='-.')
+
+                ax.plot(threshold_vals, weighted_mean_exceedance_probs, color=line_color, linewidth=1.5)
+
+                # Uncertainty weighted mean
+                #ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"], color='black', linewidth=1)
 
                 ax.axhline(y=0.02, color="g", linestyle='dashed')
                 ax.axhline(y=0.1, color="g", linestyle='dotted')
@@ -774,7 +892,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
 
             for file_type in file_type_list:
                 plt.savefig(
-                    f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurve_{exceed_type}{taper_extension}_{plot_n}.{file_type}", dpi=300)
+                    f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurve_{exceed_type}{taper_extension}_{plot_n}{colouring}.{file_type}", dpi=300)
             plt.close()
             printProgressBar(plot_n + 0.5, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
 
@@ -791,8 +909,14 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
                     weighted_mean_max_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_max_vals"]
                     weighted_mean_min_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_min_vals"]
                     threshold_vals = weighted_mean_PPE_dictionary[site]["threshold_vals"]
-                    ax.fill_between(threshold_vals, weighted_mean_max_probs, weighted_mean_min_probs, color=fill_color,
-                                    alpha=0.2)
+                    # Shade based on max-min
+                    # ax.fill_between(threshold_vals, weighted_mean_max_probs, weighted_mean_min_probs, color=fill_color, alpha=0.2)
+                    # Shade based on weighted errors
+                    #ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
+                    #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
+                    # Shade based on 2 sigma percentiles
+                    ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_97_725_vals"],
+                                    weighted_mean_PPE_dictionary[site][f"{exceed_type}_2_275_vals"], color='0.8')
 
                 # plot solid lines on top of the shaded regions
                 for exceed_type in exceed_type_list:
@@ -879,7 +1003,14 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
                 max_probs = max_probs[1:]
                 min_probs = min_probs[1:]
 
-                ax.fill_between(threshold_vals, max_probs, min_probs, color='0.9', label="_nolegend_")
+                # Shade based on max-min
+                #ax.fill_between(threshold_vals, max_probs, min_probs, color='0.9', label="_nolegend_")
+                # Shade based on weighted errors
+                #ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
+                #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9', label="_nolegend_")
+                # Shade based on 2 sigma percentiles
+                ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w97_725_vals"][1:],
+                                weighted_mean_PPE_dictionary[site][f"{exceed_type}_w2_275_vals"][1:], color='0.8', label="_nolegend_")
 
             # plot all the branches as light grey lines
             # for each branch, plot the exceedance probabilities for each site
@@ -893,8 +1024,6 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
             for k, unique_id in enumerate(unique_id_list):
                 # this loop isn't really needed, but it's useful if you calculate Green's functions
                 # at more sites than you want to plot
-
-
                 if string_list[0] in unique_id:
                     line_color = special_colors[0]
                     linewidth = 1
@@ -933,6 +1062,9 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
                 weighted_mean_exceedance_probs = weighted_mean_exceedance_probs[1:]
 
                 line_color = get_probability_color(exceed_type)
+                # Weighted 2 sigma lines
+                ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w97_725_vals"][1:], color='black', linewidth=0.75, linestyle='-.')
+                ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w2_275_vals"][1:], color='black', linewidth=0.75, linestyle='-.')
                 ax.plot(threshold_vals, weighted_mean_exceedance_probs, color=line_color, linewidth=2)
 
                 ax.axhline(y=0.02, color="0.3", linestyle='dashed')
