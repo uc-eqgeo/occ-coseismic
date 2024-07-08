@@ -384,22 +384,25 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             weighted_mean_site_probs_dictionary[site]["site_coords"] = site_coords_dict[site]
 
             # Calculate errors based on 1 and 2 sigma percentiles of all of the branches for each threshold
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_97_725_vals"] = np.percentile(site_probabilities_df, 97.725, axis=1)
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_84_135_vals"] = np.percentile(site_probabilities_df, 84.135, axis=1)
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_15_865_vals"] = np.percentile(site_probabilities_df, 15.865, axis=1)
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_2_275_vals"] = np.percentile(site_probabilities_df, 2.275, axis=1)
+            percentiles = np.percentile(site_probabilities_df, [97.725, 84.135, 15.865, 2.275], axis=1)
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_97_725_vals"] = percentiles[0, :]
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_84_135_vals"] = percentiles[1, :]
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_15_865_vals"] = percentiles[2, :]
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_2_275_vals"] = percentiles[3, :]
 
             # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w97_725_vals"] = percentile(site_probabilities_df, 97.725, axis=1, weights=branch_weights)
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w84_135_vals"] = percentile(site_probabilities_df, 84.135, axis=1, weights=branch_weights)
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w15_865_vals"] = percentile(site_probabilities_df, 15.865, axis=1, weights=branch_weights)
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w2_275_vals"] = percentile(site_probabilities_df, 2.275, axis=1, weights=branch_weights)
+            percentiles = percentile(site_probabilities_df, [97.725, 84.135, 15.865, 2.275], axis=1, weights=branch_weights)
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w97_725_vals"] = percentiles[0, :]
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w84_135_vals"] = percentiles[1, :]
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w15_865_vals"] = percentiles[2, :]
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w2_275_vals"] = percentiles[3, :]
 
-            calc_uc_weighting = True
+            calc_uc_weighting = False
             # This method uses the uncertainty calculated for each branch, as well as the branch weights, to calculate the weighted mean and error.
             # However, it's not great, and using the branch weighting seems to work better for calculating the exceedence probabilities.
             # Additionally, when combining all the errors, the error is seemingly so small it only surrounds the weighted mean value branch, and doesn't
             # really reflect the variation in branches. Keeping the calculation anyway though, just so you can plot it if you want to.
+            # Slowest step of this loop, so keep toggle off when processing nationally, then toggle on for individual sites.
             if calc_uc_weighting:
                 site_errors_df = pd.DataFrame(errors_df)
                 full_weights = branch_weights/((site_errors_df) ** 2)
