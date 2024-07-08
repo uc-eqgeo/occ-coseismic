@@ -857,7 +857,6 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
                 # ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w84_135_vals"], color=line_color, linewidth=0.75, linestyle=':')
                 # ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w15_865_vals"], color=line_color, linewidth=0.75, linestyle=':')
                 # Weighted 2 sigma lines
-                breakpoint()
                 ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w97_725_vals"], color='black', linewidth=0.75, linestyle='-.')
                 ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w2_275_vals"], color='black', linewidth=0.75, linestyle='-.')
 
