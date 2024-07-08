@@ -217,7 +217,7 @@ else:
     model_version_title = f"{fault_type}{fault_model_version}"
 
 if default_plot_order:
-    plot_order = [key for key in weighted_mean_PPE_dict.keys()]
+    plot_order = [key for key in weighted_mean_PPE_dict.keys() if key != 'branch_weights']
 else:
     print('Using custom plot order from', plot_order_csv)
     plot_order = pd.read_csv(plot_order_csv)
