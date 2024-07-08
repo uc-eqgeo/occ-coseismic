@@ -9,20 +9,21 @@ import pickle as pkl
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_Model_JDE_testing"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_jde_testing"                    # must match suffix in the subduction directory with gfs
+crustal_model_version = "_Model_CFM_10km"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_national_10km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-default_plot_order = False
-plot_order_csv = "../JDE_sites_12.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
-
+default_plot_order = True
+plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
+nesi = True
+nesi_step = 'prep'  # 'prep' or 'combine'
 testing = True
 
 probability_plot = True                # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
 displacement_chart = True                 # plots the displacement at the 10% and 2% probability of exceedance
 # thresholds
-make_hazcurves = True
+make_hazcurves = False
 make_colorful_hazcurves = False
-make_geotiffs = False
+make_geotiffs = True
 #make_map = True
 
 # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
@@ -36,7 +37,7 @@ else:
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = False   # True or False
+calculate_fault_model_PPE = True   # True or False
 
 figure_file_type_list = ["png", "pdf"]             # file types for figures
 
@@ -169,7 +170,7 @@ if not paired_crustal_sz:
         make_fault_model_PPE_dict(
             branch_weight_dict=fault_model_branch_weight_dict,
             model_version_results_directory=model_version_results_directory, n_samples=n_samples,
-            slip_taper=slip_taper, outfile_extension=outfile_extension)
+            slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step)
 
     with open(fault_model_PPE_filepath, 'rb') as f:
         PPE_dict = pkl.load(f)
@@ -192,7 +193,8 @@ if paired_crustal_sz:
             crustal_model_version_results_directory=crustal_model_version_results_directory,
             sz_model_version_results_directory=sz_model_version_results_directory,
             slip_taper=slip_taper, n_samples=n_samples,
-            out_directory=model_version_results_directory, outfile_extension=outfile_extension, sz_type=fault_type)
+            out_directory=model_version_results_directory, outfile_extension=outfile_extension, sz_type=fault_type,
+            nesi=nesi, nesi_step=nesi_step)
 
     with open(paired_PPE_filepath, 'rb') as f:
         PPE_dict = pkl.load(f)
@@ -250,4 +252,3 @@ if make_colorful_hazcurves:
                                            file_type_list=figure_file_type_list,
                                            slip_taper=slip_taper, file_name=f"colorful_lines{fault_model_version}",
                                            string_list=unique_id_keyphrase_list, plot_order=plot_order)
-

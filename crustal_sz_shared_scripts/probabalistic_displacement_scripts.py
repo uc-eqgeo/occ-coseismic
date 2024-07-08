@@ -14,12 +14,13 @@ import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile
+from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE
 from matplotlib.patches import Rectangle
 from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
 
 matplotlib.rcParams['pdf.fonttype'] = 42
 
-def get_site_disp_dict(extension1, slip_taper, model_version_results_directory):
+def get_site_disp_dict(extension1, slip_taper, model_version_results_directory, nesi=False):
     """
         inputs: uses extension naming scheme to load displacement dictionary created with the
         get_rupture_disp_dict function. State slip taper (True or False).
@@ -76,18 +77,15 @@ def get_site_disp_dict(extension1, slip_taper, model_version_results_directory):
     for i, site in enumerate(site_names):
         site_disp_dictionary[site] = {"disps": disps_by_location[i], "rates": annual_rates_by_location[i],
                                            "site_coords": site_coords[i]}
-
-    if slip_taper is True:
-        extension3 = "_tapered"
-    else:
-        extension3 = "_uniform"
-    
+   
     if 'grid_meta' in rupture_disp_dictionary.keys():
         site_disp_dictionary['grid_meta'] = rupture_disp_dictionary['grid_meta']
 
-    # with open(f"../{results_version_directory}/{extension1}/site_disp_dict_{extension1}{extension3}.pkl",
-    #           "wb") as f:
-    #     pkl.dump(site_disp_dictionary, f)
+    if nesi:
+        with open(f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}.pkl",
+                "wb") as f:
+            pkl.dump(site_disp_dictionary, f)
+
     return site_disp_dictionary
 
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
@@ -111,8 +109,8 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total: 
         print()
 
-def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, n_samples,
-                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000):
+def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict,  site_ids, n_samples,
+                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling=''):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
 
@@ -138,9 +136,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
-    printProgressBar(0, len(branch_site_disp_dict.keys()), prefix = f'\tProcessing {len(branch_site_disp_dict.keys())} Sites:', suffix = 'Complete', length = 50)
-    for i, site_of_interest in enumerate(branch_site_disp_dict.keys()):
-        printProgressBar(i + 1, len(branch_site_disp_dict.keys()), prefix = f'\tProcessing {len(branch_site_disp_dict.keys())} Sites:', suffix = 'Complete', length = 50)
+    printProgressBar(0, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete', length = 50)
+    for i, site_of_interest in enumerate(site_ids):
+        printProgressBar(i + 1, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete', length = 50)
         # print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
         # if i == 0:
         #     if branch_key not in ["nan", ""]:
@@ -258,17 +256,20 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
     if 'grid_meta' in branch_site_disp_dict.keys():
             site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
-    
-    if extension1 != "":
+
+    if extension1 != "" and scaling == "":
         with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
               f"{taper_extension}.pkl", "wb") as f:
+            pkl.dump(site_PPE_dict, f)
+    elif scaling != "":
+        with open(f"{model_version_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.pkl", "wb") as f:
             pkl.dump(site_PPE_dict, f)
 
     else:
         return site_PPE_dict
 
-def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples,
-                              outfile_extension):
+def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension,
+                              nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 45, cpus: int= 1, account: str= 'uc03610'):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -289,6 +290,14 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
 
     fault_model_allbranch_PPE_dict = {}
+
+    if nesi and nesi_step == 'prep':
+        if os.path.exists(f"../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl"):
+                os.remove(f"../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
+
+        if os.path.exists(f"../{model_version_results_directory}/site_name_list.txt"):
+            os.remove(f"../{model_version_results_directory}/site_name_list.txt")
+
     for branch_id in branch_weight_dict.keys():
 
         print(f"calculating {branch_id} PPE\t({counter} of {len(branch_weight_dict.keys())} branches)")
@@ -308,19 +317,45 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             branch_site_disp_dict[site]["scaled_rates"] = [rate * rate_scaling_factor for rate in branch_site_disp_dict[
                 site]["rates"]]
 
+        if nesi:
+            with open(f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.pkl",
+                "wb") as f:
+                pkl.dump(branch_site_disp_dict, f)
+
         ### get exceedance probability dictionary
-        branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict,
-                    model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-                    time_interval=100, n_samples=n_samples, extension1="")
+        if nesi:
+            if nesi_step == 'prep':
+                print(f"\tPrepping for NESI....")
+                prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
+                continue
+
+            elif nesi_step == 'combine':
+                print(f"\tCombining site dictionaries....")
+                branch_cumu_PPE_dict = compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1,
+                                                             taper_extension=taper_extension, return_dict=True, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
+
+        else:
+            branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict,
+                        site_ids=branch_site_disp_dict.keys(),
+                        model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
+                        time_interval=100, n_samples=n_samples, extension1="")
 
         fault_model_allbranch_PPE_dict[branch_id] = {"cumu_PPE_dict": branch_cumu_PPE_dict, "branch_weight":
             branch_weight}
 
-    outfile_name = f"allbranch_PPE_dict_{outfile_extension}{taper_extension}"
+    if nesi and nesi_step == 'prep':
+        print('\nCreating SLURM submission script....')
+        prep_SLURM_submission(model_version_results_directory, hours = 0, mins=3, mem=45, cpus=1, account='uc03610',
+                              time_interval=100, n_samples=n_samples, sd=0.4)
+        print(f'Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl')
+        exit()
+    else:
+        outfile_name = f"allbranch_PPE_dict_{outfile_extension}{taper_extension}"
 
-    with open(f"../{model_version_results_directory}/{outfile_name}.pkl", "wb") as f:
-        pkl.dump(fault_model_allbranch_PPE_dict, f)
-    return fault_model_allbranch_PPE_dict
+        with open(f"../{model_version_results_directory}/{outfile_name}.pkl", "wb") as f:
+            pkl.dump(fault_model_allbranch_PPE_dict, f)
+
+        return fault_model_allbranch_PPE_dict
 
 def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper):
     """takes all the branch PPEs and combines them based on the branch weights into a weighted mean PPE dictionary
@@ -423,7 +458,8 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
 
 def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight_dict,
                                     crustal_model_version_results_directory, sz_model_version_results_directory,
-                                    slip_taper, n_samples, out_directory, outfile_extension, sz_type="sz"):
+                                    slip_taper, n_samples, out_directory, outfile_extension, sz_type="sz",
+                                    nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 45, cpus: int= 1, account: str= 'uc03610'):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -443,97 +479,120 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     paired_PPE_pickle_name = f"{sz_type}_crustal_paired_PPE_dict_{outfile_extension}{taper_extension}.pkl"
 
     # make a dictionary of displacements at each site from all the crustal earthquake scenarios
-
-    all_crustal_branches_site_disp_dict = {}
-    for branch_id in crustal_branch_weight_dict.keys():
-
-        extension1 = gf_name + crustal_branch_weight_dict[branch_id]["file_suffix"]
-        # get site displacement dictionary
-        # this extracts the rates from the solution directory, but it is not scaled by the rate scaling factor
-        crustal_branch_site_disp_dict = get_site_disp_dict(
-            extension1, slip_taper=slip_taper, model_version_results_directory=crustal_model_version_results_directory)
-
-        # multiply the rates by the rate scaling factor
-        rate_scaling_factor = crustal_branch_weight_dict[branch_id]["S"]
-        for site in crustal_branch_site_disp_dict.keys():
-            # multiply each value in the rates array by the rate scaling factor
-            crustal_branch_site_disp_dict[site]["scaled_rates"] = \
-                [rate * rate_scaling_factor for rate in crustal_branch_site_disp_dict[site]["rates"]]
-
-        all_crustal_branches_site_disp_dict[branch_id] = {"site_disp_dict":crustal_branch_site_disp_dict,
-                                                   "branch_weight":crustal_branch_weight_dict[branch_id][
-                                                       "total_weight_RN"]}
-
-    # make a dictionary of displacements at each site from all the crustal earthquake scenarios
-    all_sz_branches_site_disp_dict = {}
-    for branch_id in sz_branch_weight_dict.keys():
-        sz_slip_taper = False
-
-        extension1 = gf_name + sz_branch_weight_dict[branch_id]["file_suffix"]
-        # get displacement dictionary
-        # this extracts the rates from the solution directory, but it is not scaled by the rate scaling factor
-        sz_branch_site_disp_dict = get_site_disp_dict(
-            extension1, slip_taper=sz_slip_taper, model_version_results_directory=sz_model_version_results_directory)
-
-        # multiply the rates by the rate scaling factor
-        rate_scaling_factor = sz_branch_weight_dict[branch_id]["S"]
-        for site in sz_branch_site_disp_dict.keys():
-            # multiply each value in the rates array by the rate scaling factor
-            sz_branch_site_disp_dict[site]["scaled_rates"] = \
-                [rate * rate_scaling_factor for rate in sz_branch_site_disp_dict[site]["rates"]]
-
-        all_sz_branches_site_disp_dict[branch_id] = {"site_disp_dict":sz_branch_site_disp_dict,
-                                                   "branch_weight":sz_branch_weight_dict[branch_id]["total_weight_RN"]}
-
-    # make all the combinations of crustal and subduction zone branch pairs
-    crustal_sz_branch_pairs = list(itertools.product(crustal_branch_weight_dict.keys(),
-                                                      sz_branch_weight_dict.keys()))
-
-    counter = 0
     paired_crustal_sz_PPE_dict = {}
-    for pair in crustal_sz_branch_pairs:
-        # get the branch unique ID for the crustal and sz combos
-        crustal_unique_id, sz_unique_id = pair[0], pair[1]
-        pair_unique_id = crustal_unique_id + "_" + sz_unique_id
+    # Only run following steps if NESI has not been used on each site
+    if not all([nesi, nesi_step == 'combine']):
+        all_crustal_branches_site_disp_dict = {}
+        for branch_id in crustal_branch_weight_dict.keys():
+            extension1 = gf_name + crustal_branch_weight_dict[branch_id]["file_suffix"]
+            # get site displacement dictionary
+            # this extracts the rates from the solution directory, but it is not scaled by the rate scaling factor
+            crustal_branch_site_disp_dict = get_site_disp_dict(
+                extension1, slip_taper=slip_taper, model_version_results_directory=crustal_model_version_results_directory)
 
-        print(f"calculating {pair_unique_id} PPE\t({counter} of {len(crustal_sz_branch_pairs)} branches)")
-        counter += 1
+            # multiply the rates by the rate scaling factor
+            rate_scaling_factor = crustal_branch_weight_dict[branch_id]["S"]
+            for site in crustal_branch_site_disp_dict.keys():
+                # multiply each value in the rates array by the rate scaling factor
+                crustal_branch_site_disp_dict[site]["scaled_rates"] = \
+                    [rate * rate_scaling_factor for rate in crustal_branch_site_disp_dict[site]["rates"]]
 
-        site_names = list(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"].keys())
+            all_crustal_branches_site_disp_dict[branch_id] = {"site_disp_dict":crustal_branch_site_disp_dict,
+                                                    "branch_weight":crustal_branch_weight_dict[branch_id][
+                                                        "total_weight_RN"]}
 
-        pair_weight = all_crustal_branches_site_disp_dict[crustal_unique_id]["branch_weight"] * \
-                       all_sz_branches_site_disp_dict[sz_unique_id]["branch_weight"]
+        # make a dictionary of displacements at each site from all the crustal earthquake scenarios
+        all_sz_branches_site_disp_dict = {}
+        for branch_id in sz_branch_weight_dict.keys():
+            sz_slip_taper = False
 
-        # loop over all the sites for the crustal and sz branches of interest
-        # make one long list of displacements and corresponding scaled rates per site
-        pair_site_disp_dict = {}
-        for j, site in enumerate(site_names):
-            site_coords = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["site_coords"]
+            extension1 = gf_name + sz_branch_weight_dict[branch_id]["file_suffix"]
+            # get displacement dictionary
+            # this extracts the rates from the solution directory, but it is not scaled by the rate scaling factor
+            sz_branch_site_disp_dict = get_site_disp_dict(
+                extension1, slip_taper=sz_slip_taper, model_version_results_directory=sz_model_version_results_directory)
 
-            crustal_site_disps = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["disps"]
-            sz_site_disps = all_sz_branches_site_disp_dict[sz_unique_id]["site_disp_dict"][site]["disps"]
+            # multiply the rates by the rate scaling factor
+            rate_scaling_factor = sz_branch_weight_dict[branch_id]["S"]
+            for site in sz_branch_site_disp_dict.keys():
+                # multiply each value in the rates array by the rate scaling factor
+                sz_branch_site_disp_dict[site]["scaled_rates"] = \
+                    [rate * rate_scaling_factor for rate in sz_branch_site_disp_dict[site]["rates"]]
 
-            crustal_site_scaled_rates = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][
-                site]["scaled_rates"]
-            sz_site_scaled_rates = all_sz_branches_site_disp_dict[sz_unique_id]["site_disp_dict"][site]["scaled_rates"]
+            all_sz_branches_site_disp_dict[branch_id] = {"site_disp_dict":sz_branch_site_disp_dict,
+                                                    "branch_weight":sz_branch_weight_dict[branch_id]["total_weight_RN"]}
 
-            pair_site_disps = crustal_site_disps + sz_site_disps
-            pair_scaled_rates = crustal_site_scaled_rates + sz_site_scaled_rates
+        # make all the combinations of crustal and subduction zone branch pairs
+        crustal_sz_branch_pairs = list(itertools.product(crustal_branch_weight_dict.keys(),
+                                                        sz_branch_weight_dict.keys()))
 
-            pair_site_disp_dict[site] = {"disps": pair_site_disps, "scaled_rates": pair_scaled_rates,
-                                                 "site_coords": site_coords}
+        counter = 0
+        for pair in crustal_sz_branch_pairs:
+            # get the branch unique ID for the crustal and sz combos
+            crustal_unique_id, sz_unique_id = pair[0], pair[1]
+            pair_unique_id = crustal_unique_id + "_" + sz_unique_id
 
+            print(f"calculating {pair_unique_id} PPE\t({counter} of {len(crustal_sz_branch_pairs)} branches)")
+            counter += 1
 
-        # get exceedence probabilities for each crustal/sz pair
+            site_names = list(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"].keys())
 
-        if not os.path.exists(f"../{out_directory}"):
-            os.mkdir(f"../{out_directory}")
-        pair_cumu_PPE_dict = get_cumu_PPE(branch_key=pair_unique_id, branch_site_disp_dict=pair_site_disp_dict,
-                                            model_version_results_directory=out_directory,
-                                            slip_taper=slip_taper, time_interval=100,
-                                            n_samples=n_samples, extension1="")
+            pair_weight = all_crustal_branches_site_disp_dict[crustal_unique_id]["branch_weight"] * \
+                        all_sz_branches_site_disp_dict[sz_unique_id]["branch_weight"]
 
-        paired_crustal_sz_PPE_dict[pair_unique_id] = {"cumu_PPE_dict": pair_cumu_PPE_dict, "branch_weight": pair_weight}
+            # loop over all the sites for the crustal and sz branches of interest
+            # make one long list of displacements and corresponding scaled rates per site
+            pair_site_disp_dict = {}
+            for j, site in enumerate(site_names):
+                site_coords = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["site_coords"]
+
+                crustal_site_disps = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["disps"]
+
+                sz_site_disps = all_sz_branches_site_disp_dict[sz_unique_id]["site_disp_dict"][site]["disps"]
+
+                crustal_site_scaled_rates = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][
+                    site]["scaled_rates"]
+                sz_site_scaled_rates = all_sz_branches_site_disp_dict[sz_unique_id]["site_disp_dict"][site]["scaled_rates"]
+
+                pair_site_disps = crustal_site_disps + sz_site_disps
+                pair_scaled_rates = crustal_site_scaled_rates + sz_site_scaled_rates
+
+                pair_site_disp_dict[site] = {"disps": pair_site_disps, "scaled_rates": pair_scaled_rates,
+                                                    "site_coords": site_coords}
+                
+                if nesi:
+                    os.makedirs(f"../{out_directory}/{pair_unique_id}", exist_ok=True)
+                    with open(f"../{out_directory}/{pair_unique_id}/branch_site_disp_dict_{pair_unique_id}.pkl", "wb") as f:
+                        pkl.dump(pair_site_disp_dict, f)
+
+            # get exceedence probabilities for each crustal/sz pair
+            if not os.path.exists(f"../{out_directory}"):
+                os.mkdir(f"../{out_directory}")
+            if nesi and nesi_step == 'prep':
+                    print(f"\tPrepping for NESI....")
+                    prep_nesi_site_list(out_directory, pair_site_disp_dict, pair_unique_id)
+                    continue
+            else:
+                pair_cumu_PPE_dict = get_cumu_PPE(branch_key=pair_unique_id, branch_site_disp_dict=pair_site_disp_dict,
+                                                  site_ids=pair_site_disp_dict.keys(),
+                                                    model_version_results_directory=out_directory,
+                                                    slip_taper=slip_taper, time_interval=100,
+                                                    n_samples=n_samples, extension1="")
+                paired_crustal_sz_PPE_dict[pair_unique_id] = {"cumu_PPE_dict": pair_cumu_PPE_dict, "branch_weight": pair_weight}
+
+    else:
+        for counter, pair in enumerate(crustal_sz_branch_pairs):
+            # Combine site displacements into branch dictionaries
+            crustal_unique_id, sz_unique_id = pair[0], pair[1]
+            pair_unique_id = crustal_unique_id + "_" + sz_unique_id
+            print(f"Combining {pair_unique_id} PPE\t({counter + 1} of {len(crustal_sz_branch_pairs)} branches)")
+            print(f"\tCombining site dictionaries....")
+            
+            with open(f"../{out_directory}/{pair_unique_id}/branch_site_disp_dict_{pair_unique_id}.pkl", "rb") as fid:
+                pair_site_disp_dict = pkl.dump(fid)
+            pair_cumu_PPE_dict = compile_site_cumu_PPE(pair_site_disp_dict, out_directory, pair_unique_id,
+                                                            taper_extension=taper_extension, return_dict=True)
+            paired_crustal_sz_PPE_dict[pair_unique_id] = {"cumu_PPE_dict": pair_cumu_PPE_dict, "branch_weight": pair_weight}
 
     with open(f"../{out_directory}/{paired_PPE_pickle_name}", "wb") as f:
         pkl.dump(paired_crustal_sz_PPE_dict, f)
