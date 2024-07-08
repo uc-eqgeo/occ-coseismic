@@ -2,6 +2,7 @@ import pickle as pkl
 import pandas as pd
 import random
 import os
+import sys
 import matplotlib
 from shapely.geometry import Point
 from helper_scripts import get_rupture_disp_dict, save_target_rates
@@ -17,7 +18,7 @@ from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE,
 results_directory = "results"
 
 slip_taper = False                    # True or False, only matter if crustal otherwise it defaults to false later.
-fault_type = "crustal"                  # "crustal or "sz" or "py"
+fault_type = "sz"                  # "crustal or "sz" or "py"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
@@ -293,7 +294,7 @@ if gf_name == "sites":
                 prep_SLURM_submission(model_version_results_directory, hours = 0, mins=3, mem=45, cpus=1, account='uc03610',
                                         time_interval=100, n_samples=n_samples, sd=0.4)
                 print(f'Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl')
-                exit()
+                sys.exit()
 
     ## calculate rupture branch probabilities and make plots
     for i in range(len(extension1_list)):
@@ -309,6 +310,7 @@ if gf_name == "sites":
                                 model_version_results_directory=model_version_results_directory,nesi=nesi)
             ### step 2: get exceedance probability dictionary
             get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
+                         site_ids=branch_site_disp_dict.keys(),
                          model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
                          time_interval=100, n_samples=n_samples)
 

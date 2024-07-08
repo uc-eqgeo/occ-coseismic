@@ -21,7 +21,7 @@ def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, 
 
     sites_of_interest = list(branch_site_disp_dict.keys())
 
-    branchdir = f"../{model_version_results_directory}/{extension1}"
+    branchdir = f"{model_version_results_directory}/{extension1}"
 
     os.makedirs(f"{branchdir}/site_cumu_exceed{S}", exist_ok=True)
 
@@ -108,15 +108,20 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
         return site_PPE_dict
 
 if __name__ == "__main__":
+    # Import here to prevent circular imports
+    from probabalistic_displacement_scripts import get_cumu_PPE
+
     parser = argparse.ArgumentParser(description="Script to calculate cumulative exceedance probabilities for each site")
     parser.add_argument("--site", type=str, required=True, help="Site to calculate exceedance probabilities for")
     parser.add_argument("--branchdir", type=str, required=True, help="Directory of the branch results")
     parser.add_argument("--time_interval", type=int, default=100, help="Time interval to calculate exceedance probabilities over")
-    parser.add_argument("--n_samples", type=int, default=1e6, help="Number of samples to use for the poissonian simulation")
+    parser.add_argument("--n_samples", type=int, default=1e5, help="Number of samples to use for the poissonian simulation")
     parser.add_argument("--sd", type=float, default=0.4, help="Standard deviation of the normal distribution to use for uncertainty in displacements")
     parser.add_argument("--scaling", type=str, default="", help="Scaling factor for the displacements")
+    parser.add_argument("--slip_taper", default=False, action='store_true', help="Tapered slip distribution")
     args = parser.parse_args()
 
+    """
     start = time()
     site_of_interest = args.site
     branch_results_directory = args.branchdir
@@ -209,5 +214,35 @@ if __name__ == "__main__":
     with open(f"{branch_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.pkl", "wb") as f:
         pkl.dump(single_site_dict, f)
     
+    print(f"Time taken: {time() - start:.2f} seconds")
+    print(f"Site: {site_of_interest} complete")
+    """
+
+    start = time()
+    site_of_interest = args.site
+    branch_results_directory = args.branchdir
+    investigation_time = args.time_interval
+    n_samples = args.n_samples
+    sd = args.sd
+    if args.scaling == '_' or args.scaling == '_\r':
+        scaling = ""
+    else:
+        scaling = args.scaling
+
+    print(f"Running site {site_of_interest}....")
+
+    extension1 = os.path.basename(branch_results_directory)
+
+    with open(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}.pkl", "rb") as fid:
+            branch_disp_dict = pkl.load(fid)
+
+    # Additional check for if keys are integers
+    if isinstance([key for key in branch_disp_dict.keys()][0], int):
+        if '_' not in site_of_interest:
+            site_of_interest = int(site_of_interest)
+
+    get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, [site_of_interest], n_samples,
+                 extension1, branch_key="nan", time_interval=100, sd=0.4, scaling=scaling)
+
     print(f"Time taken: {time() - start:.2f} seconds")
     print(f"Site: {site_of_interest} complete")

@@ -108,8 +108,8 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total: 
         print()
 
-def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict,  n_samples,
-                 extension1, branch_key="nan", time_interval=100, sd=0.4):
+def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict,  site_ids, n_samples,
+                 extension1, branch_key="nan", time_interval=100, sd=0.4, scaling=''):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
 
@@ -135,9 +135,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
-    printProgressBar(0, len(branch_site_disp_dict.keys()), prefix = f'\tProcessing {len(branch_site_disp_dict.keys())} Sites:', suffix = 'Complete', length = 50)
-    for i, site_of_interest in enumerate(branch_site_disp_dict.keys()):
-        printProgressBar(i + 1, len(branch_site_disp_dict.keys()), prefix = f'\tProcessing {len(branch_site_disp_dict.keys())} Sites:', suffix = 'Complete', length = 50)
+    printProgressBar(0, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete', length = 50)
+    for i, site_of_interest in enumerate(site_ids):
+        printProgressBar(i + 1, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete', length = 50)
         # print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
         # if i == 0:
         #     if branch_key not in ["nan", ""]:
@@ -212,10 +212,13 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     
     if 'grid_meta' in branch_site_disp_dict.keys():
             site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
-    
-    if extension1 != "":
+
+    if extension1 != "" and scaling == "":
         with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
               f"{taper_extension}.pkl", "wb") as f:
+            pkl.dump(site_PPE_dict, f)
+    elif scaling != "":
+        with open(f"{model_version_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.pkl", "wb") as f:
             pkl.dump(site_PPE_dict, f)
 
     else:
@@ -289,6 +292,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
         else:
             branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict,
+                        site_ids=branch_site_disp_dict.keys(),
                         model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
                         time_interval=100, n_samples=n_samples, extension1="")
 
@@ -490,6 +494,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                     continue
             else:
                 pair_cumu_PPE_dict = get_cumu_PPE(branch_key=pair_unique_id, branch_site_disp_dict=pair_site_disp_dict,
+                                                  site_ids=pair_site_disp_dict.keys(),
                                                     model_version_results_directory=out_directory,
                                                     slip_taper=slip_taper, time_interval=100,
                                                     n_samples=n_samples, extension1="")
