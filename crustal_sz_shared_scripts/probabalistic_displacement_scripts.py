@@ -1,22 +1,25 @@
-import random
-import geopandas as gpd
-import pandas as pd
-import os
-import itertools
-import pickle as pkl
-import matplotlib.ticker as mticker
-import rasterio
-from rasterio.transform import Affine
-from time import time
-
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
-from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
-from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile
-from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE
-from matplotlib.patches import Rectangle
-from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
+try:
+    import geopandas as gpd
+    import rasterio
+    from rasterio.transform import Affine
+    from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile
+    from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE
+    from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
+except:
+    print("Some modules not loaded - assume you're just running get_cumu_PPE on NESI")
+finally:
+    import os
+    import random
+    import itertools
+    import numpy as np
+    import pandas as pd
+    import pickle as pkl
+    from time import time
+    import matplotlib
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+    import matplotlib.ticker as mticker
+    from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 
 matplotlib.rcParams['pdf.fonttype'] = 42
 
