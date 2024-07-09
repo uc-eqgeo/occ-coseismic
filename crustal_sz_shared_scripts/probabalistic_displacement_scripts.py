@@ -1,3 +1,4 @@
+nesi_print = False
 try:
     import geopandas as gpd
     import rasterio
@@ -7,6 +8,7 @@ try:
     from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
 except:
     print("Some modules not loaded - assume you're just running get_cumu_PPE on NESI")
+    nesi_print = True
 finally:
     import os
     import random

@@ -1,5 +1,6 @@
 import pickle as pkl
 import pandas as pd
+import numpy as np
 import random
 import os
 import sys
@@ -18,7 +19,7 @@ from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE,
 results_directory = "results"
 
 slip_taper = False                    # True or False, only matter if crustal otherwise it defaults to false later.
-fault_type = "sz"                  # "crustal or "sz" or "py"
+fault_type = "py"                  # "crustal or "sz" or "py"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
@@ -31,8 +32,8 @@ specific_rupture_ids = False
 #can only run one type of GF and fault geometry at a time
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
 
-crustal_model_extension = "_Model_CFM_50km_nesi"         # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_national_50km_nesi"                # must match suffix in the subduction directory with gfs
+crustal_model_extension = "_Model_CFM_southland_10km"         # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_southland_10km"                # must match suffix in the subduction directory with gfs
 
 nesi = True
 nesi_step = 'prep'  # 'prep' or 'combine'
@@ -71,6 +72,13 @@ skip_displacements = False
 calculate_cumu_PPE = True
 
 testing = False
+
+if testing:
+    n_samples = 1e4
+    job_time = 0.3
+else:
+    n_samples = 1e5
+    job_time = 2
 
 # this makes so when you export fonts as pdfs, they are editable in Illustrator
 matplotlib.rcParams['pdf.fonttype'] = 42
@@ -252,12 +260,6 @@ if skip_displacements is False and not dont_make_figures:
         # save_target_rates(NSHM_directory_list[i], target_rupture_ids=target_rupture_ids, extension1=extension1_list[i],
         #                   results_version_directory=model_version_results_directory)
 
-if testing:
-    n_samples = 1e4
-else:
-    n_samples = 1e6
-
-
 if gf_name == "sites":
     taper_extension = "_tapered" if slip_taper else "_uniform"
 
@@ -268,7 +270,7 @@ if gf_name == "sites":
 
             if os.path.exists(f"../{model_version_results_directory}/site_name_list.txt"):
                 os.remove(f"../{model_version_results_directory}/site_name_list.txt")
-
+            
             for i in range(len(extension1_list)):
                 print(f"*~ Processing site information for {extension1_list[i]} ~*")
                 pkl_file = f"../{model_version_results_directory}/{extension1_list[i]}/cumu_exceed_prob_{extension1_list[i]}{taper_extension}.pkl"
@@ -291,7 +293,25 @@ if gf_name == "sites":
 
             if nesi_step == 'prep':
                 print('\nCreating SLURM submission script....')
-                prep_SLURM_submission(model_version_results_directory, hours = 0, mins=3, mem=45, cpus=1, account='uc03610',
+                n_array_tasks = 1000
+                n_branches = len(extension1_list)
+                min_tasks_per_array = 100
+
+                if not 'branch_site_disp_dict' in locals():
+                    branch_site_disp_dict = get_site_disp_dict(extension1_list[0], slip_taper=slip_taper,
+                                        model_version_results_directory=model_version_results_directory)
+
+                n_sites = len(branch_site_disp_dict)
+                n_jobs = n_branches * n_sites
+                tasks_per_array = np.ceil(n_jobs / n_array_tasks)
+                if tasks_per_array < min_tasks_per_array:
+                    tasks_per_array = min_tasks_per_array
+                array_time = job_time * tasks_per_array
+                hours, secs = divmod(array_time, 3600)
+                mins = np.ceil(secs / 60)
+                n_tasks = int(np.ceil(n_jobs / tasks_per_array))
+
+                prep_SLURM_submission(model_version_results_directory,  tasks_per_array, n_tasks, hours = int(hours), mins=int(mins), mem=45, cpus=1, account='uc03610',
                                         time_interval=100, n_samples=n_samples, sd=0.4)
                 print(f'Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl')
                 sys.exit()
@@ -309,9 +329,9 @@ if gf_name == "sites":
             branch_site_disp_dict = get_site_disp_dict(extension1_list[i], slip_taper=slip_taper,
                                 model_version_results_directory=model_version_results_directory,nesi=nesi)
             ### step 2: get exceedance probability dictionary
-            get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict,
-                        model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-                        time_interval=100, n_samples=n_samples, sd=0.4)  # n_samples reduced from 1e6 for testing speed
+            get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict, site_ids=branch_site_disp_dict.keys(),  
+                         model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
+                         time_interval=100, n_samples=n_samples, sd=0.4)  # n_samples reduced from 1e6 for testing speed
 
         # Save results to tif files
         print(f"*~ Writing results to geotiffs~*")
@@ -375,7 +395,7 @@ if gf_name == "grid":
             if nesi:
                 if nesi_step == 'prep':
                     print(f"\tPrepping for NESI....")
-                    prep_cumu_PPE_NESI(model_version_results_directory, branch_site_disp_dict, extension1_list[i], 
+                    prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1_list[i], 
                        hours = 0, mins=3, mem=45, cpus=1, account='uc03610',
                        time_interval=100, n_samples=n_samples, sd=0.4)
                     continue
