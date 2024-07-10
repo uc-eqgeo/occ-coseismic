@@ -23,7 +23,7 @@ fault_type = "py"                  # "crustal or "sz" or "py"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
-single_branch = False
+single_branch = True
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
@@ -32,11 +32,16 @@ specific_rupture_ids = False
 #can only run one type of GF and fault geometry at a time
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
 
-crustal_model_extension = "_Model_CFM_southland_10km"         # "_Model1", "_Model2", or "_CFM"
+crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_southland_10km"                # must match suffix in the subduction directory with gfs
 
-nesi = True
+nesi = False
 nesi_step = 'prep'  # 'prep' or 'combine'
+
+load_random = True
+
+if nesi:
+    load_random = True
 
 default_plot_order = True
 plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
@@ -79,6 +84,9 @@ if testing:
 else:
     n_samples = 1e5
     job_time = 2
+
+investigation_time = 100
+sd = 0.4
 
 # this makes so when you export fonts as pdfs, they are editable in Illustrator
 matplotlib.rcParams['pdf.fonttype'] = 42
@@ -328,10 +336,28 @@ if gf_name == "sites":
             ## step 1: get site displacement dictionary
             branch_site_disp_dict = get_site_disp_dict(extension1_list[i], slip_taper=slip_taper,
                                 model_version_results_directory=model_version_results_directory,nesi=nesi)
+            
+            print('\tPreparing random arrays')
+            site1 = list(branch_site_disp_dict.keys())[0]
+            rng = np.random.default_rng()
+            if "scaled_rates" not in branch_site_disp_dict[site1].keys():
+                # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
+                rates = np.array(branch_site_disp_dict[site1]["rates"])
+            else:
+                rates = np.array(branch_site_disp_dict[site1]["scaled_rates"])
+            
+            n_ruptures = rates.shape[0]
+            scenarios = rng.poisson(investigation_time * rates, size=(int(n_samples), n_ruptures))
+            disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
+            with open(f"../{model_version_results_directory}/{extension1_list[i]}/scenarios.pkl", "wb") as fid:
+                pkl.dump(scenarios, fid)
+            with open(f"../{model_version_results_directory}/{extension1_list[i]}/disp_uncertainty.pkl", "wb") as fid:
+                pkl.dump(disp_uncertainty, fid)
+
             ### step 2: get exceedance probability dictionary
             get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict, site_ids=branch_site_disp_dict.keys(),  
                          model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-                         time_interval=100, n_samples=n_samples, sd=0.4)  # n_samples reduced from 1e6 for testing speed
+                         time_interval=investigation_time, n_samples=n_samples, sd=sd, load_random=load_random)
 
         # Save results to tif files
         print(f"*~ Writing results to geotiffs~*")

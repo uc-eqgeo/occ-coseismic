@@ -67,7 +67,6 @@ def get_site_disp_dict(extension1, slip_taper, model_version_results_directory, 
         disps_by_scenario.append(disps)
         annual_rate = rupture_disp_dictionary[rupture_id]["annual_rate"]
         annual_rates_by_scenario.append(annual_rate)
-
     # list of lists. each item is a site location that contains displacements from each scenario (disp list length =
     # number of rupture scenarios)
     disps_by_location = []
@@ -114,8 +113,14 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total: 
         print()
 
+def time_elasped(current_time, start_time):
+    elapsed_time = current_time - start_time
+    hours, rem = divmod(elapsed_time, 3600)
+    minutes, seconds = divmod(rem, 60)
+    return "{:0>2}:{:0>2}:{:0>2}".format(int(hours), int(minutes), int(seconds))
+
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict,  site_ids, n_samples,
-                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling=''):
+                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling='', load_random = False):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
 
@@ -141,9 +146,10 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
-    printProgressBar(0, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete', length = 50)
+    start = time()
+    printProgressBar(0, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete 00:00:00 (00:00 s per site)', length = 50)
     for i, site_of_interest in enumerate(site_ids):
-        printProgressBar(i + 1, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete', length = 50)
+        lap = time()
         # print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
         # if i == 0:
         #     if branch_key not in ["nan", ""]:
@@ -166,22 +172,54 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         drop_noslip = True
         if drop_noslip:
             no_slip = [ix for ix, slip in enumerate(site_dict_i["disps"]) if slip == 0]
+            slip = [ix for ix, slip in enumerate(site_dict_i["disps"]) if slip != 0]
             disps = [slip for ix, slip in enumerate(site_dict_i['disps']) if ix not in no_slip]
             scaled_rates = [rate for ix, rate in enumerate(scaled_rates) if ix not in no_slip]
         else:
             disps = site_dict_i['disps']
+            slip = np.arange(len(site_dict_i['disps']))
 
         # average number of events per time interval (effectively R*T from Ned's guide)
         lambdas = investigation_time * np.array(scaled_rates)
 
-        # Generate n_samples of possible earthquake ruptures for random 100 year intervals
-        # returns boolean array where 0 means "no event" and 1 means "event". rows = 100 yr window, columns = earthquake
-        # rupture
-        scenarios = rng.poisson(lambdas, size=(int(n_samples), lambdas.size))
+        if load_random:
+            if not os.path.exists(f"../{model_version_results_directory}/{extension1}/scenarios.pkl") or not os.path.exists(f"../{model_version_results_directory}/{extension1}/disp_uncertainty.pkl"):
+                load_random = False
 
-        # assigns a normal distribution with a mean of 1 and a standard deviation of sd
-        # effectively a multiplier for the displacement value
-        disp_uncertainty = rng.normal(1., sd, size=(int(n_samples), lambdas.size))
+        if load_random:
+            # Load array of random samples rather than regenerating them
+            lap = time()
+            with open(f"../{model_version_results_directory}/{extension1}/scenarios.pkl", 'rb') as f:
+                scenarios = pkl.load(f)
+            with open(f"../{model_version_results_directory}/{extension1}/disp_uncertainty.pkl", 'rb') as f:
+                disp_uncertainty = pkl.load(f)
+            #print(f"\nTime taken to load random samples: {time() - lap:.5f} s")
+            lap = time()
+            
+            # As a concession to not regenerating random samples and scenarios, randomly shift the loaded uncertainty arrays
+            sample_shift = np.random.randint(-scenarios.shape[0], scenarios.shape[0])
+            rupture_shift = np.random.randint(-scenarios.shape[1], scenarios.shape[1])
+            #print(f"Ints: {time() - lap:.5f} s")
+            lap = time()
+            disp_uncertainty = np.roll(scenarios, (sample_shift, rupture_shift))[:, :lambdas.size]
+            #print(f"Disp Shift: {time() - lap:.5f} s")
+            lap = time()
+            # Leave scenarios alone - no point rolling sample order, and can't shift sideways as can't appy one rupture's distribution
+            # to another
+            scenarios = scenarios[:, slip]
+            #print(f"Scenario Crop Shift: {time() - lap:.5f} s")
+            lap = time()
+            #print(f"Time taken to prep random samples: {time() - lap:.5f} s\n")
+        else:
+            # Generate n_samples of possible earthquake ruptures for random 100 year intervals
+            # returns boolean array where 0 means "no event" and 1 means "event". rows = 100 yr window, columns = earthquake
+            # rupture
+            scenarios = rng.poisson(lambdas, size=(int(n_samples), lambdas.size))
+
+            # assigns a normal distribution with a mean of 1 and a standard deviation of sd
+            # effectively a multiplier for the displacement value
+            disp_uncertainty = rng.normal(1., sd, size=(int(n_samples), lambdas.size))
+            #print(f"\nTime taken to generate random samples: {time() - lap:.5f} s\n")
 
         # for each 100 yr scenario, get displacements from EQs that happened
         disp_scenarios = scenarios * disps
@@ -258,6 +296,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "error_total_abs": error_abs,
                                            "error_up": error_up,
                                            "error_down": error_down}
+
+        elapsed = time_elasped(time(), start)
+        printProgressBar(i + 1, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = f'Complete {elapsed} ({(time()-start) / (i + 1):.2f} s per site)', length = 50)
 
     if 'grid_meta' in branch_site_disp_dict.keys():
             site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']

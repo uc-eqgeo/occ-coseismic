@@ -24,7 +24,7 @@ def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, 
 
     branchdir = f"{model_version_results_directory}/{extension1}"
 
-    os.makedirs(f"{branchdir}/site_cumu_exceed{S}", exist_ok=True)
+    os.makedirs(f"../{branchdir}/site_cumu_exceed{S}", exist_ok=True)
 
     site_file = f"../{model_version_results_directory}/site_name_list.txt"
 
@@ -305,7 +305,7 @@ if __name__ == "__main__":
         # Needs to be run one site at a time so sites can be recombined later
         for site in sites_of_interest:
             get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, [site], n_samples,
-                    extension1, branch_key="nan", time_interval=investigation_time, sd=sd, scaling=scaling)
+                    extension1, branch_key="nan", time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True)
 
         if nesi_print:
             os.system(f"echo {extension1} complete in : {time() - begin:.2f} seconds\n")
