@@ -147,7 +147,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
     start = time()
-    printProgressBar(0, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete 00:00:00 (00:00 s per site)', length = 50)
+    printProgressBar(0, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete 00:00:00 (00:00s/site)', length = 50)
     for i, site_of_interest in enumerate(site_ids):
         lap = time()
         # print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
@@ -298,7 +298,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "error_down": error_down}
 
         elapsed = time_elasped(time(), start)
-        printProgressBar(i + 1, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = f'Complete {elapsed} ({(time()-start) / (i + 1):.2f} s per site)', length = 50)
+        printProgressBar(i + 1, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = f'Complete {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length = 50)
 
     if 'grid_meta' in branch_site_disp_dict.keys():
             site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
