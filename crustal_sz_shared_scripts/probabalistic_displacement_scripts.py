@@ -301,8 +301,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "error_up": error_up,
                                            "error_down": error_down}
         
-        printProgressBar(i + 1, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete', length = 50)
-
         elapsed = time_elasped(time(), start)
         printProgressBar(i + 1, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = f'Complete {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length = 50)
 
