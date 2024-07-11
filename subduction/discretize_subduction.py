@@ -10,10 +10,10 @@ import os
 version_extension  = "_southland_10km"
 
 #this can be any working branch, should be the same for all.
-NSHM_directory = "NZSHM22_AveragedInversionSolution-QXV0b21hdGlvblRhc2s6MTA3MzE5"
+NSHM_directory = "NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2"
 
 # Define whch subduction zone (hikkerk / puysegur)
-sz_zone = 'puysegur'
+sz_zone = 'hikkerk'
 
 if not sz_zone in ['hikkerk', 'puysegur']:
     print("Please define a valid subduction zone (hikkerk / puysegur).")
