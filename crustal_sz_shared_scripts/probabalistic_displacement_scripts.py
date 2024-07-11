@@ -8,12 +8,13 @@ import matplotlib.ticker as mticker
 import rasterio
 from rasterio.transform import Affine
 from time import time
+import xarray as xr
 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
-from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile
+from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile, maximum_displacement_plot
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE
 from matplotlib.patches import Rectangle
 from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
@@ -109,8 +110,9 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total: 
         print()
 
-def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict,  site_ids, n_samples,
-                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling=''):
+def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
+                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling='',
+                 plot_maximum_displacement=True):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
 
@@ -125,6 +127,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     - need to decide on number of 100-yr simulations to run (n_samples = 1000000)
     """
 
+    if plot_maximum_displacement:
+        maximum_displacement_plot(site_ids, branch_site_disp_dict, model_version_results_directory, extension1, threshold=0.01)
+
     # use random number generator to initialise monte carlo sampling
     rng = np.random.default_rng()
 
@@ -137,6 +142,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
     printProgressBar(0, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete', length = 50)
+
     for i, site_of_interest in enumerate(site_ids):
         printProgressBar(i + 1, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete', length = 50)
         # print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
@@ -1524,6 +1530,8 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
         PPE_dict = pkl.load(fid)
 
     sites = [*PPE_dict]
+    if 'branch_weights' in sites:
+        sites.remove('branch_weights')
 
     # Calculate XY extents and resolution for tifs
     if grid:
@@ -1536,8 +1544,8 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
         y_data = np.arange(round(y - buffer_size, -3), round(y + buffer_size, -3), y_res)
 
     else:
-        site_x = [pixel['site_coords'][0] for _, pixel in PPE_dict.items()]
-        site_y = [pixel['site_coords'][1] for _, pixel in PPE_dict.items()]
+        site_x = [pixel['site_coords'][0] for key, pixel in PPE_dict.items() if key != 'branch_weights']
+        site_y = [pixel['site_coords'][1] for key, pixel in PPE_dict.items() if key != 'branch_weights']
 
         x_data = np.unique(site_x)
         y_data = np.unique(site_y)
@@ -1620,3 +1628,135 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
                             dtype=thresh_grd.dtype, crs='EPSG:2193', transform=transform) as dst:
                 dst.write(thresh_grd)
                 dst.descriptions = [str(probability) for probability in probabilites]
+
+
+def save_disp_prob_xarrays(extension1,  slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0.1, thresholds=None, \
+                           probs_lims = [0.02, 0.5], probs_step=0.02, probabilities=None, output_thresh=True, output_probs=True, weighted=False, grid=False,
+                           output_grids=True):
+    """ 
+    Add all results to x_array datasets, and save as netcdf files
+    """
+
+    # Define File Paths
+    exceed_type_list = ["total_abs", "up", "down"]
+
+    if slip_taper is True:
+        taper_extension = "_tapered"
+    else:
+        taper_extension = "_uniform"
+    
+    if weighted:
+        dict_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict_{extension1}{taper_extension}.pkl"
+        outfile_directory = f"../{model_version_results_directory}/weighted_mean_xarray"
+        threshold_key = 'threshold_vals'
+    else:
+        dict_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.pkl"
+        outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
+        threshold_key = 'thresholds'
+    
+    with open(dict_file, "rb") as fid:
+        PPE_dict = pkl.load(fid)
+
+    sites = [*PPE_dict]
+    if 'branch_weights' in sites:
+        sites.remove('branch_weights')
+
+    if not os.path.exists(f"{outfile_directory}"):
+        os.mkdir(f"{outfile_directory}")
+
+    if output_grids:
+        site_x = [pixel['site_coords'][0] for key, pixel in PPE_dict.items() if key != 'branch_weights']
+        site_y = [pixel['site_coords'][1] for key, pixel in PPE_dict.items() if key != 'branch_weights']
+
+        x_data = np.unique(site_x)
+        y_data = np.unique(site_y)
+
+        xmin, xmax = min(x_data), max(x_data)
+        ymin, ymax = min(y_data), max(y_data)
+        x_res, y_res = min(np.diff(x_data)), min(np.diff(y_data))
+
+        x_data = np.arange(xmin, xmax + x_res, x_res)
+        y_data = np.arange(ymin, ymax + y_res, y_res)
+
+        if not all(np.in1d(site_x, x_data)) or not all(np.in1d(site_y, y_data)):
+            print("Site coordinates cant all be aligned to grid. Check sites are evenly spaced. Saving as sites")
+            pass
+
+        site_x = (np.array(site_x) - x_data[0]) / x_res
+        site_y = (np.array(site_y) - y_data[0]) / y_res
+
+        # Create Datasets
+        da = {}
+        ds = xr.Dataset()
+        if extension1 == "":
+            out_name=''
+            branch_name = os.path.basename(model_version_results_directory)
+        else:
+            out_name=f"{extension1}_"
+            branch_name = extension1
+
+        if output_thresh:
+            print(f"\tAdding Displacement Probability DataArrays....")
+            if thresholds is None:
+                thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
+        
+            if not all(np.in1d(thresholds, PPE_dict[sites[0]][threshold_key])):
+                thresholds = thresholds[np.in1d(thresholds, PPE_dict[sites[0]][threshold_key])]
+            if len(thresholds) == 0:
+                print('No requested thresholds were in the PPE dictionary. Change requested thresholds')
+                pass
+            else:
+                print('Not all requested thresholds were in PPE dictionary. Running available thresholds...')
+                print('Available thresholds are:', thresholds)
+        
+            for exceed_type in exceed_type_list:
+                thresh_grd = np.zeros([len(thresholds), len(y_data), len(x_data)]) * np.nan
+                probs = np.zeros([len(sites), len(thresholds)])
+                for ii, threshold in enumerate(thresholds):
+                    probs[:, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
+                                                    threshold=threshold, site_list=sites, weighted=weighted)
+                if grid:
+                    thresh_grd[ii, :, :] = np.reshape(probs, (len(y_data), len(x_data)))
+                else:
+                    for jj in range(len(sites)):
+                        thresh_grd[:, int(site_y[jj]), int(site_x[jj])] = probs[jj, :]
+
+                da[exceed_type] = xr.DataArray(thresh_grd, dims=['threshold', 'lat', 'lon'], coords={'threshold': thresholds, 'lat': y_data, 'lon': x_data})
+                da[exceed_type].attrs['exceed_type'] = exceed_type
+                da[exceed_type].attrs['threshold'] = 'Displacement (m)'
+                da[exceed_type].attrs['crs'] = 'EPSG:2193'
+
+                ds['disp_' + exceed_type] = da[exceed_type]
+            out_name += 'disp_'
+
+        if output_probs:
+            print(f"\tAdding Probability Exceedence DataArrays....")
+            if probabilities is None:
+                probabilities = np.arange(probs_lims[0], probs_lims[1] + probs_step, probs_step)
+
+            for exceed_type in exceed_type_list:
+                thresh_grd = np.zeros([len(probabilities), len(y_data), len(x_data)]) * np.nan
+                disps = np.zeros([len(sites), len(probabilities)])
+                for ii, probability in enumerate(probabilities):
+                    disps[:, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
+                                                                site_list=sites, probability=probability, weighted=weighted)
+                    if exceed_type == 'down':
+                        disps[:, ii] = -1 * disps[:, ii]
+                if grid:
+                    thresh_grd[ii, :, :] = np.reshape(disps, (len(y_data), len(x_data)))
+                else:
+                    for jj in range(len(sites)):
+                        thresh_grd[:, int(site_y[jj]), int(site_x[jj])] = disps[jj, :]
+
+                da[exceed_type] = xr.DataArray(thresh_grd, dims=['probability', 'lat', 'lon'], coords={'probability': probabilities, 'lat': y_data, 'lon': x_data})
+                da[exceed_type].attrs['exceed_type'] = exceed_type
+                da[exceed_type].attrs['threshold'] = 'Exceedance Probability (%)'
+                da[exceed_type].attrs['crs'] = 'EPSG:2193'
+
+                ds['prob_' + exceed_type] = da[exceed_type]
+            out_name += 'prob_'
+
+        ds.attrs['branch'] = branch_name
+        ds.to_netcdf(f"{outfile_directory}/{out_name}grids.nc")
+
+    return ds
