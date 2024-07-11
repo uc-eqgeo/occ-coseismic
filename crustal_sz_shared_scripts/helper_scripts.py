@@ -276,7 +276,7 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
 
 def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectangle_outlines_gdf, rupture_id,
                              ruptured_fault_ids, slip_taper, rupture_slip_dict, gf_total_slip_dict):
-    """ calcualtes displacements for given rupture scenario at a single site
+    """ calculates displacements for given rupture scenario at a single site
     not yet sure if I should set it up to allow more than one site at a time
 
     CAVETS/choices:
@@ -537,6 +537,32 @@ def save_target_rates(NSHM_directory, target_rupture_ids, extension1, results_ve
 
 #target_rupture_ids = [209026]
 #rates_df = pd.read_csv(f"../data/{NSHM_directory}/solution/rates.csv")
+
+def maximum_displacement_plot(site_ids, branch_site_disp_dict, model_dir, branch_name, threshold=0.01):
+    coords = []
+    up = []
+    print("")
+    for site in site_ids:
+        sdict = branch_site_disp_dict[site]
+        coords.append(sdict['site_coords'])
+        disps = np.array(sdict['disps'])
+        max_disp = 0
+        for disp in disps:
+            if np.abs(disp) > np.abs(max_disp):
+                max_disp = disp
+        up.append(max_disp)
+    
+    coords = np.array(coords)
+    up = np.array(up)
+
+    fig, axs = plt.subplots(1, 2, figsize=(7, 3.4))
+    im1 = axs[0].scatter(coords[:,0], coords[:,1], c=up, s=1, vmin=-2, vmax=2, cmap='RdYlBu')
+    fig.colorbar(im1, ax=axs[0])
+    axs[0].set_title("Maximum Displacement (m)")
+    im2 = axs[1].scatter(coords[:,0], coords[:,1], c=np.abs(up) > threshold, s=1, vmin=0, vmax=1)
+    fig.colorbar(im2, ax=axs[1])
+    axs[1].set_title(f"Exceeds {threshold}m displacement")
+    fig.savefig(f"../{model_dir}/{branch_name}/{branch_name}_max_disp.png", dpi=300)
 
 ## These scripts are those required by numpy v2.0.0 to run the weighted percentiles.
 # As numpy v2.0 does not have backwards compatibility (and I couldn't install it), I have ripped
