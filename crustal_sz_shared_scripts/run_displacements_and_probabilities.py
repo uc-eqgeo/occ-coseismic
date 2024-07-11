@@ -11,7 +11,7 @@ from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_sit
 from rupture_scenario_plotting_scripts import vertical_disp_figure
 from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE, plot_branch_hazard_curve, \
     make_10_2_disp_plot, make_branch_prob_plot, save_10_2_disp , \
-    save_disp_prob_tifs
+    save_disp_prob_tifs, save_disp_prob_xarrays
     # plot_cumu_disp_hazard_map
 
 ##### USER INPUTS   #####
@@ -74,9 +74,9 @@ file_type_list=["png", "pdf"]
 # True: this skips calculating displacements and making displacement figures (assumes you've already done it)
 # False: this calculates displacements (and makes disp figures) and probabilities
 skip_displacements = False
-calculate_cumu_PPE = True
+calculate_cumu_PPE = False
 
-testing = False
+testing = True
 
 if testing:
     n_samples = 1e4
@@ -360,14 +360,19 @@ if gf_name == "sites":
                          time_interval=investigation_time, n_samples=n_samples, sd=sd, load_random=load_random)
 
         # Save results to tif files
-        print(f"*~ Writing results to geotiffs~*")
+        print(f"*~ Writing results to xarrays~*")
         try:
-            save_disp_prob_tifs(extension1_list[i], slip_taper=slip_taper, 
-                                model_version_results_directory=model_version_results_directory,
-                                thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True,
-                                probs_lims = [0.02, 0.5], probs_step=0.02, output_probs=True)
+            ds = save_disp_prob_xarrays(extension1_list[i], slip_taper=slip_taper, 
+                    model_version_results_directory=model_version_results_directory,
+                    thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True,
+                    probs_lims = [0.02, 0.5], probs_step=0.02, output_probs=True, grid=False)
+
+            #save_disp_prob_tifs(extension1_list[i], slip_taper=slip_taper, 
+            #                    model_version_results_directory=model_version_results_directory,
+            #                    thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True,
+            #                    probs_lims = [0.02, 0.5], probs_step=0.02, output_probs=True)
         except:
-            print('No Tif')
+            print('Data not in griddable format. Data not saved')
 
         ## step 3 (optional): plot hazard curves
         if not dont_make_figures:
