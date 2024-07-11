@@ -8,9 +8,9 @@ import pickle as pkl
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_Model_CFM_50km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_national_50km"                    # must match suffix in the subduction directory with gfs
+fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+crustal_model_version = "_Model_CFM_southland_10km"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_southland_10km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 default_plot_order = True
 plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
@@ -21,23 +21,26 @@ testing = True
 probability_plot = True                # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
 displacement_chart = True                 # plots the displacement at the 10% and 2% probability of exceedance
 # thresholds
-make_hazcurves = False
-make_colorful_hazcurves = False
+make_hazcurves = True
+make_colorful_hazcurves = True
 make_geotiffs = True
 #make_map = True
 
 # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
-paired_crustal_sz = True                # True or False
+paired_crustal_sz = False              # True or False
 
 if testing or not paired_crustal_sz:
-    n_samples = 1e5
+    n_samples = 1e1
 else:
-    n_samples = 1e6
+    if paired_crustal_sz:
+        n_samples = 1e5
+    else:
+        n_samples = 1e6
 
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = False   # True or False
+calculate_fault_model_PPE = True   # True or False
 
 figure_file_type_list = ["png", "pdf"]             # file types for figures
 
@@ -55,9 +58,17 @@ if not default_plot_order and not os.path.exists(plot_order_csv):
     print("Manual plot order selected but no plot order csv found. Please create a csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId)")
     exit()
 
-if paired_crustal_sz and not fault_type in ['sz', 'py']:
-    print("Paired crustal and subduction model selected but fault type is not sz or py. Please select sz or py as fault type.")
-    exit()
+if paired_crustal_sz:
+    if fault_type == 'all':
+        print("Running combined crustal, hikurangi-kermadec, and puysegur models")
+        fault_type = ['crustal', 'sz', 'py']
+    elif not fault_type in ['sz', 'py']:
+        print("Paired crustal and subduction model selected but fault type is not sz or py. Please select sz or py as fault type.")
+        exit()
+    else:
+        fault_type = ['crustal', fault_type]
+else:
+    fault_type = [fault_type]
 
 #plot_order_temp = ["Porirua CBD north", "Porirua CBD south"]
 ######################################################
@@ -105,16 +116,14 @@ def make_branch_weight_dict(branch_weight_file_path, sheet_name):
 ###############################
 
 gf_name = "sites"
-if fault_type == "crustal" and not paired_crustal_sz:
-    fault_model_version = crustal_model_version
-elif fault_type == "sz" and not paired_crustal_sz:
-    fault_model_version = sz_model_version
-    slip_taper = False
-elif fault_type == "py" and not paired_crustal_sz:
-    fault_model_version = sz_model_version
-    slip_taper = False
+if not paired_crustal_sz:
+    if fault_type[0] == "crustal":
+        model_version_list = [crustal_model_version]
+    else:
+        model_version_list = [sz_model_version]
+        slip_taper = False    
 else:
-    fault_model_version = crustal_model_version + sz_model_version
+    model_version_list = [crustal_model_version] + [sz_model_version] * len(fault_type[1:])
 
 if slip_taper:
     taper_extension = "_tapered"
@@ -122,29 +131,43 @@ else:
     taper_extension = "_uniform"
 
 # these directories should already be made from calculating displacements in a previous script
-crustal_model_version_results_directory = f"{results_directory}/crustal{crustal_model_version}"
-sz_model_version_results_directory = f"{results_directory}/{fault_type}{sz_model_version}"
+model_version_results_directory = []
+for ix, model in enumerate(fault_type):
+    model_version_results_directory.append(f"{results_directory}/{model}{model_version_list[ix]}")
 
 # get branch weights from the saved Excel spreadsheet
 branch_weight_file_path = f"../data/branch_weight_data.xlsx"
 crustal_sheet_name = "crustal_weights_4_2"
-if fault_type == 'sz':
-    sz_sheet_name = "sz_weights_4_0"
-elif fault_type == 'py':
-    sz_sheet_name = "py_weights_4_0"
+sz_sheet_name = "sz_weights_4_0"
+py_sheet_name = "py_weights_4_0"
 
-if paired_crustal_sz or fault_type=="crustal":
-    crustal_branch_weight_dict = make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
-                                                        sheet_name=crustal_sheet_name)
-if fault_type in ['sz', 'py']:
-    sz_branch_weight_dict = make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
-                                                    sheet_name=sz_sheet_name)
+sheet_list = []
+if 'crustal' in fault_type:
+    sheet_list.append(crustal_sheet_name)
+if 'sz' in fault_type:
+    sheet_list.append(sz_sheet_name)
+if 'py' in fault_type:
+    sheet_list.append(py_sheet_name)
+
+branch_weight_dict_list = []
+for sheet in sheet_list:
+    branch_weight_dict_list.append(make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
+                                                            sheet_name=sheet))
+#if paired_crustal_sz or fault_type=="crustal":
+#    crustal_branch_weight_dict = make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
+#                                                        sheet_name=crustal_sheet_name)
+#if fault_type in ['sz', 'py']:
+#    sz_branch_weight_dict = make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
+#                                                    sheet_name=sz_sheet_name)
 
 # designate which branch weight dictionary to use based on the fault type
-if not paired_crustal_sz and fault_type=="crustal":
-    fault_model_branch_weight_dict = crustal_branch_weight_dict
-if not paired_crustal_sz and any([fault_type=="sz", fault_type=="py"]):
-    fault_model_branch_weight_dict = sz_branch_weight_dict
+if len(fault_type) == 1:
+    fault_model_branch_weight_dict = branch_weight_dict_list[0]
+
+#if not paired_crustal_sz and fault_type=="crustal":
+#    fault_model_branch_weight_dict = crustal_branch_weight_dict
+#if not paired_crustal_sz and any([fault_type=="sz", fault_type=="py"]):
+#    fault_model_branch_weight_dict = sz_branch_weight_dict
 
 # Is this section necessary?
 ## extract the solution suffix based on the fault type and solution folder name
@@ -159,7 +182,8 @@ if not paired_crustal_sz and any([fault_type=="sz", fault_type=="py"]):
 ### make a dictionary of all the branch probabilities, oranized by site within each branch
 # option to skip this step if you've already run it once and saved to a pickle file
 if not paired_crustal_sz:
-    model_version_results_directory = f"{results_directory}/{fault_type}{fault_model_version}"
+    fault_type = fault_type[0]
+    model_version_results_directory = f"{results_directory}/{fault_type}{model_version_list[0]}"
 
     fault_model_PPE_filepath = f"../{model_version_results_directory}/allbranch_PPE_dict_{outfile_extension}{taper_extension}.pkl"
     if not os.path.exists(fault_model_PPE_filepath):
@@ -177,23 +201,26 @@ if not paired_crustal_sz:
 
 ##### paired crustal and sz PPE
 if paired_crustal_sz:
-    model_version_results_directory = f"{results_directory}/paired_c{crustal_model_version}_sz{sz_model_version}"
-
-    paired_PPE_pickle_name = f"{fault_type}_crustal_paired_PPE_dict_{outfile_extension}{taper_extension}.pkl"
-    paired_PPE_filepath = f"../{model_version_results_directory}/{paired_PPE_pickle_name}"
+    out_version_results_directory = f"{results_directory}/paired_c{crustal_model_version}"
+    pickle_prefix = ''
+    for sub in fault_type[1:]:
+        out_version_results_directory += f"_{sub}{sz_model_version}"
+        pickle_prefix += f"{sub}_"
+    paired_PPE_pickle_name = f"{pickle_prefix}crustal_paired_PPE_dict_{outfile_extension}{taper_extension}.pkl"
+    paired_PPE_filepath = f"../{out_version_results_directory}/{paired_PPE_pickle_name}"
 
     if not os.path.exists(paired_PPE_filepath):
-        print('No sz-crustal paired PPE pkl file found. Making a new one...')
+        print(f"No crustal-{'-'.join(fault_type[1:])} paired PPE pkl file found. Making a new one...")
         calculate_fault_model_PPE = True
 
     #### skip this part if you've already run it once and saved to a pickle file
     if calculate_fault_model_PPE:
         make_sz_crustal_paired_PPE_dict(
-            crustal_branch_weight_dict=crustal_branch_weight_dict, sz_branch_weight_dict=sz_branch_weight_dict,
-            crustal_model_version_results_directory=crustal_model_version_results_directory,
-            sz_model_version_results_directory=sz_model_version_results_directory,
-            slip_taper=slip_taper, n_samples=n_samples,
-            out_directory=model_version_results_directory, outfile_extension=outfile_extension, sz_type=fault_type,
+            crustal_branch_weight_dict=branch_weight_dict_list[0], sz_branch_weight_dict_list=branch_weight_dict_list[1:],
+            crustal_model_version_results_directory=model_version_results_directory[0],
+            sz_model_version_results_directory_list=model_version_results_directory[1:],
+            paired_PPE_pickle_name=paired_PPE_pickle_name, slip_taper=slip_taper, n_samples=n_samples,
+            out_directory=out_version_results_directory, outfile_extension=outfile_extension, sz_type_list=fault_type[1:],
             nesi=nesi, nesi_step=nesi_step)
 
     with open(paired_PPE_filepath, 'rb') as f:
@@ -218,9 +245,12 @@ save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_r
                        output_probs=True, grid=False, weighted=True)
 
 if paired_crustal_sz:
-    model_version_title = f"paired crustal{crustal_model_version} and sz{sz_model_version}"
+    model_version_title = f"paired crustal{crustal_model_version} and "
+    for ix, sub in enumerate(fault_type[1:]):
+        model_version_title += f"{sub}{sz_model_version} and "
+    model_version_title = model_version_title[:-5]
 else:
-    model_version_title = f"{fault_type}{fault_model_version}"
+    model_version_title = f"{fault_type[0]}{model_version_list[0]}"
 
 if default_plot_order:
     plot_order = [key for key in weighted_mean_PPE_dict.keys() if key != 'branch_weights']
@@ -254,5 +284,5 @@ if make_colorful_hazcurves:
                                            model_version_title=model_version_title,
                                            out_directory=model_version_results_directory,
                                            file_type_list=figure_file_type_list,
-                                           slip_taper=slip_taper, file_name=f"colorful_lines{fault_model_version}",
+                                           slip_taper=slip_taper, file_name=f"colorful_lines_{''.join(model_version_list)}",
                                            string_list=unique_id_keyphrase_list, plot_order=plot_order)
