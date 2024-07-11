@@ -541,7 +541,7 @@ def save_target_rates(NSHM_directory, target_rupture_ids, extension1, results_ve
 def maximum_displacement_plot(site_ids, branch_site_disp_dict, model_dir, branch_name, threshold=0.01):
     coords = []
     up = []
-    print("")
+    
     for site in site_ids:
         sdict = branch_site_disp_dict[site]
         coords.append(sdict['site_coords'])
@@ -563,7 +563,10 @@ def maximum_displacement_plot(site_ids, branch_site_disp_dict, model_dir, branch
     im2 = axs[1].scatter(coords[:,0], coords[:,1], c=np.abs(up) > threshold, s=1, vmin=0, vmax=1)
     fig.colorbar(im2, ax=axs[1])
     axs[1].set_title(f"Exceeds {threshold}m displacement")
-    fig.savefig(f"../{model_dir}/{branch_name}/{branch_name}_max_disp.png", dpi=300)
+    if branch_name == "":
+        fig.savefig(f"../{model_dir}/weighted_max_disp.png", dpi=300)
+    else:
+        fig.savefig(f"../{model_dir}/{branch_name}/{branch_name}_max_disp.png", dpi=300)
 
 ## These scripts are those required by numpy v2.0.0 to run the weighted percentiles.
 # As numpy v2.0 does not have backwards compatibility (and I couldn't install it), I have ripped

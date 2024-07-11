@@ -8,7 +8,7 @@ import pickle as pkl
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "all"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_Model_CFM_southland_10km"           # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_southland_10km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
@@ -21,13 +21,13 @@ testing = True
 probability_plot = True                # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
 displacement_chart = True                 # plots the displacement at the 10% and 2% probability of exceedance
 # thresholds
-make_hazcurves = False
-make_colorful_hazcurves = False
+make_hazcurves = True
+make_colorful_hazcurves = True
 make_geotiffs = True
 #make_map = True
 
 # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
-paired_crustal_sz = True                # True or False
+paired_crustal_sz = False              # True or False
 
 if testing or not paired_crustal_sz:
     n_samples = 1e1
@@ -40,7 +40,7 @@ else:
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = False   # True or False
+calculate_fault_model_PPE = True   # True or False
 
 figure_file_type_list = ["png", "pdf"]             # file types for figures
 
@@ -118,15 +118,11 @@ def make_branch_weight_dict(branch_weight_file_path, sheet_name):
 gf_name = "sites"
 if not paired_crustal_sz:
     if fault_type[0] == "crustal":
-        fault_model_version = crustal_model_version
-    elif fault_type[0] == "sz":
-        fault_model_version = sz_model_version
-        slip_taper = False
-    elif fault_type[0] == "py":
-        fault_model_version = sz_model_version
-        slip_taper = False
+        model_version_list = [crustal_model_version]
+    else:
+        model_version_list = [sz_model_version]
+        slip_taper = False    
 else:
-    fault_model_version = crustal_model_version + sz_model_version
     model_version_list = [crustal_model_version] + [sz_model_version] * len(fault_type[1:])
 
 if slip_taper:
@@ -187,7 +183,7 @@ if len(fault_type) == 1:
 # option to skip this step if you've already run it once and saved to a pickle file
 if not paired_crustal_sz:
     fault_type = fault_type[0]
-    model_version_results_directory = f"{results_directory}/{fault_type}{fault_model_version}"
+    model_version_results_directory = f"{results_directory}/{fault_type}{model_version_list[0]}"
 
     fault_model_PPE_filepath = f"../{model_version_results_directory}/allbranch_PPE_dict_{outfile_extension}{taper_extension}.pkl"
     if not os.path.exists(fault_model_PPE_filepath):
@@ -226,7 +222,7 @@ if paired_crustal_sz:
             paired_PPE_pickle_name=paired_PPE_pickle_name, slip_taper=slip_taper, n_samples=n_samples,
             out_directory=out_version_results_directory, outfile_extension=outfile_extension, sz_type_list=fault_type[1:],
             nesi=nesi, nesi_step=nesi_step)
-    breakpoint()
+
     with open(paired_PPE_filepath, 'rb') as f:
         PPE_dict = pkl.load(f)
 
@@ -251,10 +247,10 @@ save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_r
 if paired_crustal_sz:
     model_version_title = f"paired crustal{crustal_model_version} and "
     for ix, sub in enumerate(fault_type[1:]):
-        model_version_title += f"{sub}{sz_model_version_list[ix]} and "
+        model_version_title += f"{sub}{sz_model_version} and "
     model_version_title = model_version_title[:-5]
 else:
-    model_version_title = f"{fault_type[0]}{fault_model_version}"
+    model_version_title = f"{fault_type[0]}{model_version_list[0]}"
 
 if default_plot_order:
     plot_order = [key for key in weighted_mean_PPE_dict.keys() if key != 'branch_weights']
@@ -288,5 +284,5 @@ if make_colorful_hazcurves:
                                            model_version_title=model_version_title,
                                            out_directory=model_version_results_directory,
                                            file_type_list=figure_file_type_list,
-                                           slip_taper=slip_taper, file_name=f"colorful_lines{fault_model_version}",
+                                           slip_taper=slip_taper, file_name=f"colorful_lines_{''.join(model_version_list)}",
                                            string_list=unique_id_keyphrase_list, plot_order=plot_order)
