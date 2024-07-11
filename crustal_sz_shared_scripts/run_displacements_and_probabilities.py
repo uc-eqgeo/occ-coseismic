@@ -22,7 +22,7 @@ fault_type = "sz"                  # "crustal or "sz" or "py"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
-single_branch = True
+single_branch = False
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
@@ -32,7 +32,7 @@ specific_rupture_ids = False
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
 
 crustal_model_extension = "_Model_CFM_50km_nesi"         # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_national_10km"                # must match suffix in the subduction directory with gfs
+sz_model_version = "_southland_10km"                # must match suffix in the subduction directory with gfs
 
 nesi = False
 nesi_step = 'prep'  # 'prep' or 'combine'
@@ -315,7 +315,7 @@ if gf_name == "sites":
                          time_interval=100, n_samples=n_samples, sd=0.4)  # n_samples reduced from 1e6 for testing speed
 
         # Save results to tif files
-        print(f"*~ Writing results to geotiffs~*")
+        print(f"*~ Writing results to xarrays~*")
         try:
             ds = save_disp_prob_xarrays(extension1_list[i], slip_taper=slip_taper, 
                     model_version_results_directory=model_version_results_directory,
