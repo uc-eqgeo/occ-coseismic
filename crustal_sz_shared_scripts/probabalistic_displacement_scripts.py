@@ -138,13 +138,17 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         taper_extension = "_tapered"
     else:
         taper_extension = "_uniform"
+    
+    n_chunks = int(n_samples / error_chunking)
+    if n_chunks < 10:
+        error_chunking = int(n_samples / 10)
+        print(f'Too few chunks for accurate error estimation. Decreasing error_chunking to {error_chunking}')
 
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
     printProgressBar(0, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete', length = 50)
 
     for i, site_of_interest in enumerate(site_ids):
-        printProgressBar(i + 1, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete', length = 50)
         # print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
         # if i == 0:
         #     if branch_key not in ["nan", ""]:
@@ -218,11 +222,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         exceedance_probs_down = n_exceedances_down / n_samples
 
         # Now chunk the scenarios to get a better estimate of the exceedance probability
-        n_chunks = int(n_samples / error_chunking)
-        if n_chunks < 10:
-            error_chunking = int(n_samples / 10)
-            print(f'\nToo few chunks for accurate error estimation. Decreasing error_chunking to {error_chunking}\n')
-
         n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
         n_exceedances_up = np.zeros((len(thresholds), n_chunks))
         n_exceedances_down = np.zeros((len(thresholds), n_chunks))
@@ -259,6 +258,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "error_total_abs": error_abs,
                                            "error_up": error_up,
                                            "error_down": error_down}
+        
+        printProgressBar(i + 1, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete', length = 50)
 
     if 'grid_meta' in branch_site_disp_dict.keys():
             site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
@@ -462,9 +463,9 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
 
     return weighted_mean_site_probs_dictionary
 
-def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight_dict,
-                                    crustal_model_version_results_directory, sz_model_version_results_directory,
-                                    slip_taper, n_samples, out_directory, outfile_extension, sz_type="sz",
+def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight_dict_list,
+                                    crustal_model_version_results_directory, sz_model_version_results_directory_list,
+                                    paired_PPE_pickle_name, slip_taper, n_samples, out_directory, outfile_extension, sz_type_list,
                                     nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 45, cpus: int= 1, account: str= 'uc03610'):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
@@ -482,7 +483,6 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         taper_extension = "_tapered"
     else:
         taper_extension = "_uniform"
-    paired_PPE_pickle_name = f"{sz_type}_crustal_paired_PPE_dict_{outfile_extension}{taper_extension}.pkl"
 
     # make a dictionary of displacements at each site from all the crustal earthquake scenarios
     paired_crustal_sz_PPE_dict = {}
@@ -509,42 +509,50 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
         # make a dictionary of displacements at each site from all the crustal earthquake scenarios
         all_sz_branches_site_disp_dict = {}
-        for branch_id in sz_branch_weight_dict.keys():
-            sz_slip_taper = False
+        crustal_sz_branch_pairs = list(crustal_branch_weight_dict.keys())
+        for ix, sz_branch_weight_dict in enumerate(sz_branch_weight_dict_list):
+            for branch_id in sz_branch_weight_dict.keys():
+                sz_slip_taper = False
 
-            extension1 = gf_name + sz_branch_weight_dict[branch_id]["file_suffix"]
-            # get displacement dictionary
-            # this extracts the rates from the solution directory, but it is not scaled by the rate scaling factor
-            sz_branch_site_disp_dict = get_site_disp_dict(
-                extension1, slip_taper=sz_slip_taper, model_version_results_directory=sz_model_version_results_directory)
+                extension1 = gf_name + sz_branch_weight_dict[branch_id]["file_suffix"]
+                # get displacement dictionary
+                # this extracts the rates from the solution directory, but it is not scaled by the rate scaling factor
+                sz_branch_site_disp_dict = get_site_disp_dict(
+                    extension1, slip_taper=sz_slip_taper, model_version_results_directory=sz_model_version_results_directory_list[ix])
 
-            # multiply the rates by the rate scaling factor
-            rate_scaling_factor = sz_branch_weight_dict[branch_id]["S"]
-            for site in sz_branch_site_disp_dict.keys():
-                # multiply each value in the rates array by the rate scaling factor
-                sz_branch_site_disp_dict[site]["scaled_rates"] = \
-                    [rate * rate_scaling_factor for rate in sz_branch_site_disp_dict[site]["rates"]]
+                # multiply the rates by the rate scaling factor
+                rate_scaling_factor = sz_branch_weight_dict[branch_id]["S"]
+                for site in sz_branch_site_disp_dict.keys():
+                    # multiply each value in the rates array by the rate scaling factor
+                    sz_branch_site_disp_dict[site]["scaled_rates"] = \
+                        [rate * rate_scaling_factor for rate in sz_branch_site_disp_dict[site]["rates"]]
 
-            all_sz_branches_site_disp_dict[branch_id] = {"site_disp_dict":sz_branch_site_disp_dict,
-                                                    "branch_weight":sz_branch_weight_dict[branch_id]["total_weight_RN"]}
+                all_sz_branches_site_disp_dict[branch_id] = {"site_disp_dict":sz_branch_site_disp_dict,
+                                                        "branch_weight":sz_branch_weight_dict[branch_id]["total_weight_RN"]}
 
-        # make all the combinations of crustal and subduction zone branch pairs
-        crustal_sz_branch_pairs = list(itertools.product(crustal_branch_weight_dict.keys(),
-                                                        sz_branch_weight_dict.keys()))
+            # make all the combinations of crustal and subduction zone branch pairs
+            crustal_sz_branch_pairs = list(itertools.product(crustal_sz_branch_pairs,
+                                                             sz_branch_weight_dict.keys()))
+            if isinstance(crustal_sz_branch_pairs[0][0], tuple):
+                crustal_sz_branch_pairs = [t1 + tuple([t2]) for t1, t2 in crustal_sz_branch_pairs]
 
         counter = 0
         for pair in crustal_sz_branch_pairs:
             # get the branch unique ID for the crustal and sz combos
-            crustal_unique_id, sz_unique_id = pair[0], pair[1]
-            pair_unique_id = crustal_unique_id + "_" + sz_unique_id
+            crustal_unique_id, sz_unique_ids = pair[0], pair[1:]
+            pair_unique_id = crustal_unique_id
+            for sz_unique_id in sz_unique_ids:
+                pair_unique_id += "_" + sz_unique_id
 
             print(f"calculating {pair_unique_id} PPE\t({counter} of {len(crustal_sz_branch_pairs)} branches)")
             counter += 1
 
             site_names = list(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"].keys())
 
-            pair_weight = all_crustal_branches_site_disp_dict[crustal_unique_id]["branch_weight"] * \
-                        all_sz_branches_site_disp_dict[sz_unique_id]["branch_weight"]
+            pair_weight = all_crustal_branches_site_disp_dict[crustal_unique_id]["branch_weight"]
+            
+            for sz_unique_id in sz_unique_ids:
+                pair_weight = pair_weight * all_sz_branches_site_disp_dict[sz_unique_id]["branch_weight"]
 
             # loop over all the sites for the crustal and sz branches of interest
             # make one long list of displacements and corresponding scaled rates per site
@@ -552,16 +560,16 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
             for j, site in enumerate(site_names):
                 site_coords = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["site_coords"]
 
-                crustal_site_disps = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["disps"]
-
-                sz_site_disps = all_sz_branches_site_disp_dict[sz_unique_id]["site_disp_dict"][site]["disps"]
-
-                crustal_site_scaled_rates = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][
+                pair_site_disps = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["disps"]
+                pair_scaled_rates = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][
                     site]["scaled_rates"]
-                sz_site_scaled_rates = all_sz_branches_site_disp_dict[sz_unique_id]["site_disp_dict"][site]["scaled_rates"]
 
-                pair_site_disps = crustal_site_disps + sz_site_disps
-                pair_scaled_rates = crustal_site_scaled_rates + sz_site_scaled_rates
+                for sz_unique_id in sz_unique_ids:
+                    sz_site_disps = all_sz_branches_site_disp_dict[sz_unique_id]["site_disp_dict"][site]["disps"]
+                    sz_site_scaled_rates = all_sz_branches_site_disp_dict[sz_unique_id]["site_disp_dict"][site]["scaled_rates"]
+
+                    pair_site_disps += sz_site_disps
+                    pair_scaled_rates += sz_site_scaled_rates
 
                 pair_site_disp_dict[site] = {"disps": pair_site_disps, "scaled_rates": pair_scaled_rates,
                                                     "site_coords": site_coords}
@@ -589,8 +597,11 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     else:
         for counter, pair in enumerate(crustal_sz_branch_pairs):
             # Combine site displacements into branch dictionaries
-            crustal_unique_id, sz_unique_id = pair[0], pair[1]
-            pair_unique_id = crustal_unique_id + "_" + sz_unique_id
+            crustal_unique_id, sz_unique_ids = pair[0], pair[1:]
+            pair_unique_id = crustal_unique_id
+            for sz_unique_id in sz_unique_ids:
+                pair_unique_id += "_" + sz_unique_id
+
             print(f"Combining {pair_unique_id} PPE\t({counter + 1} of {len(crustal_sz_branch_pairs)} branches)")
             print(f"\tCombining site dictionaries....")
             
