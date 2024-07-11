@@ -556,7 +556,8 @@ def maximum_displacement_plot(site_ids, branch_site_disp_dict, model_dir, branch
     up = np.array(up)
 
     fig, axs = plt.subplots(1, 2, figsize=(7, 3.4))
-    im1 = axs[0].scatter(coords[:,0], coords[:,1], c=up, s=1, vmin=-2, vmax=2, cmap='RdYlBu')
+    lim = int(np.ceil(np.percentile(np.abs(up), 95)))
+    im1 = axs[0].scatter(coords[:,0], coords[:,1], c=up, s=1, vmin=-lim, vmax=lim, cmap='RdYlBu')
     fig.colorbar(im1, ax=axs[0])
     axs[0].set_title("Maximum Displacement (m)")
     im2 = axs[1].scatter(coords[:,0], coords[:,1], c=np.abs(up) > threshold, s=1, vmin=0, vmax=1)
