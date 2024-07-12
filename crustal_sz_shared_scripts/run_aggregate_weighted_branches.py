@@ -21,8 +21,8 @@ testing = True
 probability_plot = True                # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
 displacement_chart = True                 # plots the displacement at the 10% and 2% probability of exceedance
 # thresholds
-make_hazcurves = True
-make_colorful_hazcurves = True
+make_hazcurves = False
+make_colorful_hazcurves = False
 make_geotiffs = True
 #make_map = True
 
@@ -240,8 +240,8 @@ with open(weighted_mean_PPE_filepath, 'rb') as f:
 
 # plot hazard curves and save to file
 print('Saving data arrays...')
-save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory,
-                       thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True, probs_lims = [0.02, 0.5], probs_step=0.02,
+ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory,
+                       thresh_lims=[0, 3], thresh_step=0.01, output_thresh=True, probs_lims = [0.01, 0.20], probs_step=0.01,
                        output_probs=True, grid=False, weighted=True)
 
 if paired_crustal_sz:
