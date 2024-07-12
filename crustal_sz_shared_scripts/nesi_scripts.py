@@ -38,7 +38,7 @@ def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, 
 
 def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks,
                           hours: int = 0, mins: int= 3, mem: int= 45, cpus: int= 1, account: str= 'uc03610',
-                          time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4):
+                          time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4, job_time=5):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
 
@@ -58,7 +58,7 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
     with open(site_file, "r") as f:
         all_sites = f.read().splitlines()
 
-    with open(f"../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl", "wb") as f:
+    with open(f"../{model_version_results_directory}/cumu_PPE_slurm_task_array_{str(job_time).replace('.','_')}sec_job.sl", "wb") as f:
         f.write(f"#!/bin/bash -e\n".encode())
         f.write(f"#SBATCH --job-name=occ-{os.path.basename(model_version_results_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
@@ -304,12 +304,15 @@ if __name__ == "__main__":
 
         # Needs to be run one site at a time so sites can be recombined later
         for site in sites_of_interest:
+            lap=time()
             get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, [site], n_samples,
                     extension1, branch_key="nan", time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True,
                     plot_maximum_displacement=False)
+            if nesi_print:
+                os.system(f"echo {extension1} {site} complete in {time() - lap:.2f} seconds\n")
 
         if nesi_print:
-            os.system(f"echo {extension1} complete in : {time() - begin:.2f} seconds\n")
+            os.system(f"echo {extension1} complete in {time() - begin:.2f} seconds\n")
         print(f"{extension1} complete in : {time() - begin:.2f} seconds\n")
     
     print(f"All sites complete in {time() - start:.2f} seconds (Average {(time() - start) / len(task_sites):.2f} seconds per site)")
