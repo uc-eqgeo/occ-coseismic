@@ -6,6 +6,7 @@ try:
     from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile, maximum_displacement_plot
     from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE
     from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
+    import xarray as xr
 except:
     print("Some modules not loaded - assume you're just running get_cumu_PPE on NESI")
     nesi_print = True
