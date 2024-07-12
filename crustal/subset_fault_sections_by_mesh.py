@@ -30,7 +30,7 @@ if abs(minLon) <= 180:
 target_fault_names = ["Aotea", "Huangarua", "Fisherman", "Honeycomb", "Moonshine", "Otaki", "Ohariu", "Okupe",
                       "Opouawe", "Uruti", "Otaraia", "Pahaua", "Palliser", "Pukerua", "Riversdale", "Shepherds Gully",
                       "Mana", "Otaheke", "Wairarapa", "Wellington Hutt", "Whareama", "Wharekauhau", "Whitemans"]
-
+target_fault_names = []
 # Define fault names to exclude that may be in RoI.
 # If fault appears in target_fault_names and exclude_fault_names, it will be included.
 exclude_fault_names = []
