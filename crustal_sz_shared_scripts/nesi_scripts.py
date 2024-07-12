@@ -305,7 +305,8 @@ if __name__ == "__main__":
         # Needs to be run one site at a time so sites can be recombined later
         for site in sites_of_interest:
             get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, [site], n_samples,
-                    extension1, branch_key="nan", time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True)
+                    extension1, branch_key="nan", time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True,
+                    plot_maximum_displacement=False)
 
         if nesi_print:
             os.system(f"echo {extension1} complete in : {time() - begin:.2f} seconds\n")
