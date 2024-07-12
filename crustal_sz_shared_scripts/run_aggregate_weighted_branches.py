@@ -8,15 +8,15 @@ import pickle as pkl
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "all"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_Model_CFM_southland_10km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_southland_10km"                    # must match suffix in the subduction directory with gfs
+fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+crustal_model_version = "_Model_CFM_NI_10km"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_NI_10km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 default_plot_order = True
 plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
-nesi = False
+nesi = True
 nesi_step = 'prep'  # 'prep' or 'combine'
-testing = True
+testing = False
 
 probability_plot = True                # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
 displacement_chart = True                 # plots the displacement at the 10% and 2% probability of exceedance
@@ -37,10 +37,17 @@ else:
     else:
         n_samples = 1e6
 
+n_array_tasks = 1000
+min_tasks_per_array = 100
+job_time = 4
+mem = 5
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
 calculate_fault_model_PPE = False   # True or False
+
+if nesi and nesi_step == 'prep':
+    calculate_fault_model_PPE = True
 
 figure_file_type_list = ["png", "pdf"]             # file types for figures
 
@@ -194,7 +201,8 @@ if not paired_crustal_sz:
         make_fault_model_PPE_dict(
             branch_weight_dict=fault_model_branch_weight_dict,
             model_version_results_directory=model_version_results_directory, n_samples=n_samples,
-            slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step)
+            slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step, mem=mem,
+            time_interval=int(100), sd=0.4, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array, job_time=job_time)
 
     with open(fault_model_PPE_filepath, 'rb') as f:
         PPE_dict = pkl.load(f)
@@ -221,7 +229,8 @@ if paired_crustal_sz:
             sz_model_version_results_directory_list=model_version_results_directory[1:],
             paired_PPE_pickle_name=paired_PPE_pickle_name, slip_taper=slip_taper, n_samples=n_samples,
             out_directory=out_version_results_directory, outfile_extension=outfile_extension, sz_type_list=fault_type[1:],
-            nesi=nesi, nesi_step=nesi_step)
+            nesi=nesi, nesi_step=nesi_step, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array,
+            mem=mem, time_interval=int(100), sd=0.4, job_time=job_time)
 
     with open(paired_PPE_filepath, 'rb') as f:
         PPE_dict = pkl.load(f)
