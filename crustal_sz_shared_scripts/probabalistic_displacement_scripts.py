@@ -120,9 +120,10 @@ def time_elasped(current_time, start_time):
     minutes, seconds = divmod(rem, 60)
     return "{:0>2}:{:0>2}:{:0>2}".format(int(hours), int(minutes), int(seconds))
 
-def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict,  site_ids, n_samples,
-                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling='', load_random = False,
-                 thresh_lims=[0, 3], thresh_step=0.01, plot_maximum_displacement=True):
+
+def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
+                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling='', load_random=False,
+                 thresh_lims=[0, 3], thresh_step=0.01, plot_maximum_displacement=True, array_process=False):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
 
@@ -148,7 +149,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         taper_extension = "_tapered"
     else:
         taper_extension = "_uniform"
-    
+
     n_chunks = int(n_samples / error_chunking)
     if n_chunks < 10:
         error_chunking = int(n_samples / 10)
@@ -157,7 +158,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
     start = time()
-    printProgressBar(0, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete 00:00:00 (00:00s/site)', length = 50)
+    printProgressBar(0, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix='Complete 00:00:00 (00:00s/site)', length=50)
     for i, site_of_interest in enumerate(site_ids):
         lap = time()
         # print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
@@ -169,7 +170,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         # print(f"calculating {branch_key} PPE ({i} of {len(branch_site_disp_dict.keys())} branches)")
         site_dict_i = branch_site_disp_dict[site_of_interest]
 
-        ## Set up params for sampling
+        # Set up params for sampling
         investigation_time = time_interval
 
         if "scaled_rates" not in site_dict_i.keys():
@@ -208,23 +209,23 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 scenarios = pkl.load(f)
             with open(f"{randomdir}/disp_uncertainty.pkl", 'rb') as f:
                 disp_uncertainty = pkl.load(f)
-            #print(f"\nTime taken to load random samples: {time() - lap:.5f} s")
+            # print(f"\nTime taken to load random samples: {time() - lap:.5f} s")
             lap = time()
-            
+
             # As a concession to not regenerating random samples and scenarios, randomly shift the loaded uncertainty arrays
             sample_shift = np.random.randint(-scenarios.shape[0], scenarios.shape[0])
             rupture_shift = np.random.randint(-scenarios.shape[1], scenarios.shape[1])
-            #print(f"Ints: {time() - lap:.5f} s")
+            # print(f"Ints: {time() - lap:.5f} s")
             lap = time()
             disp_uncertainty = np.roll(scenarios, (sample_shift, rupture_shift))[:, :lambdas.size]
-            #print(f"Disp Shift: {time() - lap:.5f} s")
+            # print(f"Disp Shift: {time() - lap:.5f} s")
             lap = time()
             # Leave scenarios alone - no point rolling sample order, and can't shift sideways as can't appy one rupture's distribution
             # to another
             scenarios = scenarios[:, slip]
-            #print(f"Scenario Crop Shift: {time() - lap:.5f} s")
+            # print(f"Scenario Crop Shift: {time() - lap:.5f} s")
             lap = time()
-            #print(f"Time taken to prep random samples: {time() - lap:.5f} s\n")
+            # print(f"Time taken to prep random samples: {time() - lap:.5f} s\n")
         else:
             # Generate n_samples of possible earthquake ruptures for random 100 year intervals
             # returns boolean array where 0 means "no event" and 1 means "event". rows = 100 yr window, columns = earthquake
@@ -234,7 +235,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             # assigns a normal distribution with a mean of 1 and a standard deviation of sd
             # effectively a multiplier for the displacement value
             disp_uncertainty = rng.normal(1., sd, size=(int(n_samples), lambdas.size))
-            #print(f"\nTime taken to generate random samples: {time() - lap:.5f} s\n")
+            # print(f"\nTime taken to generate random samples: {time() - lap:.5f} s\n")
 
         # for each 100 yr scenario, get displacements from EQs that happened
         disp_scenarios = scenarios * disps
@@ -306,12 +307,12 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "error_total_abs": error_abs,
                                            "error_up": error_up,
                                            "error_down": error_down}
-        
+
         elapsed = time_elasped(time(), start)
-        printProgressBar(i + 1, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = f'Complete {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length = 50)
+        printProgressBar(i + 1, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix=f'Complete {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length=50)
 
     if 'grid_meta' in branch_site_disp_dict.keys():
-            site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
+        site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
 
     if array_process:
         with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.pkl", "wb") as f:
@@ -1618,12 +1619,13 @@ def make_branch_prob_plot(extension1,  slip_taper, model_version, model_version_
 
         for file_type in file_type_list:
             fig.savefig(f"{outfile_directory}/probs_chart_{extension1}{taper_extension}_{plot_n + 1}.{file_type}", dpi=300)
-        
+
         plt.close()
 
-def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0.1, thresholds=None, \
-                        probs_lims = [0.02, 0.5], probs_step=0.02, probabilites=None, output_thresh=True, output_probs=True, weighted=False, grid=False):
-    """ 
+
+def save_disp_prob_tifs(extension1, slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0.1, thresholds=None,
+                        probs_lims=[0.01, 0.2], probs_step=0.01, probabilites=None, output_thresh=True, output_probs=True, weighted=False, grid=False):
+    """
     Create multiband geotiffs of the probability of exceeding given displacements across all sites.
     This assumes that sites are derived from a regularly spaced grid
     """
@@ -1635,7 +1637,7 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
         taper_extension = "_tapered"
     else:
         taper_extension = "_uniform"
-    
+
     if weighted:
         dict_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict_{extension1}{taper_extension}.pkl"
         outfile_directory = f"../{model_version_results_directory}/weighted_mean_tifs"
@@ -1644,7 +1646,7 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
         dict_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.pkl"
         outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
         threshold_key = 'thresholds'
-    
+
     with open(dict_file, "rb") as fid:
         PPE_dict = pkl.load(fid)
 
@@ -1655,9 +1657,9 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
     # Calculate XY extents and resolution for tifs
     if grid:
         with open(f"../{model_version_results_directory}/{extension1}/grid_limits.pkl", "rb") as fid:
-            grid_meta = pkl.load(fid)  
+            grid_meta = pkl.load(fid)
 
-        x, y, buffer_size, x_res, y_res = grid_meta['x'], grid_meta['y'], grid_meta['buffer_size'], grid_meta['cell_size'], grid_meta['cell_size'] 
+        x, y, buffer_size, x_res, y_res = grid_meta['x'], grid_meta['y'], grid_meta['buffer_size'], grid_meta['cell_size'], grid_meta['cell_size']
 
         x_data = np.arange(round(x - buffer_size, -3), round(x + buffer_size, -3), x_res)
         y_data = np.arange(round(y - buffer_size, -3), round(y + buffer_size, -3), y_res)
@@ -1682,7 +1684,7 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
 
         site_x = (np.array(site_x) - x_data[0]) / x_res
         site_y = (np.array(site_y) - y_data[0]) / y_res
-    
+
     transform = Affine.translation(x_data[0] - x_res / 2, y_data[0] - y_res / 2) * Affine.scale(x_res, y_res)
 
     if not os.path.exists(f"{outfile_directory}"):
@@ -1693,7 +1695,7 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
         print(f"\tCreating displacement probability geoTifs....")
         if thresholds is None:
             thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
-    
+
         if not all(np.isin(thresholds, PPE_dict[sites[0]][threshold_key])):
             thresholds = thresholds[np.isin(thresholds, PPE_dict[sites[0]][threshold_key])]
         if len(thresholds) == 0:
@@ -1701,23 +1703,23 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
         else:
             print('Not all requested thresholds were in PPE dictionary. Running available thresholds...')
             print('Available thresholds are:', thresholds)
-    
+
         for exceed_type in exceed_type_list:
             thresh_grd = np.zeros([len(thresholds), len(y_data), len(x_data)]) * np.nan
             probs = np.zeros([len(sites), len(thresholds)])
             for ii, threshold in enumerate(thresholds):
                 probs[:, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
-                                                threshold=threshold, site_list=sites, weighted=weighted)
+                                                              threshold=threshold, site_list=sites, weighted=weighted)
             if grid:
                 thresh_grd[ii, :, :] = np.reshape(probs, (len(y_data), len(x_data)))
             else:
                 for jj in range(len(sites)):
                     thresh_grd[:, int(site_y[jj]), int(site_x[jj])] = probs[jj, :]
 
-            file_name=f"{extension1}{taper_extension}_{exceed_type}_disp_prob_sites.tif".strip('_')
-            with rasterio.open(f"{outfile_directory}/{file_name}", 'w', \
-                            driver='GTiff', count=thresh_grd.shape[0], height=thresh_grd.shape[1], width=thresh_grd.shape[2], \
-                            dtype=thresh_grd.dtype, crs='EPSG:2193', transform=transform) as dst:
+            file_name = f"{extension1}{taper_extension}_{exceed_type}_disp_prob_sites.tif".strip('_')
+            with rasterio.open(f"{outfile_directory}/{file_name}", 'w',
+                               driver='GTiff', count=thresh_grd.shape[0], height=thresh_grd.shape[1], width=thresh_grd.shape[2],
+                               dtype=thresh_grd.dtype, crs='EPSG:2193', transform=transform) as dst:
                 dst.write(thresh_grd)
                 dst.descriptions = [f"{threshold:.2f}" for threshold in thresholds]
 
@@ -1749,10 +1751,10 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
                 dst.descriptions = [str(probability) for probability in probabilites]
 
 
-def save_disp_prob_xarrays(extension1,  slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0.1, thresholds=None, \
-                           probs_lims = [0.02, 0.5], probs_step=0.02, probabilities=None, output_thresh=True, output_probs=True, weighted=False, grid=False,
+def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0.1, thresholds=None,
+                           probs_lims=[0.01, 0.2], probs_step=0.01, probabilities=None, output_thresh=True, output_probs=True, weighted=False, grid=False,
                            output_grids=True):
-    """ 
+    """
     Add all results to x_array datasets, and save as netcdf files
     """
 
@@ -1763,7 +1765,7 @@ def save_disp_prob_xarrays(extension1,  slip_taper, model_version_results_direct
         taper_extension = "_tapered"
     else:
         taper_extension = "_uniform"
-    
+
     if weighted:
         dict_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict_{extension1}{taper_extension}.pkl"
         outfile_directory = f"../{model_version_results_directory}/weighted_mean_xarray"
@@ -1772,7 +1774,7 @@ def save_disp_prob_xarrays(extension1,  slip_taper, model_version_results_direct
         dict_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.pkl"
         outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
         threshold_key = 'thresholds'
-    
+
     with open(dict_file, "rb") as fid:
         PPE_dict = pkl.load(fid)
 
@@ -1808,17 +1810,17 @@ def save_disp_prob_xarrays(extension1,  slip_taper, model_version_results_direct
         da = {}
         ds = xr.Dataset()
         if extension1 == "":
-            out_name=''
+            out_name = ''
             branch_name = os.path.basename(model_version_results_directory)
         else:
-            out_name=f"{extension1}_"
+            out_name = f"{extension1}_"
             branch_name = extension1
 
         if output_thresh:
             print(f"\tAdding Displacement Probability DataArrays....")
             if thresholds is None:
                 thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
-  
+
             if not all(np.isin(thresholds, PPE_dict[sites[0]][threshold_key])):
                 dropped_thresholds = thresholds[np.isin(thresholds, PPE_dict[sites[0]][threshold_key], invert=True)]
                 thresholds = thresholds[np.isin(thresholds, PPE_dict[sites[0]][threshold_key])]
@@ -1828,13 +1830,13 @@ def save_disp_prob_xarrays(extension1,  slip_taper, model_version_results_direct
                 else:
                     print('Not all requested thresholds were in PPE dictionary.\nMissing thresholds:\n', dropped_thresholds)
                     print('Running available thresholds:\n', thresholds)
-        
+
             for exceed_type in exceed_type_list:
                 thresh_grd = np.zeros([len(thresholds), len(y_data), len(x_data)]) * np.nan
                 probs = np.zeros([len(sites), len(thresholds)])
                 for ii, threshold in enumerate(thresholds):
                     probs[:, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
-                                                    threshold=threshold, site_list=sites, weighted=weighted)
+                                                                  threshold=threshold, site_list=sites, weighted=weighted)
                 if grid:
                     thresh_grd[ii, :, :] = np.reshape(probs, (len(y_data), len(x_data)))
                 else:
@@ -1860,7 +1862,7 @@ def save_disp_prob_xarrays(extension1,  slip_taper, model_version_results_direct
                 disps = np.zeros([len(sites), len(probabilities)])
                 for ii, probability in enumerate(probabilities):
                     disps[:, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
-                                                                site_list=sites, probability=probability, weighted=weighted)
+                                                                 site_list=sites, probability=probability, weighted=weighted)
                     if exceed_type == 'down':
                         disps[:, ii] = -1 * disps[:, ii]
                 if grid:

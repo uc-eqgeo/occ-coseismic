@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from time import time
 
+
 def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1, S=""):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
@@ -29,15 +30,16 @@ def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, 
     site_file = f"../{model_version_results_directory}/site_name_list.txt"
 
     if S == "":
-        S='_'
+        S = '_'
 
     # Append site information for this branch to the main list
     with open(site_file, "a") as f:
         for site in sites_of_interest:
             f.write(f"{site} {branchdir} {S}\n")
 
+
 def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks,
-                          hours: int = 0, mins: int= 3, mem: int= 45, cpus: int= 1, account: str= 'uc03610',
+                          hours: int = 0, mins: int = 3, mem: int = 45, cpus: int = 1, account: str = 'uc03610',
                           time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4, job_time=5):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
@@ -56,27 +58,23 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
     site_file = f"../{model_version_results_directory}/site_name_list.txt"
 
     with open(f"../{model_version_results_directory}/cumu_PPE_slurm_task_array_{str(job_time).replace('.','_')}sec_job.sl", "wb") as f:
-        f.write(f"#!/bin/bash -e\n".encode())
+        f.write("#!/bin/bash -e\n".encode())
         f.write(f"#SBATCH --job-name=occ-{os.path.basename(model_version_results_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
         f.write(f"#SBATCH --mem={mem}GB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
-        f.write(f"#SBATCH --partition=large\n".encode())
-        #f.write(f"#SBATCH --array=1-{len(all_sites)}\n".encode())
+        f.write("#SBATCH --partition=large\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
-        #f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_site%a_%j.out\n".encode())
-        #f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_site%a_%j.err\n\n".encode())
         f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_task%a_%j.out\n".encode())
         f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_task%a_%j.err\n\n".encode())
 
-        f.write(f"# Activate the conda environment\n".encode())
-        f.write(f"mkdir -p logs\n".encode())
-        f.write(f"module purge  2>/dev/null\n".encode())
-        f.write(f"module load Python/3.11.6-foss-2023a\n\n".encode())
+        f.write("# Activate the conda environment\n".encode())
+        f.write("mkdir -p logs\n".encode())
+        f.write("module purge  2>/dev/null\n".encode())
+        f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
 
-        #f.write(f"python nesi_scripts.py --site `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"] {{print $1}}' {site_file}` --branchdir `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"] {{print $2}}' {site_file}` --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} --scaling `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"] {{print $3}}' {site_file}`\n\n".encode())
         f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {tasks_per_array} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} \n\n".encode())
 
 
@@ -94,20 +92,21 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
     for site_of_interest in sites:
         with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.pkl", "rb") as f:
             single_site_dict = pkl.load(f)
-        site_PPE_dict[site_of_interest] = single_site_dict
-        os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.pkl")
-    os.rmdir(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
+        site_PPE_dict.update(single_site_dict)
+        # os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.pkl")
+    # os.rmdir(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
 
     if 'grid_meta' in branch_site_disp_dict.keys():
-            site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
+        site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
 
     if not return_dict:
         with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
-              f"{taper_extension}.pkl", "wb") as f:
+                  f"{taper_extension}.pkl", "wb") as f:
             pkl.dump(site_PPE_dict, f)
 
     else:
         return site_PPE_dict
+
 
 if __name__ == "__main__":
     # Import here to prevent circular imports
@@ -149,7 +148,7 @@ if __name__ == "__main__":
 
         if scaling == '_' or scaling == '_\r':
             scaling = ""
-        
+
         extension1 = os.path.basename(branch_results_directory)
         with open(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}.pkl", "rb") as fid:
             branch_disp_dict = pkl.load(fid)
@@ -170,16 +169,16 @@ if __name__ == "__main__":
             print(f"Running {len(sites_of_interest)} sites in branch {extension1} with scaling {scaling}...")
 
         # Needs to be run one site at a time so sites can be recombined later
-        for site in sites_of_interest:
-            lap=time()
+        for ix, site in enumerate(sites_of_interest):
+            lap = time()
             get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, [site], n_samples,
-                    extension1, branch_key="nan", time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True,
-                    plot_maximum_displacement=False)
+                         extension1, branch_key="nan", time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True,
+                         plot_maximum_displacement=False, array_process=True)
             if nesi_print:
-                os.system(f"echo {extension1} {site} complete in {time() - lap:.2f} seconds\n")
+                os.system(f"echo {ix} {extension1} {site} complete in {time() - lap:.2f} seconds\n")
 
         if nesi_print:
             os.system(f"echo {extension1} complete in {time() - begin:.2f} seconds\n")
         print(f"{extension1} complete in : {time() - begin:.2f} seconds\n")
-    
+
     print(f"All sites complete in {time() - start:.2f} seconds (Average {(time() - start) / len(task_sites):.2f} seconds per site)")
