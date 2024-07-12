@@ -8,7 +8,7 @@ import pickle as pkl
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "all"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_Model_CFM_southland_10km"           # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_southland_10km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
@@ -27,7 +27,7 @@ make_geotiffs = True
 #make_map = True
 
 # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
-paired_crustal_sz = False              # True or False
+paired_crustal_sz = True              # True or False
 
 if testing or not paired_crustal_sz:
     n_samples = 1e4

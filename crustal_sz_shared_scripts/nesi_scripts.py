@@ -2,6 +2,7 @@ import os
 import argparse
 import pickle as pkl
 import numpy as np
+import pandas as pd
 from time import time
 
 def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1, S=""):
@@ -16,14 +17,14 @@ def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, 
     outputs: pickle file with probability dictionary (probs, disps, site_coords)
 
     CAVEATS/choices:
-    - need to decide on number of 100-yr simulations to run (n_samples = 1000000)
+    - need to decide on number of 100-yr simulations to run (n_samples = 100000)
     """
 
     sites_of_interest = list(branch_site_disp_dict.keys())
 
     branchdir = f"{model_version_results_directory}/{extension1}"
 
-    os.makedirs(f"{branchdir}/site_cumu_exceed{S}", exist_ok=True)
+    os.makedirs(f"../{branchdir}/site_cumu_exceed{S}", exist_ok=True)
 
     site_file = f"../{model_version_results_directory}/site_name_list.txt"
 
@@ -35,7 +36,7 @@ def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, 
         for site in sites_of_interest:
             f.write(f"{site} {branchdir} {S}\n")
 
-def prep_SLURM_submission(model_version_results_directory,
+def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks,
                           hours: int = 0, mins: int= 3, mem: int= 45, cpus: int= 1, account: str= 'uc03610',
                           time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4):
     """
@@ -65,17 +66,21 @@ def prep_SLURM_submission(model_version_results_directory,
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
         f.write(f"#SBATCH --partition=large\n".encode())
-        f.write(f"#SBATCH --array=1-{len(all_sites)}\n".encode())
+        #f.write(f"#SBATCH --array=1-{len(all_sites)}\n".encode())
+        f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
-        f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_site%a_%j.out\n".encode())
-        f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_site%a_%j.err\n\n".encode())
+        #f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_site%a_%j.out\n".encode())
+        #f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_site%a_%j.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_task%a_%j.out\n".encode())
+        f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_task%a_%j.err\n\n".encode())
 
         f.write(f"# Activate the conda environment\n".encode())
         f.write(f"mkdir -p logs\n".encode())
         f.write(f"module purge  2>/dev/null\n".encode())
         f.write(f"module load Python/3.11.6-foss-2023a\n\n".encode())
 
-        f.write(f"python nesi_scripts.py --site `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"] {{print $1}}' {site_file}` --branchdir `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"] {{print $2}}' {site_file}` --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} --scaling `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"] {{print $3}}' {site_file}`\n\n".encode())
+        #f.write(f"python nesi_scripts.py --site `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"] {{print $1}}' {site_file}` --branchdir `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"] {{print $2}}' {site_file}` --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} --scaling `awk 'FNR == ENVIRON[\"SLURM_ARRAY_TASK_ID\"] {{print $3}}' {site_file}`\n\n".encode())
+        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {tasks_per_array} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} \n\n".encode())
 
 
 def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension="", S="", return_dict=False):
@@ -109,11 +114,14 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
 
 if __name__ == "__main__":
     # Import here to prevent circular imports
-    from probabalistic_displacement_scripts import get_cumu_PPE
+    from probabalistic_displacement_scripts import get_cumu_PPE, nesi_print
 
     parser = argparse.ArgumentParser(description="Script to calculate cumulative exceedance probabilities for each site")
-    parser.add_argument("--site", type=str, required=True, help="Site to calculate exceedance probabilities for")
-    parser.add_argument("--branchdir", type=str, required=True, help="Directory of the branch results")
+    #parser.add_argument("--site", type=str, required=True, help="Site to calculate exceedance probabilities for")
+    #parser.add_argument("--branchdir", type=str, required=True, help="Directory of the branch results")
+    parser.add_argument("--task_number", type=int, required=True, help="Task number for the SLURM array")
+    parser.add_argument("--tasks_per_array", type=int, required=True, help="Number of tasks per SLURM array")
+    parser.add_argument("--site_file", type=str, required=True, help="File containing the site information")
     parser.add_argument("--time_interval", type=int, default=100, help="Time interval to calculate exceedance probabilities over")
     parser.add_argument("--n_samples", type=int, default=1e5, help="Number of samples to use for the poissonian simulation")
     parser.add_argument("--sd", type=float, default=0.4, help="Standard deviation of the normal distribution to use for uncertainty in displacements")
@@ -218,6 +226,7 @@ if __name__ == "__main__":
     print(f"Site: {site_of_interest} complete")
     """
 
+    """
     start = time()
     site_of_interest = args.site
     branch_results_directory = args.branchdir
@@ -246,3 +255,60 @@ if __name__ == "__main__":
 
     print(f"Time taken: {time() - start:.2f} seconds")
     print(f"Site: {site_of_interest} complete")
+    """
+
+    start = time()
+
+    investigation_time = args.time_interval
+    n_samples = args.n_samples
+    sd = args.sd
+
+    with open(args.site_file, "r") as f:
+        all_sites = f.read().splitlines()
+
+    task_sites = all_sites[args.task_number * args.tasks_per_array:(args.task_number + 1) * args.tasks_per_array]
+
+    sites = np.array([site_info.split(" ")[0] for site_info in task_sites])
+    branch_directories = np.array([site_info.split(" ")[1] for site_info in task_sites])
+    scalings = np.array([site_info.split(" ")[2] for site_info in task_sites])
+    site_df = pd.DataFrame(np.vstack([sites, branch_directories, scalings]).T, columns=['Site', 'Branch Directory', 'Scaling'])
+
+    # Group all of these based on scaling and branch
+    site_groups = site_df.groupby(['Branch Directory', 'Scaling'])
+
+    for name, group in site_groups:
+        begin = time()
+        branch_results_directory, scaling = name
+
+        if scaling == '_' or scaling == '_\r':
+            scaling = ""
+        
+        extension1 = os.path.basename(branch_results_directory)
+        with open(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}.pkl", "rb") as fid:
+            branch_disp_dict = pkl.load(fid)
+
+        sites_of_interest = group['Site'].values
+
+        if isinstance([key for key in branch_disp_dict.keys()][0], int):
+            if '_' not in sites_of_interest[0]:
+                sites_of_interest = [int(site) for site in sites_of_interest]
+
+        if scaling == "":
+            if nesi_print:
+                os.system(f"echo Running {len(sites_of_interest)} sites in branch {extension1}...")
+            print(f"Running {len(sites_of_interest)} sites in branch {extension1}...")
+        else:
+            if nesi_print:
+                os.system(f"echo Running {len(sites_of_interest)} sites in branch {extension1} with scaling {scaling}...")
+            print(f"Running {len(sites_of_interest)} sites in branch {extension1} with scaling {scaling}...")
+
+        # Needs to be run one site at a time so sites can be recombined later
+        for site in sites_of_interest:
+            get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, [site], n_samples,
+                    extension1, branch_key="nan", time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True)
+
+        if nesi_print:
+            os.system(f"echo {extension1} complete in : {time() - begin:.2f} seconds\n")
+        print(f"{extension1} complete in : {time() - begin:.2f} seconds\n")
+    
+    print(f"All sites complete in {time() - start:.2f} seconds (Average {(time() - start) / len(task_sites):.2f} seconds per site)")
