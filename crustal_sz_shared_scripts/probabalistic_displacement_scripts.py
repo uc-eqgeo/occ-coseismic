@@ -199,9 +199,14 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         if load_random:
             # Load array of random samples rather than regenerating them
             lap = time()
-            with open(f"../{model_version_results_directory}/{extension1}/scenarios.pkl", 'rb') as f:
+            if array_process:
+                randomdir = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}"
+            else:
+                randomdir = f"../{model_version_results_directory}/{extension1}"
+
+            with open(f"{randomdir}/scenarios.pkl", 'rb') as f:
                 scenarios = pkl.load(f)
-            with open(f"../{model_version_results_directory}/{extension1}/disp_uncertainty.pkl", 'rb') as f:
+            with open(f"{randomdir}/disp_uncertainty.pkl", 'rb') as f:
                 disp_uncertainty = pkl.load(f)
             #print(f"\nTime taken to load random samples: {time() - lap:.5f} s")
             lap = time()
@@ -308,19 +313,23 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     if 'grid_meta' in branch_site_disp_dict.keys():
             site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
 
-    if extension1 != "" and scaling == "":
-        with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
-              f"{taper_extension}.pkl", "wb") as f:
+    if array_process:
+        with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.pkl", "wb") as f:
             pkl.dump(site_PPE_dict, f)
-    elif scaling != "":
-        with open(f"{model_version_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.pkl", "wb") as f:
-            pkl.dump(site_PPE_dict, f)
-
     else:
-        return site_PPE_dict
+        if extension1 != "" and scaling == "":
+            with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
+                      f"{taper_extension}.pkl", "wb") as f:
+                pkl.dump(site_PPE_dict, f)
+        elif scaling != "":
+            with open(f"../{model_version_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.pkl", "wb") as f:
+                pkl.dump(site_PPE_dict, f)
+        else:
+            return site_PPE_dict
 
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension,
-                              nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 45, cpus: int= 1, account: str= 'uc03610'):
+                              nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
+                              time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=5):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -373,6 +382,24 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         ### get exceedance probability dictionary
         if nesi:
             if nesi_step == 'prep':
+                print('\tPreparing random arrays...')
+                os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}", exist_ok=True)
+                site1 = list(branch_site_disp_dict.keys())[0]
+                rng = np.random.default_rng()
+                if "scaled_rates" not in branch_site_disp_dict[site1].keys():
+                    # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
+                    rates = np.array(branch_site_disp_dict[site1]["rates"])
+                else:
+                    rates = np.array(branch_site_disp_dict[site1]["scaled_rates"])
+
+                n_ruptures = rates.shape[0]
+                scenarios = rng.poisson(time_interval * rates, size=(int(n_samples), n_ruptures))
+                disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
+                with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}/scenarios.pkl", "wb") as fid:
+                    pkl.dump(scenarios, fid)
+                with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}/disp_uncertainty.pkl", "wb") as fid:
+                    pkl.dump(disp_uncertainty, fid)
+
                 print(f"\tPrepping for NESI....")
                 prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
                 continue
@@ -384,18 +411,27 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
         else:
             branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict,
-                        site_ids=branch_site_disp_dict.keys(),
-                        model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-                        time_interval=100, n_samples=n_samples, extension1="")
+                                                site_ids=branch_site_disp_dict.keys(),
+                                                model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
+                                                time_interval=100, n_samples=n_samples, extension1="")
 
         fault_model_allbranch_PPE_dict[branch_id] = {"cumu_PPE_dict": branch_cumu_PPE_dict, "branch_weight":
             branch_weight}
 
     if nesi and nesi_step == 'prep':
+        n_sites = len(branch_site_disp_dict)
+        n_jobs = len(branch_weight_dict.keys()) * n_sites
+        tasks_per_array = np.ceil(n_jobs / n_array_tasks)
+        if tasks_per_array < min_tasks_per_array:
+            tasks_per_array = min_tasks_per_array
+        array_time = job_time * tasks_per_array
+        hours, secs = divmod(array_time, 3600)
+        mins = np.ceil(secs / 60)
+        n_tasks = int(np.ceil(n_jobs / tasks_per_array))
         print('\nCreating SLURM submission script....')
-        prep_SLURM_submission(model_version_results_directory, hours = 0, mins=3, mem=45, cpus=1, account='uc03610',
-                              time_interval=100, n_samples=n_samples, sd=0.4)
-        print(f'Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl')
+        prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks, hours=int(hours), mins=int(mins), mem=mem, cpus=cpus,
+                              account=account, time_interval=100, n_samples=n_samples, sd=0.4, job_time=job_time)
+        print(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array_{str(job_time).replace('.','_')}sec_job.sl")
         exit()
     else:
         outfile_name = f"allbranch_PPE_dict_{outfile_extension}{taper_extension}"
@@ -507,7 +543,8 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
 def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight_dict_list,
                                     crustal_model_version_results_directory, sz_model_version_results_directory_list,
                                     paired_PPE_pickle_name, slip_taper, n_samples, out_directory, outfile_extension, sz_type_list,
-                                    nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 45, cpus: int= 1, account: str= 'uc03610'):
+                                    nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
+                                    n_array_tasks=1000, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=5):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -610,28 +647,60 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                     pair_site_disps += sz_site_disps
                     pair_scaled_rates += sz_site_scaled_rates
 
-                pair_site_disp_dict[site] = {"disps": pair_site_disps, "scaled_rates": pair_scaled_rates,
-                                                    "site_coords": site_coords}
+                pair_site_disp_dict[site] = {"disps": pair_site_disps, "scaled_rates": pair_scaled_rates, "site_coords": site_coords}
                 
-                if nesi:
-                    os.makedirs(f"../{out_directory}/{pair_unique_id}", exist_ok=True)
-                    with open(f"../{out_directory}/{pair_unique_id}/branch_site_disp_dict_{pair_unique_id}.pkl", "wb") as f:
-                        pkl.dump(pair_site_disp_dict, f)
+            if nesi:
+                os.makedirs(f"../{out_directory}/{pair_unique_id}", exist_ok=True)
+                with open(f"../{out_directory}/{pair_unique_id}/branch_site_disp_dict_{pair_unique_id}.pkl", "wb") as f:
+                    pkl.dump(pair_site_disp_dict, f)
 
             # get exceedence probabilities for each crustal/sz pair
             if not os.path.exists(f"../{out_directory}"):
                 os.mkdir(f"../{out_directory}")
             if nesi and nesi_step == 'prep':
-                    print(f"\tPrepping for NESI....")
-                    prep_nesi_site_list(out_directory, pair_site_disp_dict, pair_unique_id)
-                    continue
+                print('\tPreparing random arrays...')
+                os.makedirs(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed", exist_ok=True)
+                site1 = list(pair_site_disp_dict.keys())[0]
+                rng = np.random.default_rng()
+                if "scaled_rates" not in pair_site_disp_dict[site1].keys():
+                    # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
+                    rates = np.array(pair_site_disp_dict[site1]["rates"])
+                else:
+                    rates = np.array(pair_site_disp_dict[site1]["scaled_rates"])
+
+                n_ruptures = rates.shape[0]
+                scenarios = rng.poisson(time_interval * rates, size=(int(n_samples), n_ruptures))
+                disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
+                with open(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed/scenarios.pkl", "wb") as fid:
+                    pkl.dump(scenarios, fid)
+                with open(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed/disp_uncertainty.pkl", "wb") as fid:
+                    pkl.dump(disp_uncertainty, fid)
+
+                print(f"\tPrepping for NESI....")
+                prep_nesi_site_list(out_directory, pair_site_disp_dict, pair_unique_id)
+                continue
             else:
                 pair_cumu_PPE_dict = get_cumu_PPE(branch_key=pair_unique_id, branch_site_disp_dict=pair_site_disp_dict,
                                                   site_ids=pair_site_disp_dict.keys(),
-                                                    model_version_results_directory=out_directory,
-                                                    slip_taper=slip_taper, time_interval=100,
-                                                    n_samples=n_samples, extension1="")
+                                                  model_version_results_directory=out_directory,
+                                                  slip_taper=slip_taper, time_interval=100,
+                                                  n_samples=n_samples, extension1="")
                 paired_crustal_sz_PPE_dict[pair_unique_id] = {"cumu_PPE_dict": pair_cumu_PPE_dict, "branch_weight": pair_weight}
+        if nesi and nesi_step == 'prep':
+            n_sites = len(site_names)
+            n_jobs = len(crustal_sz_branch_pairs) * n_sites
+            tasks_per_array = np.ceil(n_jobs / n_array_tasks)
+            if tasks_per_array < min_tasks_per_array:
+                tasks_per_array = min_tasks_per_array
+            array_time = job_time * tasks_per_array
+            hours, secs = divmod(array_time, 3600)
+            mins = np.ceil(secs / 60)
+            n_tasks = int(np.ceil(n_jobs / tasks_per_array))
+            print('\nCreating SLURM submission script....')
+            prep_SLURM_submission(out_directory, tasks_per_array, n_tasks, hours=int(hours), mins=int(mins), mem=mem, cpus=cpus,
+                                account=account, time_interval=100, n_samples=n_samples, sd=0.4, job_time=job_time)
+            print(f"Now run\n\tsbatch ../{out_directory}/cumu_PPE_slurm_task_array_{str(job_time).replace('.','_')}sec_job.sl")
+            exit()
 
     else:
         for counter, pair in enumerate(crustal_sz_branch_pairs):
