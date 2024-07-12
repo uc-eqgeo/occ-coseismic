@@ -275,14 +275,14 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         n_exceedances_up = np.zeros((len(thresholds), n_chunks))
         n_exceedances_down = np.zeros((len(thresholds), n_chunks))
 
-        cumulative_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)
+        chunked_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)
         for tix, threshold in enumerate(thresholds):
             # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
             # across all of the 100 yr scenarios
             # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
-            n_exceedances_total_abs[tix, :] = (np.abs(cumulative_disp_scenarios) > threshold).sum(axis=1)
-            n_exceedances_up[tix, :] = (cumulative_disp_scenarios > threshold).sum(axis=1)
-            n_exceedances_down[tix, :] = (cumulative_disp_scenarios < -threshold).sum(axis=1)
+            n_exceedances_total_abs[tix, :] = (np.abs(chunked_disp_scenarios) > threshold).sum(axis=1)
+            n_exceedances_up[tix, :] = (chunked_disp_scenarios > threshold).sum(axis=1)
+            n_exceedances_down[tix, :] = (chunked_disp_scenarios < -threshold).sum(axis=1)
 
         # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
         # quite high for low displacements (25%). Means there's a ~25% chance an earthquake will exceed 0 m in next 100
@@ -306,7 +306,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "standard_deviation": sd,
                                            "error_total_abs": error_abs,
                                            "error_up": error_up,
-                                           "error_down": error_down}
+                                           "error_down": error_down,
+                                           "scenario_displacements": cumulative_disp_scenarios}
 
         elapsed = time_elasped(time(), start)
         printProgressBar(i + 1, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix=f'Complete {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length=50)
@@ -681,11 +682,20 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 prep_nesi_site_list(out_directory, pair_site_disp_dict, pair_unique_id)
                 continue
             else:
-                pair_cumu_PPE_dict = get_cumu_PPE(branch_key=pair_unique_id, branch_site_disp_dict=pair_site_disp_dict,
-                                                  site_ids=pair_site_disp_dict.keys(),
-                                                  model_version_results_directory=out_directory,
-                                                  slip_taper=slip_taper, time_interval=100,
-                                                  n_samples=n_samples, extension1="")
+                recalculate_PPE = False
+                if recalculate_PPE:
+                    pair_cumu_PPE_dict = get_cumu_PPE(branch_key=pair_unique_id, branch_site_disp_dict=pair_site_disp_dict,
+                                                    site_ids=pair_site_disp_dict.keys(),
+                                                    model_version_results_directory=out_directory,
+                                                    slip_taper=slip_taper, time_interval=100,
+                                                    n_samples=n_samples, extension1="")
+                else:
+                    breakpoint()
+                    pair_cumu_PPE_dict = merge_cumu_PPE(branch_key=pair_unique_id, branch_site_disp_dict=pair_site_disp_dict,
+                                                    site_ids=pair_site_disp_dict.keys(),
+                                                    model_version_results_directory=out_directory,
+                                                    slip_taper=slip_taper, time_interval=100,
+                                                    n_samples=n_samples, extension1="")
                 paired_crustal_sz_PPE_dict[pair_unique_id] = {"cumu_PPE_dict": pair_cumu_PPE_dict, "branch_weight": pair_weight}
         if nesi and nesi_step == 'prep':
             n_sites = len(site_names)
