@@ -3,9 +3,10 @@ try:
     import geopandas as gpd
     import rasterio
     from rasterio.transform import Affine
-    from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile
+    from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile, maximum_displacement_plot
     from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE
     from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
+    import xarray as xr
 except:
     print("Some modules not loaded - assume you're just running get_cumu_PPE on NESI")
     nesi_print = True
@@ -121,7 +122,7 @@ def time_elasped(current_time, start_time):
 
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict,  site_ids, n_samples,
                  extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling='', load_random = False,
-                 plot_maximum_displacement=True):
+                 thresh_lims=[0, 3], thresh_step=0.01, plot_maximum_displacement=True):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
 
@@ -238,7 +239,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         cumulative_disp_scenarios = disp_scenarios.sum(axis=1)
 
         # get displacement thresholds for calculating exceedance (hazard curve x axis)
-        thresholds = np.arange(0, 3, 0.01)
+        thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
         thresholds_neg = thresholds * -1
         # sum all the displacements in the 100 year window that exceed threshold
         n_exceedances_total_abs = np.zeros_like(thresholds)
@@ -301,8 +302,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "error_up": error_up,
                                            "error_down": error_down}
         
-        printProgressBar(i + 1, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = 'Complete', length = 50)
-
         elapsed = time_elasped(time(), start)
         printProgressBar(i + 1, len(site_ids), prefix = f'\tProcessing {len(site_ids)} Sites:', suffix = f'Complete {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length = 50)
 
@@ -333,7 +332,6 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
     """
 
     gf_name = "sites"
-    counter = 0
 
     if slip_taper:
         taper_extension = "_tapered"
@@ -350,10 +348,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         if os.path.exists(f"../{model_version_results_directory}/site_name_list.txt"):
             os.remove(f"../{model_version_results_directory}/site_name_list.txt")
 
-    for branch_id in branch_weight_dict.keys():
-
-        print(f"calculating {branch_id} PPE\t({counter} of {len(branch_weight_dict.keys())} branches)")
-        counter += 1
+    for counter, branch_id in enumerate(branch_weight_dict.keys()):
+        print(f"calculating {branch_id} PPE\t({counter + 1} of {len(branch_weight_dict.keys())} branches)")
 
         # get site displacement dictionary and branch weights
         extension1 = gf_name + branch_weight_dict[branch_id]["file_suffix"]
@@ -409,7 +405,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
         return fault_model_allbranch_PPE_dict
 
-def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper):
+def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper, thresh_lims=[0, 3], thresh_step=0.01):
     """takes all the branch PPEs and combines them based on the branch weights into a weighted mean PPE dictionary
 
     :param fault_model_PPE_dict: The dictionary has PPEs for each branch (or branch pairing).
@@ -433,7 +429,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                       fault_model_PPE_dict.keys()]
 
     # need a more elegant solution to this I think
-    threshold_vals = np.arange(0, 3, 0.01)
+    threshold_vals = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
 
     # extract site coordinates from fault model PPE dictionary
     site_coords_dict = {}
@@ -581,16 +577,14 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
             if isinstance(crustal_sz_branch_pairs[0][0], tuple):
                 crustal_sz_branch_pairs = [t1 + tuple([t2]) for t1, t2 in crustal_sz_branch_pairs]
 
-        counter = 0
-        for pair in crustal_sz_branch_pairs:
+        for counter, pair in enumerate(crustal_sz_branch_pairs):
             # get the branch unique ID for the crustal and sz combos
             crustal_unique_id, sz_unique_ids = pair[0], pair[1:]
             pair_unique_id = crustal_unique_id
             for sz_unique_id in sz_unique_ids:
                 pair_unique_id += "_" + sz_unique_id
 
-            print(f"calculating {pair_unique_id} PPE\t({counter} of {len(crustal_sz_branch_pairs)} branches)")
-            counter += 1
+            print(f"calculating {pair_unique_id} PPE\t({counter + 1} of {len(crustal_sz_branch_pairs)} branches)")
 
             site_names = list(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"].keys())
 
@@ -1613,7 +1607,7 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
         x_data = np.arange(xmin, xmax + x_res, x_res)
         y_data = np.arange(ymin, ymax + y_res, y_res)
 
-        if not all(np.in1d(site_x, x_data)) or not all(np.in1d(site_y, y_data)):
+        if not all(np.isin(site_x, x_data)) or not all(np.isin(site_y, y_data)):
             print("Site coordinates cant all be aligned to grid. Check sites are evenly spaced. Skipping step...")
             return
 
@@ -1631,8 +1625,8 @@ def save_disp_prob_tifs(extension1,  slip_taper, model_version_results_directory
         if thresholds is None:
             thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
     
-        if not all(np.in1d(thresholds, PPE_dict[sites[0]][threshold_key])):
-            thresholds = thresholds[np.in1d(thresholds, PPE_dict[sites[0]][threshold_key])]
+        if not all(np.isin(thresholds, PPE_dict[sites[0]][threshold_key])):
+            thresholds = thresholds[np.isin(thresholds, PPE_dict[sites[0]][threshold_key])]
         if len(thresholds) == 0:
             print('No requested thresholds were in the PPE dictionary. Change requested thresholds')
         else:
@@ -1734,7 +1728,7 @@ def save_disp_prob_xarrays(extension1,  slip_taper, model_version_results_direct
         x_data = np.arange(xmin, xmax + x_res, x_res)
         y_data = np.arange(ymin, ymax + y_res, y_res)
 
-        if not all(np.in1d(site_x, x_data)) or not all(np.in1d(site_y, y_data)):
+        if not all(np.isin(site_x, x_data)) or not all(np.isin(site_y, y_data)):
             print("Site coordinates cant all be aligned to grid. Check sites are evenly spaced. Saving as sites")
             pass
 
@@ -1755,15 +1749,16 @@ def save_disp_prob_xarrays(extension1,  slip_taper, model_version_results_direct
             print(f"\tAdding Displacement Probability DataArrays....")
             if thresholds is None:
                 thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
-        
-            if not all(np.in1d(thresholds, PPE_dict[sites[0]][threshold_key])):
-                thresholds = thresholds[np.in1d(thresholds, PPE_dict[sites[0]][threshold_key])]
-            if len(thresholds) == 0:
-                print('No requested thresholds were in the PPE dictionary. Change requested thresholds')
-                pass
-            else:
-                print('Not all requested thresholds were in PPE dictionary. Running available thresholds...')
-                print('Available thresholds are:', thresholds)
+  
+            if not all(np.isin(thresholds, PPE_dict[sites[0]][threshold_key])):
+                dropped_thresholds = thresholds[np.isin(thresholds, PPE_dict[sites[0]][threshold_key], invert=True)]
+                thresholds = thresholds[np.isin(thresholds, PPE_dict[sites[0]][threshold_key])]
+                if len(thresholds) == 0:
+                    print('No requested thresholds were in the PPE dictionary. Change requested thresholds')
+                    pass
+                else:
+                    print('Not all requested thresholds were in PPE dictionary.\nMissing thresholds:\n', dropped_thresholds)
+                    print('Running available thresholds:\n', thresholds)
         
             for exceed_type in exceed_type_list:
                 thresh_grd = np.zeros([len(thresholds), len(y_data), len(x_data)]) * np.nan
@@ -1789,6 +1784,7 @@ def save_disp_prob_xarrays(extension1,  slip_taper, model_version_results_direct
             print(f"\tAdding Probability Exceedence DataArrays....")
             if probabilities is None:
                 probabilities = np.arange(probs_lims[0], probs_lims[1] + probs_step, probs_step)
+                probabilities = np.round(probabilities, len(str(np.float32(probs_step)).strip('0').split('.')[1]))
 
             for exceed_type in exceed_type_list:
                 thresh_grd = np.zeros([len(probabilities), len(y_data), len(x_data)]) * np.nan
@@ -1804,7 +1800,7 @@ def save_disp_prob_xarrays(extension1,  slip_taper, model_version_results_direct
                     for jj in range(len(sites)):
                         thresh_grd[:, int(site_y[jj]), int(site_x[jj])] = disps[jj, :]
 
-                da[exceed_type] = xr.DataArray(thresh_grd, dims=['probability', 'lat', 'lon'], coords={'probability': probabilities, 'lat': y_data, 'lon': x_data})
+                da[exceed_type] = xr.DataArray(thresh_grd, dims=['probability', 'lat', 'lon'], coords={'probability': (probabilities * 100).astype(int), 'lat': y_data, 'lon': x_data})
                 da[exceed_type].attrs['exceed_type'] = exceed_type
                 da[exceed_type].attrs['threshold'] = 'Exceedance Probability (%)'
                 da[exceed_type].attrs['crs'] = 'EPSG:2193'

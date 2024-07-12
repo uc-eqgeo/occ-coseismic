@@ -7,13 +7,13 @@ import pickle as pkl
 import os
 
 #### USER INPUT #####
-version_extension  = "_southland_10km"
+version_extension  = "_SI_10km"
 
 #this can be any working branch, should be the same for all.
 NSHM_directory = "NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2"
 
 # Define whch subduction zone (hikkerk / puysegur)
-sz_zone = 'hikkerk'
+sz_zone = 'puysegur'
 
 if not sz_zone in ['hikkerk', 'puysegur']:
     print("Please define a valid subduction zone (hikkerk / puysegur).")
@@ -39,7 +39,7 @@ elif gentler_dip:
     version_extension += "_gentlerdip"
 
 # De-blobify outputs
-deblobify = False
+deblobify = True
 #######################
 def cross_3d(a, b):
     """

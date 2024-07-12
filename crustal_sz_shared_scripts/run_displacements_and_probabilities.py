@@ -19,11 +19,11 @@ from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE,
 results_directory = "results"
 
 slip_taper = False                    # True or False, only matter if crustal otherwise it defaults to false later.
-fault_type = "py"                  # "crustal or "sz" or "py"
+fault_type = "sz"                  # "crustal or "sz" or "py"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
-single_branch = True
+single_branch = False
 
 # True: Skip making a random sample of rupture IDs and just use the ones you know we want to look at
 # False: Make a random sample of rupture IDs
@@ -32,10 +32,10 @@ specific_rupture_ids = False
 #can only run one type of GF and fault geometry at a time
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
 
-crustal_model_extension = "_Model_CFM_50km"         # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_southland_10km"                # must match suffix in the subduction directory with gfs
+crustal_model_extension = "_Model_CFM_NI_10km"         # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_NI_10km"                # must match suffix in the subduction directory with gfs
 
-nesi = False
+nesi = True
 nesi_step = 'prep'  # 'prep' or 'combine'
 
 load_random = True
@@ -73,20 +73,21 @@ file_type_list=["png", "pdf"]
 # Skip the displacements and jump to probabilities
 # True: this skips calculating displacements and making displacement figures (assumes you've already done it)
 # False: this calculates displacements (and makes disp figures) and probabilities
-skip_displacements = False
+skip_displacements = True
 calculate_cumu_PPE = False
 
-testing = True
+testing = False
 
 if testing:
     n_samples = 1e4
     job_time = 0.3
 else:
     n_samples = 1e5
-    job_time = 2
+    job_time = 3
 
 investigation_time = 100
 sd = 0.4
+mem = 5
 
 # this makes so when you export fonts as pdfs, they are editable in Illustrator
 matplotlib.rcParams['pdf.fonttype'] = 42
@@ -319,9 +320,9 @@ if gf_name == "sites":
                 mins = np.ceil(secs / 60)
                 n_tasks = int(np.ceil(n_jobs / tasks_per_array))
 
-                prep_SLURM_submission(model_version_results_directory,  tasks_per_array, n_tasks, hours = int(hours), mins=int(mins), mem=45, cpus=1, account='uc03610',
-                                        time_interval=100, n_samples=n_samples, sd=0.4)
-                print(f'Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl')
+                prep_SLURM_submission(model_version_results_directory,  tasks_per_array, n_tasks, hours = int(hours), mins=int(mins), mem=mem, cpus=1, account='uc03610',
+                                        time_interval=100, n_samples=n_samples, sd=0.4, job_time=job_time)
+                print(f'Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array_{str(job_time).replace('.','_')}sec_job.sl')
                 sys.exit()
 
     ## calculate rupture branch probabilities and make plots

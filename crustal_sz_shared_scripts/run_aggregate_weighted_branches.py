@@ -8,7 +8,7 @@ import pickle as pkl
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "all"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_Model_CFM_southland_10km"           # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_southland_10km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
@@ -21,16 +21,16 @@ testing = True
 probability_plot = True                # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
 displacement_chart = True                 # plots the displacement at the 10% and 2% probability of exceedance
 # thresholds
-make_hazcurves = True
-make_colorful_hazcurves = True
+make_hazcurves = False
+make_colorful_hazcurves = False
 make_geotiffs = True
 #make_map = True
 
 # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
-paired_crustal_sz = False              # True or False
+paired_crustal_sz = True              # True or False
 
 if testing or not paired_crustal_sz:
-    n_samples = 1e1
+    n_samples = 1e4
 else:
     if paired_crustal_sz:
         n_samples = 1e5
@@ -40,7 +40,7 @@ else:
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = True   # True or False
+calculate_fault_model_PPE = False   # True or False
 
 figure_file_type_list = ["png", "pdf"]             # file types for figures
 
@@ -240,8 +240,8 @@ with open(weighted_mean_PPE_filepath, 'rb') as f:
 
 # plot hazard curves and save to file
 print('Saving data arrays...')
-save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory,
-                       thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True, probs_lims = [0.02, 0.5], probs_step=0.02,
+ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory,
+                       thresh_lims=[0, 3], thresh_step=0.01, output_thresh=True, probs_lims = [0.01, 0.20], probs_step=0.01,
                        output_probs=True, grid=False, weighted=True)
 
 if paired_crustal_sz:
