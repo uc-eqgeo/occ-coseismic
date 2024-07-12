@@ -55,9 +55,6 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
 
     site_file = f"../{model_version_results_directory}/site_name_list.txt"
 
-    with open(site_file, "r") as f:
-        all_sites = f.read().splitlines()
-
     with open(f"../{model_version_results_directory}/cumu_PPE_slurm_task_array_{str(job_time).replace('.','_')}sec_job.sl", "wb") as f:
         f.write(f"#!/bin/bash -e\n".encode())
         f.write(f"#SBATCH --job-name=occ-{os.path.basename(model_version_results_directory)}\n".encode())
@@ -117,8 +114,6 @@ if __name__ == "__main__":
     from probabalistic_displacement_scripts import get_cumu_PPE, nesi_print
 
     parser = argparse.ArgumentParser(description="Script to calculate cumulative exceedance probabilities for each site")
-    #parser.add_argument("--site", type=str, required=True, help="Site to calculate exceedance probabilities for")
-    #parser.add_argument("--branchdir", type=str, required=True, help="Directory of the branch results")
     parser.add_argument("--task_number", type=int, required=True, help="Task number for the SLURM array")
     parser.add_argument("--tasks_per_array", type=int, required=True, help="Number of tasks per SLURM array")
     parser.add_argument("--site_file", type=str, required=True, help="File containing the site information")
@@ -128,134 +123,6 @@ if __name__ == "__main__":
     parser.add_argument("--scaling", type=str, default="", help="Scaling factor for the displacements")
     parser.add_argument("--slip_taper", default=False, action='store_true', help="Tapered slip distribution")
     args = parser.parse_args()
-
-    """
-    start = time()
-    site_of_interest = args.site
-    branch_results_directory = args.branchdir
-    investigation_time = args.time_interval
-    n_samples = args.n_samples
-    sd = args.sd
-    if args.scaling == '_':
-        scaling = ""
-    else:
-        scaling = args.scaling
-
-    print(f"Running site {site_of_interest}....")
-
-    rng = np.random.default_rng()
-
-    extension1 = os.path.basename(branch_results_directory)
-
-    with open(f"{branch_results_directory}/branch_site_disp_dict_{extension1}.pkl", "rb") as fid:
-            branch_disp_dict = pkl.load(fid)
-
-    # Additional check for if keys are integers
-    if isinstance([key for key in branch_disp_dict.keys()][0], int):
-        if '_' not in site_of_interest:
-            site_of_interest = int(site_of_interest)
-
-    site_dict_i = branch_disp_dict[site_of_interest]
-
-    del branch_disp_dict
-
-    if "scaled_rates" not in site_dict_i.keys():
-        # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
-        scaled_rates = site_dict_i["rates"]
-    else:
-        scaled_rates = site_dict_i["scaled_rates"]
-
-    # average number of events per time interval (effectively R*T from Ned's guide)
-    lambdas = investigation_time * np.array(scaled_rates)
-
-    # Generate n_samples of possible earthquake ruptures for random 100 year intervals
-    # returns boolean array where 0 means "no event" and 1 means "event". rows = 100 yr window, columns = earthquake
-    # rupture
-    scenarios = rng.poisson(lambdas, size=(int(n_samples), lambdas.size))
-
-    # assigns a normal distribution with a mean of 1 and a standard deviation of sd
-    # effectively a multiplier for the displacement value
-    disp_uncertainty = rng.normal(1., sd, size=(int(n_samples), lambdas.size))
-
-    # for each 100 yr scenario, get displacements from EQs that happened
-    disp_scenarios = scenarios * site_dict_i["disps"]
-    # multiplies displacement by the uncertainty multiplier
-    disp_scenarios = disp_scenarios * disp_uncertainty
-    # sum all displacement values at that site in that 100 yr interval
-    cumulative_disp_scenarios = disp_scenarios.sum(axis=1)
-
-    # get displacement thresholds for calculating exceedance (hazard curve x axis)
-    thresholds = np.arange(0, 3, 0.01)
-    thresholds_neg = thresholds * -1
-    # sum all the displacements in the 100 year window that exceed threshold
-    # n_exceedances_total = np.zeros_like(thresholds)
-    n_exceedances_total_abs = np.zeros_like(thresholds)
-    n_exceedances_up = np.zeros_like(thresholds)
-    n_exceedances_down = np.zeros_like(thresholds)
-    # for threshold value:
-    for threshold in thresholds:
-        # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
-        # across all of the 100 yr scenarios
-
-        # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
-        n_exceedances_total_abs[thresholds == threshold] = (np.abs(cumulative_disp_scenarios) > threshold).sum()
-        n_exceedances_up[thresholds == threshold] = (cumulative_disp_scenarios > threshold).sum()
-    for threshold in thresholds_neg:
-        n_exceedances_down[thresholds_neg == threshold] = (cumulative_disp_scenarios < threshold).sum()
-
-    # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
-    # quite high for low displacements (25%). Means there's a ~25% chance an earthquake will exceed 0 m in next 100
-    # years across all earthquakes in the catalogue (at that site).
-    exceedance_probs_total_abs = n_exceedances_total_abs / n_samples
-    exceedance_probs_up = n_exceedances_up / n_samples
-    exceedance_probs_down = n_exceedances_down / n_samples
-
-    # CAVEAT: at the moment only absolute value thresholds are stored, but for "down" the thresholds are
-    # actually negative.
-    single_site_dict = {"thresholds": thresholds,
-                                    "exceedance_probs_total_abs": exceedance_probs_total_abs,
-                                    "exceedance_probs_up": exceedance_probs_up,
-                                    "exceedance_probs_down": exceedance_probs_down,
-                                    "site_coords": site_dict_i["site_coords"],
-                                    "standard_deviation": sd}
-
-    with open(f"{branch_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.pkl", "wb") as f:
-        pkl.dump(single_site_dict, f)
-    
-    print(f"Time taken: {time() - start:.2f} seconds")
-    print(f"Site: {site_of_interest} complete")
-    """
-
-    """
-    start = time()
-    site_of_interest = args.site
-    branch_results_directory = args.branchdir
-    investigation_time = args.time_interval
-    n_samples = args.n_samples
-    sd = args.sd
-    if args.scaling == '_' or args.scaling == '_\r':
-        scaling = ""
-    else:
-        scaling = args.scaling
-
-    print(f"Running site {site_of_interest}....")
-
-    extension1 = os.path.basename(branch_results_directory)
-
-    with open(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}.pkl", "rb") as fid:
-            branch_disp_dict = pkl.load(fid)
-
-    # Additional check for if keys are integers
-    if isinstance([key for key in branch_disp_dict.keys()][0], int):
-        if '_' not in site_of_interest:
-            site_of_interest = int(site_of_interest)
-
-    get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, [site_of_interest], n_samples,
-                 extension1, branch_key="nan", time_interval=100, sd=0.4, scaling=scaling)
-
-    print(f"Time taken: {time() - start:.2f} seconds")
-    print(f"Site: {site_of_interest} complete")
-    """
 
     start = time()
 
