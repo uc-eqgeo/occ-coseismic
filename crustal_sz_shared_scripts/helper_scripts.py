@@ -567,6 +567,7 @@ def maximum_displacement_plot(site_ids, branch_site_disp_dict, model_dir, branch
         fig.savefig(f"../{model_dir}/weighted_max_disp.png", dpi=300)
     else:
         fig.savefig(f"../{model_dir}/{branch_name}/{branch_name}_max_disp.png", dpi=300)
+    plt.close(fig)
 
 ## These scripts are those required by numpy v2.0.0 to run the weighted percentiles.
 # As numpy v2.0 does not have backwards compatibility (and I couldn't install it), I have ripped
