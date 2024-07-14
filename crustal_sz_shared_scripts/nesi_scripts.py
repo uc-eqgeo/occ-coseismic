@@ -78,7 +78,7 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
         f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {tasks_per_array} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} \n\n".encode())
 
 
-def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension="", S="", return_dict=False):
+def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension="", S=""):
     """
     Script to recompile all individual site PPE dictionaries into a single branch dictionary
     """
@@ -95,17 +95,18 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
         site_PPE_dict.update(single_site_dict)
         # os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.pkl")
     # os.rmdir(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
+    if S == "":
+        extension2 = taper_extension
+    else:
+        extension2 = S
 
     if 'grid_meta' in branch_site_disp_dict.keys():
         site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
 
-    if not return_dict:
-        with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
-                  f"{taper_extension}.pkl", "wb") as f:
-            pkl.dump(site_PPE_dict, f)
+    with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{extension2}.pkl", "wb") as f:
+        pkl.dump(site_PPE_dict, f)
 
-    else:
-        return site_PPE_dict
+    return site_PPE_dict
 
 
 if __name__ == "__main__":
@@ -132,6 +133,11 @@ if __name__ == "__main__":
     with open(args.site_file, "r") as f:
         all_sites = f.read().splitlines()
 
+    if args.slip_taper:
+        taper = "_tapered"
+    else:
+        taper = "_uniform"
+
     task_sites = all_sites[args.task_number * args.tasks_per_array:(args.task_number + 1) * args.tasks_per_array]
 
     sites = np.array([site_info.split(" ")[0] for site_info in task_sites])
@@ -147,10 +153,10 @@ if __name__ == "__main__":
         branch_results_directory, scaling = name
 
         if scaling == '_' or scaling == '_\r':
-            scaling = ""
+            scaling = taper
 
         extension1 = os.path.basename(branch_results_directory)
-        with open(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}.pkl", "rb") as fid:
+        with open(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}{scaling}.pkl", "rb") as fid:
             branch_disp_dict = pkl.load(fid)
 
         sites_of_interest = group['Site'].values
