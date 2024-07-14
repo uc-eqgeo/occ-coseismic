@@ -234,9 +234,27 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 while not os.path.exists(branch_PPE_pkl):
                     ix += 1
                     branch_PPE_pkl = f"../{subduction_model_dirs[ix]}/sites_{model}_{branch_id}/cumu_exceed_prob_sites_{model}_{branch_id}_{branch_scaling}.pkl"
+                    if ix >= len(subduction_model_dirs):
+                        raise Exception(f"Could not find PPE for {branch}")
 
             with open(branch_PPE_pkl, 'rb') as f:
                 PPE_list.append(pkl.load(f))
+
+    if not os.path.exists(f"../{model_version_results_directory}/{extension1}/scenarios.pkl") or not os.path.exists(f"../{model_version_results_directory}/{extension1}/disp_uncertainty.pkl"):
+        load_random = False
+
+    if load_random:
+        # Load array of random samples rather than regenerating them
+        lap = time()
+        if array_process:
+            randomdir = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}"
+        else:
+            randomdir = f"../{model_version_results_directory}/{extension1}"
+
+        with open(f"{randomdir}/scenarios.pkl", 'rb') as f:
+            all_scenarios = pkl.load(f)
+        with open(f"{randomdir}/disp_uncertainty.pkl", 'rb') as f:
+            all_uncertainty = pkl.load(f)
 
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
@@ -289,41 +307,14 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             # average number of events per time interval (effectively R*T from Ned's guide)
             lambdas = investigation_time * np.array(scaled_rates)
 
-            if not os.path.exists(f"../{model_version_results_directory}/{extension1}/scenarios.pkl") or not os.path.exists(f"../{model_version_results_directory}/{extension1}/disp_uncertainty.pkl"):
-                load_random = False
-
             if load_random:
-                # Load array of random samples rather than regenerating them
-                lap = time()
-                if array_process:
-                    randomdir = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}"
-                else:
-                    randomdir = f"../{model_version_results_directory}/{extension1}"
-
-                with open(f"{randomdir}/scenarios.pkl", 'rb') as f:
-                    scenarios = pkl.load(f)
-                with open(f"{randomdir}/disp_uncertainty.pkl", 'rb') as f:
-                    disp_uncertainty = pkl.load(f)
-                if benchmarking:
-                    print(f"\nTime taken to load random samples: {time() - lap:.5f} s")
-                lap = time()
-
                 # As a concession to not regenerating random samples and scenarios, randomly shift the loaded uncertainty arrays
                 sample_shift = np.random.randint(-scenarios.shape[0], scenarios.shape[0])
                 rupture_shift = np.random.randint(-scenarios.shape[1], scenarios.shape[1])
-                if benchmarking:
-                    print(f"Ints: {time() - lap:.5f} s")
-                lap = time()
-                disp_uncertainty = np.roll(scenarios, (sample_shift, rupture_shift))[:, :lambdas.size]
-                if benchmarking:
-                    print(f"Disp Shift: {time() - lap:.5f} s")
-                lap = time()
+                disp_uncertainty = np.roll(all_uncertainty, (sample_shift, rupture_shift))[:, :lambdas.size]
                 # Leave scenarios alone - no point rolling sample order, and can't shift sideways as can't appy one rupture's distribution
                 # to another
-                scenarios = scenarios[:, slip]
-                if benchmarking:
-                    print(f"Scenario Crop Shift: {time() - lap:.5f} s")
-                lap = time()
+                scenarios = all_scenarios[:, slip]
                 if benchmarking:
                     print(f"Time taken to prep random samples: {time() - begin:.5f} s\n")
             else:
@@ -748,7 +739,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 pair_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_unique_ids, branch_site_disp_dict=pair_site_disp_dict,
                                                 site_ids=pair_site_disp_dict.keys(),
                                                 model_version_results_directory=out_directory,
-                                                slip_taper=slip_taper, time_interval=100,
+                                                slip_taper=slip_taper, time_interval=time_interval,
                                                 n_samples=n_samples, extension1="",
                                                 crustal_model_dir=crustal_model_version_results_directory,
                                                 subduction_model_dirs=sz_model_version_results_directory_list,
