@@ -145,10 +145,6 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
             branch_site_disp_dict[site]["scaled_rates"] = \
                 [rate * rate_scaling_factor for rate in branch_site_disp_dict[site]["rates"]]
 
-        # Load cumulative displacements
-        cumu_PPE_pkl = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}.pkl"
-
-
         all_branches_site_disp_dict[branch_id] = {"site_disp_dict":branch_site_disp_dict,
                                                 "branch_weight":branch_weight_dict[branch_id][
                                                     "total_weight_RN"]}
@@ -354,27 +350,13 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
         # get displacement thresholds for calculating exceedance (hazard curve x axis)
         thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
-        thresholds_neg = thresholds * -1
+
         # sum all the displacements in the 100 year window that exceed threshold
         cumulative_disp_scenarios = cumulative_disp_scenarios.reshape(1, len(cumulative_disp_scenarios))       
         lap = time()
-        if numba:
-            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
-        else:
-            n_exceedances_total_abs = np.zeros((len(thresholds),1))
-            n_exceedances_up = np.zeros((len(thresholds),1))
-            n_exceedances_down = np.zeros((len(thresholds),1))
-            # Initially use all samples to come up with a best estimate of exceedence probability
-            # for threshold value:
-            for threshold in thresholds:
-                # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
-                # across all of the 100 yr scenarios
-                # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
-                n_exceedances_total_abs[thresholds == threshold] = (np.abs(cumulative_disp_scenarios) > threshold).sum()
-                n_exceedances_up[thresholds == threshold] = (cumulative_disp_scenarios > threshold).sum()
-                n_exceedances_down[thresholds == threshold] = (cumulative_disp_scenarios < -threshold).sum()
+        n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
         if benchmarking:
-            print(f"3 : {time() - lap:.15f} s")
+            print(f"Cumulative Displacements : {time() - lap:.15f} s")
         lap = time()
 
         # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
@@ -384,25 +366,10 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         exceedance_probs_up = n_exceedances_up / n_samples
         exceedance_probs_down = n_exceedances_down / n_samples
 
-        if numba:
-            cumulative_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)
-            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=n_chunks, error_chunking=error_chunking)
-        else:
-            # Now chunk the scenarios to get a better estimate of the exceedance probability
-            n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
-            n_exceedances_up = np.zeros((len(thresholds), n_chunks))
-            n_exceedances_down = np.zeros((len(thresholds), n_chunks))
-
-            chunked_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)
-            for tix, threshold in enumerate(thresholds):
-                # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
-                # across all of the 100 yr scenarios
-                # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
-                n_exceedances_total_abs[tix, :] = (np.abs(chunked_disp_scenarios) > threshold).sum(axis=1)
-                n_exceedances_up[tix, :] = (chunked_disp_scenarios > threshold).sum(axis=1)
-                n_exceedances_down[tix, :] = (chunked_disp_scenarios < -threshold).sum(axis=1)
+        cumulative_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)
+        n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=n_chunks, error_chunking=error_chunking)
         if benchmarking:
-            print(f"6 : {time() - lap:.15f} s")
+            print(f"Chuncked Displacements : {time() - lap:.15f} s")
 
         lap = time()
         # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
