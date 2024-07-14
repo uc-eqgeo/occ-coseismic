@@ -18,7 +18,7 @@ from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE,
 results_directory = "results"
 
 slip_taper = False                    # True or False, only matter if crustal otherwise it defaults to false later.
-fault_type = "crustal"                  # "crustal or "sz" or "py"
+fault_type = "sz"                  # "crustal or "sz" or "py"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
@@ -31,10 +31,10 @@ specific_rupture_ids = False
 # can only run one type of GF and fault geometry at a time
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
 
-crustal_model_extension = "_Model_CFM_NI_10km"         # "_Model1", "_Model2", or "_CFM"
+crustal_model_extension = "_Model_CFM_southland_10km"         # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_NI_10km"                # must match suffix in the subduction directory with gfs
 
-nesi = True
+nesi = False
 nesi_step = 'combine'  # 'prep' or 'combine'
 
 load_random = True
@@ -73,12 +73,12 @@ file_type_list = ["png", "pdf"]
 # True: this skips calculating displacements and making displacement figures (assumes you've already done it)
 # False: this calculates displacements (and makes disp figures) and probabilities
 skip_displacements = True
-calculate_cumu_PPE = False
+calculate_cumu_PPE = True
 
 if nesi and nesi_step == 'prep':
     calculate_cumu_PPE = True
 
-testing = False
+testing = True
 
 if testing:
     n_samples = 1e4
@@ -215,7 +215,16 @@ if not os.path.exists(f"../{results_directory}"):
 if not os.path.exists(f"../{model_version_results_directory}"):
     os.mkdir(f"../{model_version_results_directory}")
 
-if only_make_figures is False and skip_displacements is False:
+if skip_displacements:
+    for extension1 in extension1_list:
+        if slip_taper:
+            if not os.path.exists(f"../{model_version_results_directory}/{extension1}all_rupture_disps_{extension1}_tapered.pkl"):
+                skip_displacements = False
+        else:
+            if not os.path.exists(f"../{model_version_results_directory}/{extension1}all_rupture_disps_{extension1}_uniform.pkl"):
+                skip_displacements = False
+
+if not only_make_figures and not skip_displacements:
     Wellington = Point(1749150, 5428092)  # Wellington coordinates in NZTM
     # Calculate displacements and make displacement dictionary once per branch. Save to pickle file in branch directory.
     for i in range(len(extension1_list)):
@@ -228,7 +237,7 @@ if only_make_figures is False and skip_displacements is False:
 
 ### make vertical displacement figures (random sample of ~10 ruptures per branch)
 print(f"\nOut Directory: {model_version_results_directory}")
-if skip_displacements is False and not dont_make_figures:
+if not skip_displacements and not dont_make_figures:
     if slip_taper:
         taper_extension = "_tapered"
     else:
