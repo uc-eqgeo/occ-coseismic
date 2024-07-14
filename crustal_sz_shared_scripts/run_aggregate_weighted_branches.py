@@ -14,9 +14,9 @@ sz_model_version = "_NI_10km"                    # must match suffix in the subd
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 default_plot_order = True
 plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
-nesi = True
-nesi_step = 'prep'  # 'prep' or 'combine'
-testing = False
+nesi = False
+nesi_step = 'combine'  # 'prep' or 'combine'
+testing = True
 
 probability_plot = True                # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
 displacement_chart = True                 # plots the displacement at the 10% and 2% probability of exceedance
@@ -27,9 +27,9 @@ make_geotiffs = True
 #make_map = True
 
 # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
-paired_crustal_sz = True              # True or False
+paired_crustal_sz = True          # True or False
 
-if testing or not paired_crustal_sz:
+if testing:
     n_samples = 1e4
 else:
     if paired_crustal_sz:
@@ -44,7 +44,7 @@ mem = 5
 # Do you want to calculate PPEs for the fault model?
 # This only has to be done once because it is saved a pickle file
 # If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = False   # True or False
+calculate_fault_model_PPE = True   # True or False
 
 if nesi and nesi_step == 'prep':
     calculate_fault_model_PPE = True
@@ -70,7 +70,7 @@ if paired_crustal_sz:
         print("Running combined crustal, hikurangi-kermadec, and puysegur models")
         fault_type = ['crustal', 'sz', 'py']
     elif not fault_type in ['sz', 'py']:
-        print("Paired crustal and subduction model selected but fault type is not sz or py. Please select sz or py as fault type.")
+        print("Paired crustal and subduction model selected but fault type is not sz, py or all. Please select sz or py as fault type.")
         exit()
     else:
         fault_type = ['crustal', fault_type]
@@ -168,8 +168,9 @@ for sheet in sheet_list:
 #                                                    sheet_name=sz_sheet_name)
 
 # designate which branch weight dictionary to use based on the fault type
-if len(fault_type) == 1:
-    fault_model_branch_weight_dict = branch_weight_dict_list[0]
+fault_model_branch_weight_dict = {}
+for ii in range(len(fault_type)):
+    fault_model_branch_weight_dict = fault_model_branch_weight_dict | branch_weight_dict_list[ii]
 
 #if not paired_crustal_sz and fault_type=="crustal":
 #    fault_model_branch_weight_dict = crustal_branch_weight_dict
@@ -192,7 +193,7 @@ if not paired_crustal_sz:
     fault_type = fault_type[0]
     model_version_results_directory = f"{results_directory}/{fault_type}{model_version_list[0]}"
 
-    fault_model_PPE_filepath = f"../{model_version_results_directory}/allbranch_PPE_dict_{outfile_extension}{taper_extension}.pkl"
+    fault_model_PPE_filepath = f"../{model_version_results_directory}/allbranch_PPE_dict{outfile_extension}{taper_extension}.pkl"
     if not os.path.exists(fault_model_PPE_filepath):
         print('No fault model PPE pkl file found. Making a new one...')
         calculate_fault_model_PPE = True
@@ -227,7 +228,7 @@ if paired_crustal_sz:
             crustal_branch_weight_dict=branch_weight_dict_list[0], sz_branch_weight_dict_list=branch_weight_dict_list[1:],
             crustal_model_version_results_directory=model_version_results_directory[0],
             sz_model_version_results_directory_list=model_version_results_directory[1:],
-            paired_PPE_pickle_name=paired_PPE_pickle_name, slip_taper=slip_taper, n_samples=n_samples,
+            paired_PPE_pickle_name=paired_PPE_pickle_name, slip_taper=slip_taper, n_samples=int(n_samples),
             out_directory=out_version_results_directory, outfile_extension=outfile_extension, sz_type_list=fault_type[1:],
             nesi=nesi, nesi_step=nesi_step, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array,
             mem=mem, time_interval=int(100), sd=0.4, job_time=job_time)
