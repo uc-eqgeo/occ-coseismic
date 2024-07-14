@@ -23,6 +23,11 @@ finally:
     from matplotlib.patches import Rectangle
     import matplotlib.ticker as mticker
     from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
+    numba = True
+    try:
+        from numba import njit
+    except:
+        numba = False
 
 matplotlib.rcParams['pdf.fonttype'] = 42
 
@@ -121,9 +126,71 @@ def time_elasped(current_time, start_time):
     return "{:0>2}:{:0>2}:{:0>2}".format(int(hours), int(minutes), int(seconds))
 
 
+def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, model_version_results_directory):
+    """
+    Combine all site_disp_dicts for a each branch of a fault model into a single dictionary
+    """
+    all_branches_site_disp_dict = {}
+    for branch_id in branch_weight_dict.keys():
+        extension1 = gf_name + branch_weight_dict[branch_id]["file_suffix"]
+        # get site displacement dictionary
+        # this extracts the rates from the solution directory, but it is not scaled by the rate scaling factor
+        branch_site_disp_dict = get_site_disp_dict(extension1, slip_taper=slip_taper,
+                                                   model_version_results_directory=model_version_results_directory)
+
+        # multiply the rates by the rate scaling factor
+        rate_scaling_factor = branch_weight_dict[branch_id]["S"]
+        for site in branch_site_disp_dict.keys():
+            # multiply each value in the rates array by the rate scaling factor
+            branch_site_disp_dict[site]["scaled_rates"] = \
+                [rate * rate_scaling_factor for rate in branch_site_disp_dict[site]["rates"]]
+
+        # Load cumulative displacements
+        cumu_PPE_pkl = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}.pkl"
+
+
+        all_branches_site_disp_dict[branch_id] = {"site_disp_dict":branch_site_disp_dict,
+                                                "branch_weight":branch_weight_dict[branch_id][
+                                                    "total_weight_RN"]}
+
+    return all_branches_site_disp_dict
+
+if numba:
+    @njit()
+    def calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=1, error_chunking=1):
+        n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
+        n_exceedances_up = np.zeros((len(thresholds), n_chunks))
+        n_exceedances_down = np.zeros((len(thresholds), n_chunks))
+
+        for tix, threshold in enumerate(thresholds):
+            # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
+            # across all of the 100 yr scenarios
+            # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
+            n_exceedances_total_abs[tix, :] = np.sum(np.abs(cumulative_disp_scenarios) > threshold)
+            n_exceedances_up[tix, :] = np.sum(cumulative_disp_scenarios > threshold)
+            n_exceedances_down[tix, :] = np.sum(cumulative_disp_scenarios < -threshold)
+
+        return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
+else:
+    def calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=1, error_chunking=1):
+        n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
+        n_exceedances_up = np.zeros((len(thresholds), n_chunks))
+        n_exceedances_down = np.zeros((len(thresholds), n_chunks))
+
+        for tix, threshold in enumerate(thresholds):
+            # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
+            # across all of the 100 yr scenarios
+            # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
+            n_exceedances_total_abs[tix, :] = np.sum(np.abs(cumulative_disp_scenarios) > threshold)
+            n_exceedances_up[tix, :] = np.sum(cumulative_disp_scenarios > threshold)
+            n_exceedances_down[tix, :] = np.sum(cumulative_disp_scenarios < -threshold)
+
+        return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
+
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
                  extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling='', load_random=False,
-                 thresh_lims=[0, 3], thresh_step=0.01, plot_maximum_displacement=True, array_process=False):
+                 thresh_lims=[0, 3], thresh_step=0.01, plot_maximum_displacement=True, array_process=False,
+                 crustal_model_dir="", subduction_model_dirs="", load_PPE=False):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
 
@@ -141,6 +208,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     if plot_maximum_displacement:
         maximum_displacement_plot(site_ids, branch_site_disp_dict, model_version_results_directory, extension1, threshold=0.01)
 
+    if numba:
+        calc_thresholds(np.array([1]), np.ones((100, 1)))
+
     # use random number generator to initialise monte carlo sampling
     rng = np.random.default_rng()
 
@@ -155,11 +225,31 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         error_chunking = int(n_samples / 10)
         print(f'Too few chunks for accurate error estimation. Decreasing error_chunking to {error_chunking}')
 
+    if load_PPE:
+        PPE_list = []
+        for branch in branch_key:
+            model, branch_id = branch.split('_')[-2:]
+            branch_scaling = branch.split('_')[3]
+            if model == 'c':
+                branch_PPE_pkl = f"../{crustal_model_dir}/sites_{model}_{branch_id}/cumu_exceed_prob_sites_{model}_{branch_id}_{branch_scaling}.pkl"
+            else:
+                ix = 0
+                branch_PPE_pkl = f"../{subduction_model_dirs[ix]}/sites_{model}_{branch_id}/cumu_exceed_prob_sites_{model}_{branch_id}_{branch_scaling}.pkl"
+                while not os.path.exists(branch_PPE_pkl):
+                    ix += 1
+                    branch_PPE_pkl = f"../{subduction_model_dirs[ix]}/sites_{model}_{branch_id}/cumu_exceed_prob_sites_{model}_{branch_id}_{branch_scaling}.pkl"
+
+            with open(branch_PPE_pkl, 'rb') as f:
+                PPE_list.append(pkl.load(f))
+
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
     start = time()
-    printProgressBar(0, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix='Complete 00:00:00 (00:00s/site)', length=50)
+    benchmarking = True
+    if not benchmarking:
+        printProgressBar(0, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix='Complete 00:00:00 (00:00s/site)', length=50)
     for i, site_of_interest in enumerate(site_ids):
+        begin = time()
         lap = time()
         # print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
         # if i == 0:
@@ -170,98 +260,122 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         # print(f"calculating {branch_key} PPE ({i} of {len(branch_site_disp_dict.keys())} branches)")
         site_dict_i = branch_site_disp_dict[site_of_interest]
 
-        # Set up params for sampling
-        investigation_time = time_interval
-
-        if "scaled_rates" not in site_dict_i.keys():
-            # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
-            scaled_rates = site_dict_i["rates"]
+        if load_PPE:
+            cumulative_disp_scenarios = np.zeros(n_samples)
+            for PPE in PPE_list:
+                if PPE[site_of_interest]["scenario_displacements"].shape[0] != n_samples:
+                    raise Exception(f"n_samples requested ({n_samples}) does not match number of scenarios in loaded cumu_PPE_dict ({PPE[site_of_interest]['scenario_displacements'].shape[0]})")
+                cumulative_disp_scenarios += PPE[site_of_interest]["scenario_displacements"]
+            if benchmarking:
+                print(f"Loaded PPE: {time() - begin:.5f} s")
+            lap = time()
         else:
-            scaled_rates = site_dict_i["scaled_rates"]
+            # Set up params for sampling
+            investigation_time = time_interval
 
-        # Drop ruptures that don't cause slip at this site
-        drop_noslip = True
-        if drop_noslip:
-            no_slip = [ix for ix, slip in enumerate(site_dict_i["disps"]) if slip == 0]
-            slip = [ix for ix, slip in enumerate(site_dict_i["disps"]) if slip != 0]
-            disps = [slip for ix, slip in enumerate(site_dict_i['disps']) if ix not in no_slip]
-            scaled_rates = [rate for ix, rate in enumerate(scaled_rates) if ix not in no_slip]
-        else:
-            disps = site_dict_i['disps']
-            slip = np.arange(len(site_dict_i['disps']))
+            if "scaled_rates" not in site_dict_i.keys():
+                # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
+                scaled_rates = site_dict_i["rates"]
+            else:
+                scaled_rates = site_dict_i["scaled_rates"]
 
-        # average number of events per time interval (effectively R*T from Ned's guide)
-        lambdas = investigation_time * np.array(scaled_rates)
+            # Drop ruptures that don't cause slip at this site
+            drop_noslip = True
+            if drop_noslip:
+                no_slip = [ix for ix, slip in enumerate(site_dict_i["disps"]) if slip == 0]
+                slip = [ix for ix, slip in enumerate(site_dict_i["disps"]) if slip != 0]
+                disps = [slip for ix, slip in enumerate(site_dict_i['disps']) if ix not in no_slip]
+                scaled_rates = [rate for ix, rate in enumerate(scaled_rates) if ix not in no_slip]
+            else:
+                disps = site_dict_i['disps']
+                slip = np.arange(len(site_dict_i['disps']))
 
-        if load_random:
+            # average number of events per time interval (effectively R*T from Ned's guide)
+            lambdas = investigation_time * np.array(scaled_rates)
+
             if not os.path.exists(f"../{model_version_results_directory}/{extension1}/scenarios.pkl") or not os.path.exists(f"../{model_version_results_directory}/{extension1}/disp_uncertainty.pkl"):
                 load_random = False
 
-        if load_random:
-            # Load array of random samples rather than regenerating them
-            lap = time()
-            if array_process:
-                randomdir = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}"
+            if load_random:
+                # Load array of random samples rather than regenerating them
+                lap = time()
+                if array_process:
+                    randomdir = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}"
+                else:
+                    randomdir = f"../{model_version_results_directory}/{extension1}"
+
+                with open(f"{randomdir}/scenarios.pkl", 'rb') as f:
+                    scenarios = pkl.load(f)
+                with open(f"{randomdir}/disp_uncertainty.pkl", 'rb') as f:
+                    disp_uncertainty = pkl.load(f)
+                if benchmarking:
+                    print(f"\nTime taken to load random samples: {time() - lap:.5f} s")
+                lap = time()
+
+                # As a concession to not regenerating random samples and scenarios, randomly shift the loaded uncertainty arrays
+                sample_shift = np.random.randint(-scenarios.shape[0], scenarios.shape[0])
+                rupture_shift = np.random.randint(-scenarios.shape[1], scenarios.shape[1])
+                if benchmarking:
+                    print(f"Ints: {time() - lap:.5f} s")
+                lap = time()
+                disp_uncertainty = np.roll(scenarios, (sample_shift, rupture_shift))[:, :lambdas.size]
+                if benchmarking:
+                    print(f"Disp Shift: {time() - lap:.5f} s")
+                lap = time()
+                # Leave scenarios alone - no point rolling sample order, and can't shift sideways as can't appy one rupture's distribution
+                # to another
+                scenarios = scenarios[:, slip]
+                if benchmarking:
+                    print(f"Scenario Crop Shift: {time() - lap:.5f} s")
+                lap = time()
+                if benchmarking:
+                    print(f"Time taken to prep random samples: {time() - begin:.5f} s\n")
             else:
-                randomdir = f"../{model_version_results_directory}/{extension1}"
+                # Generate n_samples of possible earthquake ruptures for random 100 year intervals
+                # returns boolean array where 0 means "no event" and 1 means "event". rows = 100 yr window, columns = earthquake
+                # rupture
+                scenarios = rng.poisson(lambdas, size=(int(n_samples), lambdas.size))
 
-            with open(f"{randomdir}/scenarios.pkl", 'rb') as f:
-                scenarios = pkl.load(f)
-            with open(f"{randomdir}/disp_uncertainty.pkl", 'rb') as f:
-                disp_uncertainty = pkl.load(f)
-            # print(f"\nTime taken to load random samples: {time() - lap:.5f} s")
-            lap = time()
+                # assigns a normal distribution with a mean of 1 and a standard deviation of sd
+                # effectively a multiplier for the displacement value
+                disp_uncertainty = rng.normal(1., sd, size=(int(n_samples), lambdas.size))
+                if benchmarking:
+                    print(f"Time taken to generate random samples: {time() - begin:.5f} s")
 
-            # As a concession to not regenerating random samples and scenarios, randomly shift the loaded uncertainty arrays
-            sample_shift = np.random.randint(-scenarios.shape[0], scenarios.shape[0])
-            rupture_shift = np.random.randint(-scenarios.shape[1], scenarios.shape[1])
-            # print(f"Ints: {time() - lap:.5f} s")
-            lap = time()
-            disp_uncertainty = np.roll(scenarios, (sample_shift, rupture_shift))[:, :lambdas.size]
-            # print(f"Disp Shift: {time() - lap:.5f} s")
-            lap = time()
-            # Leave scenarios alone - no point rolling sample order, and can't shift sideways as can't appy one rupture's distribution
-            # to another
-            scenarios = scenarios[:, slip]
-            # print(f"Scenario Crop Shift: {time() - lap:.5f} s")
-            lap = time()
-            # print(f"Time taken to prep random samples: {time() - lap:.5f} s\n")
-        else:
-            # Generate n_samples of possible earthquake ruptures for random 100 year intervals
-            # returns boolean array where 0 means "no event" and 1 means "event". rows = 100 yr window, columns = earthquake
-            # rupture
-            scenarios = rng.poisson(lambdas, size=(int(n_samples), lambdas.size))
-
-            # assigns a normal distribution with a mean of 1 and a standard deviation of sd
-            # effectively a multiplier for the displacement value
-            disp_uncertainty = rng.normal(1., sd, size=(int(n_samples), lambdas.size))
-            # print(f"\nTime taken to generate random samples: {time() - lap:.5f} s\n")
-
-        # for each 100 yr scenario, get displacements from EQs that happened
-        disp_scenarios = scenarios * disps
-        # multiplies displacement by the uncertainty multiplier
-        disp_scenarios = disp_scenarios * disp_uncertainty
-        # sum all displacement values at that site in that 100 yr interval
-        cumulative_disp_scenarios = disp_scenarios.sum(axis=1)
+            # for each 100 yr scenario, get displacements from EQs that happened
+            disp_scenarios = scenarios * disps
+            # multiplies displacement by the uncertainty multiplier
+            disp_scenarios = disp_scenarios * disp_uncertainty
+            # sum all displacement values at that site in that 100 yr interval
+            cumulative_disp_scenarios = disp_scenarios.sum(axis=1)
+            if benchmarking:
+                print(f"Calculated PPE: {time() - begin:.5f} s")
+            lap = time()    
 
         # get displacement thresholds for calculating exceedance (hazard curve x axis)
         thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
         thresholds_neg = thresholds * -1
         # sum all the displacements in the 100 year window that exceed threshold
-        n_exceedances_total_abs = np.zeros_like(thresholds)
-        n_exceedances_up = np.zeros_like(thresholds)
-        n_exceedances_down = np.zeros_like(thresholds)
-        # Initially use all samples to come up with a best estimate of exceedence probability
-        # for threshold value:
-        for threshold in thresholds:
-            # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
-            # across all of the 100 yr scenarios
-
-            # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
-            n_exceedances_total_abs[thresholds == threshold] = (np.abs(cumulative_disp_scenarios) > threshold).sum()
-            n_exceedances_up[thresholds == threshold] = (cumulative_disp_scenarios > threshold).sum()
-        for threshold in thresholds_neg:
-            n_exceedances_down[thresholds_neg == threshold] = (cumulative_disp_scenarios < threshold).sum()
+        cumulative_disp_scenarios = cumulative_disp_scenarios.reshape(1, len(cumulative_disp_scenarios))       
+        lap = time()
+        if numba:
+            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
+        else:
+            n_exceedances_total_abs = np.zeros((len(thresholds),1))
+            n_exceedances_up = np.zeros((len(thresholds),1))
+            n_exceedances_down = np.zeros((len(thresholds),1))
+            # Initially use all samples to come up with a best estimate of exceedence probability
+            # for threshold value:
+            for threshold in thresholds:
+                # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
+                # across all of the 100 yr scenarios
+                # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
+                n_exceedances_total_abs[thresholds == threshold] = (np.abs(cumulative_disp_scenarios) > threshold).sum()
+                n_exceedances_up[thresholds == threshold] = (cumulative_disp_scenarios > threshold).sum()
+                n_exceedances_down[thresholds == threshold] = (cumulative_disp_scenarios < -threshold).sum()
+        if benchmarking:
+            print(f"3 : {time() - lap:.15f} s")
+        lap = time()
 
         # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
         # quite high for low displacements (25%). Means there's a ~25% chance an earthquake will exceed 0 m in next 100
@@ -270,20 +384,27 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         exceedance_probs_up = n_exceedances_up / n_samples
         exceedance_probs_down = n_exceedances_down / n_samples
 
-        # Now chunk the scenarios to get a better estimate of the exceedance probability
-        n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
-        n_exceedances_up = np.zeros((len(thresholds), n_chunks))
-        n_exceedances_down = np.zeros((len(thresholds), n_chunks))
+        if numba:
+            cumulative_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)
+            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=n_chunks, error_chunking=error_chunking)
+        else:
+            # Now chunk the scenarios to get a better estimate of the exceedance probability
+            n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
+            n_exceedances_up = np.zeros((len(thresholds), n_chunks))
+            n_exceedances_down = np.zeros((len(thresholds), n_chunks))
 
-        chunked_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)
-        for tix, threshold in enumerate(thresholds):
-            # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
-            # across all of the 100 yr scenarios
-            # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
-            n_exceedances_total_abs[tix, :] = (np.abs(chunked_disp_scenarios) > threshold).sum(axis=1)
-            n_exceedances_up[tix, :] = (chunked_disp_scenarios > threshold).sum(axis=1)
-            n_exceedances_down[tix, :] = (chunked_disp_scenarios < -threshold).sum(axis=1)
+            chunked_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)
+            for tix, threshold in enumerate(thresholds):
+                # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
+                # across all of the 100 yr scenarios
+                # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
+                n_exceedances_total_abs[tix, :] = (np.abs(chunked_disp_scenarios) > threshold).sum(axis=1)
+                n_exceedances_up[tix, :] = (chunked_disp_scenarios > threshold).sum(axis=1)
+                n_exceedances_down[tix, :] = (chunked_disp_scenarios < -threshold).sum(axis=1)
+        if benchmarking:
+            print(f"6 : {time() - lap:.15f} s")
 
+        lap = time()
         # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
         # quite high for low displacements (25%). Means there's a ~25% chance an earthquake will exceed 0 m in next 100
         # years across all earthquakes in the catalogue (at that site).
@@ -310,7 +431,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "scenario_displacements": cumulative_disp_scenarios}
 
         elapsed = time_elasped(time(), start)
-        printProgressBar(i + 1, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix=f'Complete {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length=50)
+        if not benchmarking:
+            printProgressBar(i + 1, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix=f'Complete {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length=50)
 
     if 'grid_meta' in branch_site_disp_dict.keys():
         site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
@@ -409,7 +531,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             elif nesi_step == 'combine':
                 print(f"\tCombining site dictionaries....")
                 branch_cumu_PPE_dict = compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1,
-                                                             taper_extension=taper_extension, return_dict=True, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
+                                                             taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
 
         else:
             branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict,
@@ -436,7 +558,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         print(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array_{str(job_time).replace('.','_')}sec_job.sl")
         exit()
     else:
-        outfile_name = f"allbranch_PPE_dict_{outfile_extension}{taper_extension}"
+        outfile_name = f"allbranch_PPE_dict{outfile_extension}{taper_extension}"
 
         with open(f"../{model_version_results_directory}/{outfile_name}.pkl", "wb") as f:
             pkl.dump(fault_model_allbranch_PPE_dict, f)
@@ -566,62 +688,36 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
     # make a dictionary of displacements at each site from all the crustal earthquake scenarios
     paired_crustal_sz_PPE_dict = {}
+
+    # Make crustal_sz pair list
+    all_crustal_branches_site_disp_dict = get_all_branches_site_disp_dict(crustal_branch_weight_dict, gf_name, slip_taper,
+                                                                            crustal_model_version_results_directory)
+
+    # make a dictionary of displacements at each site from all the crustal earthquake scenarios
+    all_sz_branches_site_disp_dict = {}
+    crustal_sz_branch_pairs = list(crustal_branch_weight_dict.keys())
+    for ix, sz_branch_weight_dict in enumerate(sz_branch_weight_dict_list):
+        all_single_sz_branches_site_disp_dict = get_all_branches_site_disp_dict(sz_branch_weight_dict, gf_name, slip_taper,
+                                                                                sz_model_version_results_directory_list[ix])
+
+        all_sz_branches_site_disp_dict = all_sz_branches_site_disp_dict | all_single_sz_branches_site_disp_dict
+
+        # make all the combinations of crustal and subduction zone branch pairs
+        crustal_sz_branch_pairs = list(itertools.product(crustal_sz_branch_pairs,
+                                                            sz_branch_weight_dict.keys()))
+        if isinstance(crustal_sz_branch_pairs[0][0], tuple):
+            crustal_sz_branch_pairs = [t1 + tuple([t2]) for t1, t2 in crustal_sz_branch_pairs]
+
     # Only run following steps if NESI has not been used on each site
     if not all([nesi, nesi_step == 'combine']):
-        all_crustal_branches_site_disp_dict = {}
-        for branch_id in crustal_branch_weight_dict.keys():
-            extension1 = gf_name + crustal_branch_weight_dict[branch_id]["file_suffix"]
-            # get site displacement dictionary
-            # this extracts the rates from the solution directory, but it is not scaled by the rate scaling factor
-            crustal_branch_site_disp_dict = get_site_disp_dict(
-                extension1, slip_taper=slip_taper, model_version_results_directory=crustal_model_version_results_directory)
-
-            # multiply the rates by the rate scaling factor
-            rate_scaling_factor = crustal_branch_weight_dict[branch_id]["S"]
-            for site in crustal_branch_site_disp_dict.keys():
-                # multiply each value in the rates array by the rate scaling factor
-                crustal_branch_site_disp_dict[site]["scaled_rates"] = \
-                    [rate * rate_scaling_factor for rate in crustal_branch_site_disp_dict[site]["rates"]]
-
-            all_crustal_branches_site_disp_dict[branch_id] = {"site_disp_dict":crustal_branch_site_disp_dict,
-                                                    "branch_weight":crustal_branch_weight_dict[branch_id][
-                                                        "total_weight_RN"]}
-
-        # make a dictionary of displacements at each site from all the crustal earthquake scenarios
-        all_sz_branches_site_disp_dict = {}
-        crustal_sz_branch_pairs = list(crustal_branch_weight_dict.keys())
-        for ix, sz_branch_weight_dict in enumerate(sz_branch_weight_dict_list):
-            for branch_id in sz_branch_weight_dict.keys():
-                sz_slip_taper = False
-
-                extension1 = gf_name + sz_branch_weight_dict[branch_id]["file_suffix"]
-                # get displacement dictionary
-                # this extracts the rates from the solution directory, but it is not scaled by the rate scaling factor
-                sz_branch_site_disp_dict = get_site_disp_dict(
-                    extension1, slip_taper=sz_slip_taper, model_version_results_directory=sz_model_version_results_directory_list[ix])
-
-                # multiply the rates by the rate scaling factor
-                rate_scaling_factor = sz_branch_weight_dict[branch_id]["S"]
-                for site in sz_branch_site_disp_dict.keys():
-                    # multiply each value in the rates array by the rate scaling factor
-                    sz_branch_site_disp_dict[site]["scaled_rates"] = \
-                        [rate * rate_scaling_factor for rate in sz_branch_site_disp_dict[site]["rates"]]
-
-                all_sz_branches_site_disp_dict[branch_id] = {"site_disp_dict":sz_branch_site_disp_dict,
-                                                        "branch_weight":sz_branch_weight_dict[branch_id]["total_weight_RN"]}
-
-            # make all the combinations of crustal and subduction zone branch pairs
-            crustal_sz_branch_pairs = list(itertools.product(crustal_sz_branch_pairs,
-                                                             sz_branch_weight_dict.keys()))
-            if isinstance(crustal_sz_branch_pairs[0][0], tuple):
-                crustal_sz_branch_pairs = [t1 + tuple([t2]) for t1, t2 in crustal_sz_branch_pairs]
-
         for counter, pair in enumerate(crustal_sz_branch_pairs):
             # get the branch unique ID for the crustal and sz combos
             crustal_unique_id, sz_unique_ids = pair[0], pair[1:]
             pair_unique_id = crustal_unique_id
+            branch_unique_ids = [crustal_unique_id]
             for sz_unique_id in sz_unique_ids:
                 pair_unique_id += "_" + sz_unique_id
+                branch_unique_ids.append(sz_unique_id)
 
             print(f"calculating {pair_unique_id} PPE\t({counter + 1} of {len(crustal_sz_branch_pairs)} branches)")
 
@@ -650,7 +746,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                     pair_scaled_rates += sz_site_scaled_rates
 
                 pair_site_disp_dict[site] = {"disps": pair_site_disps, "scaled_rates": pair_scaled_rates, "site_coords": site_coords}
-                
+
             if nesi:
                 os.makedirs(f"../{out_directory}/{pair_unique_id}", exist_ok=True)
                 with open(f"../{out_directory}/{pair_unique_id}/branch_site_disp_dict_{pair_unique_id}.pkl", "wb") as f:
@@ -671,8 +767,8 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                     rates = np.array(pair_site_disp_dict[site1]["scaled_rates"])
 
                 n_ruptures = rates.shape[0]
-                scenarios = rng.poisson(time_interval * rates, size=(int(n_samples), n_ruptures))
-                disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
+                scenarios = rng.poisson(time_interval * rates, size=(n_samples, n_ruptures))
+                disp_uncertainty = rng.normal(1, sd, size=(n_samples, n_ruptures))
                 with open(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed/scenarios.pkl", "wb") as fid:
                     pkl.dump(scenarios, fid)
                 with open(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed/disp_uncertainty.pkl", "wb") as fid:
@@ -682,20 +778,14 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 prep_nesi_site_list(out_directory, pair_site_disp_dict, pair_unique_id)
                 continue
             else:
-                recalculate_PPE = False
-                if recalculate_PPE:
-                    pair_cumu_PPE_dict = get_cumu_PPE(branch_key=pair_unique_id, branch_site_disp_dict=pair_site_disp_dict,
-                                                    site_ids=pair_site_disp_dict.keys(),
-                                                    model_version_results_directory=out_directory,
-                                                    slip_taper=slip_taper, time_interval=100,
-                                                    n_samples=n_samples, extension1="")
-                else:
-                    breakpoint()
-                    pair_cumu_PPE_dict = merge_cumu_PPE(branch_key=pair_unique_id, branch_site_disp_dict=pair_site_disp_dict,
-                                                    site_ids=pair_site_disp_dict.keys(),
-                                                    model_version_results_directory=out_directory,
-                                                    slip_taper=slip_taper, time_interval=100,
-                                                    n_samples=n_samples, extension1="")
+                pair_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_unique_ids, branch_site_disp_dict=pair_site_disp_dict,
+                                                site_ids=pair_site_disp_dict.keys(),
+                                                model_version_results_directory=out_directory,
+                                                slip_taper=slip_taper, time_interval=100,
+                                                n_samples=n_samples, extension1="",
+                                                crustal_model_dir=crustal_model_version_results_directory,
+                                                subduction_model_dirs=sz_model_version_results_directory_list,
+                                                load_PPE=True)
                 paired_crustal_sz_PPE_dict[pair_unique_id] = {"cumu_PPE_dict": pair_cumu_PPE_dict, "branch_weight": pair_weight}
         if nesi and nesi_step == 'prep':
             n_sites = len(site_names)
