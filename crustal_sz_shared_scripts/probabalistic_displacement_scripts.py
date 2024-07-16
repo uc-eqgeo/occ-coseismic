@@ -424,7 +424,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension,
                               nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
                               time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=5, load_random=False,
-                              force_new_PPE=False):
+                              remake_PPE=True):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -505,19 +505,30 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                                                              taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
 
         else:
+            os.makedirs(f"../{model_version_results_directory}/branch_cumu/", exist_ok=True)
             compiled_cumu_PPE_dict_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.pkl"
-            if os.path.exists(compiled_cumu_PPE_dict_file) and not force_new_PPE:
-                print(f"\tLoading compiled PPE dictionary:  {extension1}/cumu_exceed_prob_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.pkl")
-                with open(compiled_cumu_PPE_dict_file, "rb") as f:
-                    branch_cumu_PPE_dict = pkl.load(f)
-            else:
-                branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict,
-                                                    site_ids=branch_site_disp_dict.keys(),
-                                                    model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-                                                    time_interval=100, n_samples=n_samples, extension1="")
+            if remake_PPE or not os.path.exists(f"../{model_version_results_directory}/branch_cumu/{branch_id}_cumu.pkl"):
+                if os.path.exists(compiled_cumu_PPE_dict_file) and not remake_PPE:
+                    print(f"\tLoading compiled PPE dictionary:  {extension1}/cumu_exceed_prob_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.pkl")
+                    with open(compiled_cumu_PPE_dict_file, "rb") as f:
+                        branch_cumu_PPE_dict = pkl.load(f)
+                else:
+                        branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict,
+                                                        site_ids=branch_site_disp_dict.keys(),
+                                                        model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
+                                                        time_interval=100, n_samples=n_samples, extension1="")
 
-        fault_model_allbranch_PPE_dict[branch_id] = {"cumu_PPE_dict": branch_cumu_PPE_dict, "branch_weight":
-            branch_weight}
+                weighted_pair_cumu_PPE_dict = {"cumu_PPE_dict": branch_cumu_PPE_dict, "branch_weight": branch_weight}
+
+                with open(f"../{model_version_results_directory}/branch_cumu/{branch_id}_cumu.pkl", "wb") as f:
+                    pkl.dump(weighted_pair_cumu_PPE_dict, f)
+
+    print('Building all branch PPE dictionary....')
+    printProgressBar(0, len((branch_weight_dict.keys())), prefix=f'\t0/{len((branch_weight_dict.keys()))}', suffix='', length=50)
+    for counter, branch_id in enumerate((branch_weight_dict.keys())):
+        with open(f"../{model_version_results_directory}/branch_cumu/{branch_id}_cumu.pkl", "rb") as f:
+                fault_model_allbranch_PPE_dict[branch_id] = pkl.load(f)
+        printProgressBar(counter, len(c(branch_weight_dict.keys())), prefix=f'\t{counter}/{len((branch_weight_dict.keys()))}', suffix='', length=50)
 
     if nesi and nesi_step == 'prep':
         n_sites = len(branch_site_disp_dict)
@@ -644,7 +655,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     crustal_model_version_results_directory, sz_model_version_results_directory_list,
                                     paired_PPE_pickle_name, slip_taper, n_samples, out_directory, outfile_extension, sz_type_list,
                                     nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
-                                    n_array_tasks=1000, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=5):
+                                    n_array_tasks=1000, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=5, remake_PPE=True):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -755,15 +766,33 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 prep_nesi_site_list(out_directory, pair_site_disp_dict, pair_unique_id)
                 continue
             else:
-                pair_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_unique_ids, branch_site_disp_dict=pair_site_disp_dict,
-                                                site_ids=pair_site_disp_dict.keys(),
-                                                model_version_results_directory=out_directory,
-                                                slip_taper=slip_taper, time_interval=time_interval,
-                                                n_samples=n_samples, extension1="",
-                                                crustal_model_dir=crustal_model_version_results_directory,
-                                                subduction_model_dirs=sz_model_version_results_directory_list,
-                                                load_PPE=True)
-                paired_crustal_sz_PPE_dict[pair_unique_id] = {"cumu_PPE_dict": pair_cumu_PPE_dict, "branch_weight": pair_weight}
+                if remake_PPE or not os.path.exists(f"../{out_directory}/pair_cumu/{pair_unique_id}_cumu.pkl"):
+                    pair_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_unique_ids, branch_site_disp_dict=pair_site_disp_dict,
+                                                    site_ids=pair_site_disp_dict.keys(),
+                                                    model_version_results_directory=out_directory,
+                                                    slip_taper=slip_taper, time_interval=time_interval,
+                                                    n_samples=n_samples, extension1="",
+                                                    crustal_model_dir=crustal_model_version_results_directory,
+                                                    subduction_model_dirs=sz_model_version_results_directory_list,
+                                                    load_PPE=True)
+                    os.makedirs(f"../{out_directory}/pair_cumu", exist_ok=True)
+                    weighted_pair_cumu_PPE_dict = {"cumu_PPE_dict": pair_cumu_PPE_dict, "branch_weight": pair_weight}
+        
+                    with open(f"../{out_directory}/pair_cumu/{pair_unique_id}_cumu.pkl", "wb") as f:
+                        pkl.dump(weighted_pair_cumu_PPE_dict, f)
+                      
+        print('Building full paired PPE dictionary....')
+        printProgressBar(0, len(crustal_sz_branch_pairs), prefix=f'\t0/{len(crustal_sz_branch_pairs)}', suffix='', length=50)
+        for counter, pair in enumerate(crustal_sz_branch_pairs):
+            # get the branch unique ID for the crustal and sz combos
+            pair_unique_id, sz_unique_ids = pair[0], pair[1:]
+            for sz_unique_id in sz_unique_ids:
+                pair_unique_id += "_" + sz_unique_id
+
+            with open(f"../{out_directory}/pair_cumu/{pair_unique_id}_cumu.pkl", "rb") as f:
+                    paired_crustal_sz_PPE_dict[pair_unique_id] = pkl.load(f)
+            printProgressBar(counter, len(crustal_sz_branch_pairs), prefix=f'\t{counter}/{len(crustal_sz_branch_pairs)}', suffix='', length=50)
+        
         if nesi and nesi_step == 'prep':
             n_sites = len(site_names)
             n_jobs = len(crustal_sz_branch_pairs) * n_sites

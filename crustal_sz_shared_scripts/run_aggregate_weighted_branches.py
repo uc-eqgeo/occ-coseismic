@@ -28,7 +28,7 @@ make_geotiffs = True
 #make_map = True
 
 # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
-paired_crustal_sz = True       # True or False
+paired_crustal_sz = False       # True or False
 load_random = False
 
 if testing:
@@ -212,8 +212,8 @@ for ix, extension1 in enumerate(extension1_list):
 # option to skip this step if you've already run it once and saved to a pickle file
 if not paired_crustal_sz:
     fault_type = fault_type[0]
-    model_version_results_directory = f"{results_directory}/{fault_type}{model_version_list[0]}"
-    fault_model_PPE_filepath = f"../{model_version_results_directory}/allbranch_PPE_dict{outfile_extension}{taper_extension}.pkl"
+    out_version_results_directory = f"{results_directory}/{fault_type}{model_version_list[0]}"
+    fault_model_PPE_filepath = f"../{out_version_results_directory}/allbranch_PPE_dict{outfile_extension}{taper_extension}.pkl"
     if not os.path.exists(fault_model_PPE_filepath):
         print('No fault model PPE pkl file found. Making a new one...')
         calculate_fault_model_PPE = True
@@ -221,10 +221,10 @@ if not paired_crustal_sz:
     if calculate_fault_model_PPE:
         make_fault_model_PPE_dict(
             branch_weight_dict=fault_model_branch_weight_dict,
-            model_version_results_directory=model_version_results_directory, n_samples=n_samples,
+            model_version_results_directory=out_version_results_directory, n_samples=n_samples,
             slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step, mem=mem,
             time_interval=time_interval, sd=sd, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array, job_time=job_time,
-            load_random=load_random, force_new_PPE=False)
+            load_random=load_random, remake_PPE=False)
 
     print('Loading fault model PPE dictionary...')
     with open(fault_model_PPE_filepath, 'rb') as f:
@@ -253,7 +253,7 @@ if paired_crustal_sz:
             paired_PPE_pickle_name=paired_PPE_pickle_name, slip_taper=slip_taper, n_samples=int(n_samples),
             out_directory=out_version_results_directory, outfile_extension=outfile_extension, sz_type_list=fault_type[1:],
             nesi=False, nesi_step=nesi_step, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array,
-            mem=mem, time_interval=time_interval, sd=sd, job_time=job_time)
+            mem=mem, time_interval=time_interval, sd=sd, job_time=job_time, remake_PPE=False)
 
     print('Loading fault model PPE dictionary...')
     with open(paired_PPE_filepath, 'rb') as f:
@@ -261,11 +261,11 @@ if paired_crustal_sz:
 
 # calculate weighted mean PPE for the branch or paired dataset
 weighted_mean_PPE_dict = get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict,
-                                                    out_directory=model_version_results_directory,
+                                                    out_directory=out_version_results_directory,
                                                     outfile_extension=outfile_extension, slip_taper=slip_taper)
 
 # open the saved weighted mean PPE dictionary
-weighted_mean_PPE_filepath = f"../{model_version_results_directory}/weighted_mean_PPE_dict_{outfile_extension}" \
+weighted_mean_PPE_filepath = f"../{out_version_results_directory}/weighted_mean_PPE_dict_{outfile_extension}" \
                              f"{taper_extension}.pkl"
 with open(weighted_mean_PPE_filepath, 'rb') as f:
     weighted_mean_PPE_dict = pkl.load(f)
@@ -273,7 +273,7 @@ with open(weighted_mean_PPE_filepath, 'rb') as f:
 
 # plot hazard curves and save to file
 print('Saving data arrays...')
-ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory,
+ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
                        thresh_lims=[0, 3], thresh_step=0.01, output_thresh=True, probs_lims = [0.01, 0.20], probs_step=0.01,
                        output_probs=True, grid=False, weighted=True)
 
@@ -293,7 +293,7 @@ else:
     plot_order = list(plot_order['siteId'])
 
 if make_hazcurves or make_colorful_hazcurves:
-    print(f"\nOutput Directory: {model_version_results_directory}/weighted_mean_figures...")
+    print(f"\nOutput Directory: {out_version_results_directory}/weighted_mean_figures...")
 
 #if make_geotiffs:
 #    print(f"\nSaving hazard curve geotiffs...")
@@ -308,14 +308,14 @@ if make_hazcurves:
     plot_weighted_mean_haz_curves(
         PPE_dictionary=PPE_dict, weighted_mean_PPE_dictionary=weighted_mean_PPE_dict,
         model_version_title=model_version_title, exceed_type_list=["up", "down", "total_abs"],
-        out_directory=model_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)
+        out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)
 
 if make_colorful_hazcurves:
     print(f"\nMaking colourful hazard curves...")
     plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary=weighted_mean_PPE_dict, PPE_dictionary=PPE_dict,
                                            exceed_type_list=["down"],
                                            model_version_title=model_version_title,
-                                           out_directory=model_version_results_directory,
+                                           out_directory=out_version_results_directory,
                                            file_type_list=figure_file_type_list,
                                            slip_taper=slip_taper, file_name=f"colorful_lines_{''.join(model_version_list)}",
                                            string_list=unique_id_keyphrase_list, plot_order=plot_order)
