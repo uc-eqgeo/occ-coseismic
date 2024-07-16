@@ -5,20 +5,26 @@ import random
 import os
 import sys
 import matplotlib
-from shapely.geometry import Point
-from helper_scripts import get_rupture_disp_dict, save_target_rates
-from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE
-from rupture_scenario_plotting_scripts import vertical_disp_figure
-from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE, plot_branch_hazard_curve, \
-    make_10_2_disp_plot, make_branch_prob_plot, save_10_2_disp, \
-    save_disp_prob_tifs, save_disp_prob_xarrays  # , plot_cumu_disp_hazard_map
+nesi_running = False
+try:
+    from shapely.geometry import Point
+    from helper_scripts import get_rupture_disp_dict, save_target_rates
+    from rupture_scenario_plotting_scripts import vertical_disp_figure
+except:
+    nesi_running = True
+    print("Running in NESI environment")
+finally:
+    from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE
+    from probabalistic_displacement_scripts import get_site_disp_dict, get_cumu_PPE, plot_branch_hazard_curve, \
+        make_10_2_disp_plot, make_branch_prob_plot, save_10_2_disp, \
+        save_disp_prob_tifs, save_disp_prob_xarrays  # , plot_cumu_disp_hazard_map
 
 ##### USER INPUTS   #####
 # must run crustal and subduction lists/loops separately
 results_directory = "results"
 
 slip_taper = False                    # True or False, only matter if crustal otherwise it defaults to false later.
-fault_type = "sz"                  # "crustal or "sz" or "py"
+fault_type = "crustal"                  # "crustal or "sz" or "py"
 
 # How many branches do you want to run?
 # True or False; this just picks the most central branch (geologic, time independent, mid b and N) for crustal
@@ -31,16 +37,19 @@ specific_rupture_ids = False
 # can only run one type of GF and fault geometry at a time
 gf_name = "sites"                       # "sites" or "grid" or "coastal"
 
-crustal_model_extension = "_Model_CFM_southland_10km"         # "_Model1", "_Model2", or "_CFM"
+crustal_model_extension = "_Model_CFM_NI_10km"         # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_NI_10km"                # must match suffix in the subduction directory with gfs
 
-nesi = False
-nesi_step = 'combine'  # 'prep' or 'combine'
+nesi = True
+nesi_step = 'prep'  # 'prep' or 'combine'
 
-load_random = True
+n_array_tasks = 1000
+min_tasks_per_array = 10
 
-if nesi:
-    load_random = True
+load_random = False
+
+#if nesi:
+#    load_random = True
 
 default_plot_order = True
 plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
@@ -78,18 +87,20 @@ calculate_cumu_PPE = True
 if nesi and nesi_step == 'prep':
     calculate_cumu_PPE = True
 
-testing = True
+testing = False
 
 if testing:
     n_samples = 1e4
     job_time = 0.3
+    mem = 5
 else:
-    n_samples = 1e5
-    job_time = 3
+    n_samples = 1e6
+    job_time = 30
+    mem = 25
 
 investigation_time = 100
 sd = 0.4
-mem = 5
+
 
 # this makes so when you export fonts as pdfs, they are editable in Illustrator
 matplotlib.rcParams['pdf.fonttype'] = 42
@@ -215,20 +226,21 @@ if not os.path.exists(f"../{results_directory}"):
 if not os.path.exists(f"../{model_version_results_directory}"):
     os.mkdir(f"../{model_version_results_directory}")
 
+if slip_taper:
+    taper_extension = "_tapered"
+else:
+    taper_extension = "_uniform"
+
 if skip_displacements:
     for extension1 in extension1_list:
-        if slip_taper:
-            if not os.path.exists(f"../{model_version_results_directory}/{extension1}all_rupture_disps_{extension1}_tapered.pkl"):
-                skip_displacements = False
-        else:
-            if not os.path.exists(f"../{model_version_results_directory}/{extension1}all_rupture_disps_{extension1}_uniform.pkl"):
+        if not os.path.exists(f"../{model_version_results_directory}/{extension1}all_rupture_disps_{extension1}{taper_extension}.pkl"):
                 skip_displacements = False
 
 if not only_make_figures and not skip_displacements:
     Wellington = Point(1749150, 5428092)  # Wellington coordinates in NZTM
     # Calculate displacements and make displacement dictionary once per branch. Save to pickle file in branch directory.
     for i in range(len(extension1_list)):
-        print(f"\nbranch {i} of {len(extension1_list)}")
+        print(f"\nbranch {i + 1} of {len(extension1_list)}")
         get_rupture_disp_dict(NSHM_directory=NSHM_directory_list[i], extension1=extension1_list[i],
                               slip_taper=slip_taper, fault_type=fault_type, gf_name=gf_name,
                               results_version_directory=model_version_results_directory,
@@ -238,10 +250,6 @@ if not only_make_figures and not skip_displacements:
 ### make vertical displacement figures (random sample of ~10 ruptures per branch)
 print(f"\nOut Directory: {model_version_results_directory}")
 if not skip_displacements and not dont_make_figures:
-    if slip_taper:
-        taper_extension = "_tapered"
-    else:
-        taper_extension = "_uniform"
     for i in range(len(extension1_list)):
         with open(f"../{model_version_results_directory}/{extension1_list[i]}/all_rupture_disps_{extension1_list[i]}"
                   f"{taper_extension}.pkl", "rb") as fid:
@@ -301,32 +309,32 @@ if gf_name == "sites":
                                                                model_version_results_directory=model_version_results_directory, nesi=nesi)
 
                     # step 2: get exceedance probability dictionary
-                    print('\tPreparing random arrays...')
-                    os.makedirs(f"../{model_version_results_directory}/{extension1_list[i]}/site_cumu_exceed", exist_ok=True)
-                    site1 = list(branch_site_disp_dict.keys())[0]
-                    rng = np.random.default_rng()
-                    if "scaled_rates" not in branch_site_disp_dict[site1].keys():
-                        # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
-                        rates = np.array(branch_site_disp_dict[site1]["rates"])
-                    else:
-                        rates = np.array(branch_site_disp_dict[site1]["scaled_rates"])
+                    if load_random:
+                        print('\tPreparing random arrays...')
+                        os.makedirs(f"../{model_version_results_directory}/{extension1_list[i]}/site_cumu_exceed", exist_ok=True)
+                        site1 = list(branch_site_disp_dict.keys())[0]
+                        rng = np.random.default_rng()
+                        if "scaled_rates" not in branch_site_disp_dict[site1].keys():
+                            # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
+                            rates = np.array(branch_site_disp_dict[site1]["rates"])
+                        else:
+                            rates = np.array(branch_site_disp_dict[site1]["scaled_rates"])
 
-                    n_ruptures = rates.shape[0]
-                    scenarios = rng.poisson(investigation_time * rates, size=(int(n_samples), n_ruptures))
-                    disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
+                        n_ruptures = rates.shape[0]
+                        scenarios = rng.poisson(investigation_time * rates, size=(int(n_samples), n_ruptures))
+                        disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
 
-                    with open(f"../{model_version_results_directory}/{extension1_list[i]}/site_cumu_exceed/scenarios.pkl", "wb") as fid:
-                        pkl.dump(scenarios, fid)
-                    with open(f"../{model_version_results_directory}/{extension1_list[i]}/site_cumu_exceed/disp_uncertainty.pkl", "wb") as fid:
-                        pkl.dump(disp_uncertainty, fid)
+                        with open(f"../{model_version_results_directory}/{extension1_list[i]}/site_cumu_exceed/scenarios.pkl", "wb") as fid:
+                            pkl.dump(scenarios, fid)
+                        with open(f"../{model_version_results_directory}/{extension1_list[i]}/site_cumu_exceed/disp_uncertainty.pkl", "wb") as fid:
+                            pkl.dump(disp_uncertainty, fid)
+
                     print('\tPreparing data for NESI....')
                     prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1_list[i])
                     continue
 
             print('\nCreating SLURM submission script....')
-            n_array_tasks = 1000
             n_branches = len(extension1_list)
-            min_tasks_per_array = 100
 
             if 'branch_site_disp_dict' not in locals():
                 branch_site_disp_dict = get_site_disp_dict(extension1_list[0], slip_taper=slip_taper,
@@ -342,9 +350,9 @@ if gf_name == "sites":
             mins = np.ceil(secs / 60)
             n_tasks = int(np.ceil(n_jobs / tasks_per_array))
 
-            prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks, hours=int(hours), mins=int(mins), mem=mem, cpus=1,
-                                  account='uc03610', time_interval=100, n_samples=n_samples, sd=0.4, job_time=job_time)
-            print(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array_{str(job_time).replace('.','_')}sec_job.sl")
+            prep_SLURM_submission(model_version_results_directory, int(tasks_per_array), int(n_tasks), hours=int(hours), mins=int(mins), mem=mem, cpus=1,
+                                  account='uc03610', time_interval=100, n_samples=n_samples, sd=sd, job_time=job_time)
+            print(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
             sys.exit()
 
         elif nesi_step == 'combine':
@@ -354,85 +362,86 @@ if gf_name == "sites":
                 print(f"*~ Combining {extension1_list[i]} NESI dictionaries *~")
                 compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1_list[i], taper_extension=taper_extension)
 
-    # calculate rupture branch probabilities and make plots
-    for i in range(len(extension1_list)):
-        print(f"*~ Processing site information for {extension1_list[i]} ~*")
+    if not nesi_running:
+        # calculate rupture branch probabilities and make plots
+        for i in range(len(extension1_list)):
+            print(f"*~ Processing site information for {extension1_list[i]} ~*")
 
-        pkl_file = f"../{model_version_results_directory}/{extension1_list[i]}/cumu_exceed_prob_{extension1_list[i]}{taper_extension}.pkl"
+            pkl_file = f"../{model_version_results_directory}/{extension1_list[i]}/cumu_exceed_prob_{extension1_list[i]}{taper_extension}.pkl"
 
-        if not os.path.exists(pkl_file) or calculate_cumu_PPE:
-            print('\tMaking exceedence probability dictionary for each site...')
-            # step 1: get site displacement dictionary
-            branch_site_disp_dict = get_site_disp_dict(extension1_list[i], slip_taper=slip_taper,
-                                                       model_version_results_directory=model_version_results_directory, nesi=nesi)
+            if not os.path.exists(pkl_file) or calculate_cumu_PPE:
+                print('\tMaking exceedence probability dictionary for each site...')
+                # step 1: get site displacement dictionary
+                branch_site_disp_dict = get_site_disp_dict(extension1_list[i], slip_taper=slip_taper,
+                                                        model_version_results_directory=model_version_results_directory, nesi=nesi)
 
-            print('\tPreparing random arrays...')
-            site1 = list(branch_site_disp_dict.keys())[0]
-            rng = np.random.default_rng()
-            if "scaled_rates" not in branch_site_disp_dict[site1].keys():
-                # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
-                rates = np.array(branch_site_disp_dict[site1]["rates"])
-            else:
-                rates = np.array(branch_site_disp_dict[site1]["scaled_rates"])
+                print('\tPreparing random arrays...')
+                site1 = list(branch_site_disp_dict.keys())[0]
+                rng = np.random.default_rng()
+                if "scaled_rates" not in branch_site_disp_dict[site1].keys():
+                    # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
+                    rates = np.array(branch_site_disp_dict[site1]["rates"])
+                else:
+                    rates = np.array(branch_site_disp_dict[site1]["scaled_rates"])
 
-            n_ruptures = rates.shape[0]
-            scenarios = rng.poisson(investigation_time * rates, size=(int(n_samples), n_ruptures))
-            disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
+                n_ruptures = rates.shape[0]
+                scenarios = rng.poisson(investigation_time * rates, size=(int(n_samples), n_ruptures))
+                disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
 
-            with open(f"../{model_version_results_directory}/{extension1_list[i]}/scenarios.pkl", "wb") as fid:
-                pkl.dump(scenarios, fid)
-            with open(f"../{model_version_results_directory}/{extension1_list[i]}/disp_uncertainty.pkl", "wb") as fid:
-                pkl.dump(disp_uncertainty, fid)
+                with open(f"../{model_version_results_directory}/{extension1_list[i]}/scenarios.pkl", "wb") as fid:
+                    pkl.dump(scenarios, fid)
+                with open(f"../{model_version_results_directory}/{extension1_list[i]}/disp_uncertainty.pkl", "wb") as fid:
+                    pkl.dump(disp_uncertainty, fid)
 
-            # step 2: get exceedance probability dictionary
-            get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict, site_ids=branch_site_disp_dict.keys(),
-                         model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-                         time_interval=investigation_time, n_samples=n_samples, sd=sd, load_random=load_random)
+                # step 2: get exceedance probability dictionary
+                get_cumu_PPE(extension1=extension1_list[i], branch_site_disp_dict=branch_site_disp_dict, site_ids=branch_site_disp_dict.keys(),
+                            model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
+                            time_interval=investigation_time, n_samples=n_samples, sd=sd, load_random=load_random)
 
-        # Save results to tif files
-        print(f"*~ Writing results to xarrays~*")
-        ds = save_disp_prob_xarrays(extension1_list[i], slip_taper=slip_taper,
-                                    model_version_results_directory=model_version_results_directory,
-                                    thresh_lims=[0, 3], thresh_step=0.01, output_thresh=True,
-                                    probs_lims=[0.01, 0.2], probs_step=0.01, output_probs=True, grid=False)
+            # Save results to tif files
+            print(f"*~ Writing results to xarrays~*")
+            ds = save_disp_prob_xarrays(extension1_list[i], slip_taper=slip_taper,
+                                        model_version_results_directory=model_version_results_directory,
+                                        thresh_lims=[0, 3], thresh_step=0.01, output_thresh=True,
+                                        probs_lims=[0.01, 0.2], probs_step=0.01, output_probs=True, grid=False)
 
-            # save_disp_prob_tifs(extension1_list[i], slip_taper=slip_taper, 
-            #                    model_version_results_directory=model_version_results_directory,
-            #                    thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True,
-            #                    probs_lims = [0.02, 0.5], probs_step=0.02, output_probs=True)
+                # save_disp_prob_tifs(extension1_list[i], slip_taper=slip_taper, 
+                #                    model_version_results_directory=model_version_results_directory,
+                #                    thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True,
+                #                    probs_lims = [0.02, 0.5], probs_step=0.02, output_probs=True)
 
-        # step 3 (optional): plot hazard curves
-        if not dont_make_figures:
-            print(f"*~ Making probability figures~*")
-            print(f"\tBranch Hazard Curves....")
-            plot_branch_hazard_curve(extension1=extension1_list[i],
-                                     model_version_results_directory=model_version_results_directory,
-                                     slip_taper=slip_taper, file_type_list=file_type_list, plot_order=plot_order)
+            # step 3 (optional): plot hazard curves
+            if not dont_make_figures:
+                print(f"*~ Making probability figures~*")
+                print(f"\tBranch Hazard Curves....")
+                plot_branch_hazard_curve(extension1=extension1_list[i],
+                                        model_version_results_directory=model_version_results_directory,
+                                        slip_taper=slip_taper, file_type_list=file_type_list, plot_order=plot_order)
 
-            # step 4 (optional): plot hazard maps (Needs to be imported from subduction/sz_probability_plotting_scripts.py)
-            # plot_cumu_disp_hazard_map(extension1=extension1_list[i], slip_taper=slip_taper, grid=grid, fault_type=fault_type,
-            #                          model_version_results_directory=model_version_results_directory,
-            #                          crustal_directory=crustal_directory,
-            #                          sz_directory=sz_directory, model_version=model_version)
+                # step 4 (optional): plot hazard maps (Needs to be imported from subduction/sz_probability_plotting_scripts.py)
+                # plot_cumu_disp_hazard_map(extension1=extension1_list[i], slip_taper=slip_taper, grid=grid, fault_type=fault_type,
+                #                          model_version_results_directory=model_version_results_directory,
+                #                          crustal_directory=crustal_directory,
+                #                          sz_directory=sz_directory, model_version=model_version)
 
-            # step 5: plot bar charts
-            write_out = False
-            if write_out:
-                max_sites = 12  # Max number of sites to show on one bar chart [default 12]
-                print(f"\tBranch Probability Plots....")
-                make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
-                                      model_version_results_directory=model_version_results_directory,
-                                      model_version=model_version, plot_order=plot_order, max_sites=max_sites)
+                # step 5: plot bar charts
+                write_out = False
+                if write_out:
+                    max_sites = 12  # Max number of sites to show on one bar chart [default 12]
+                    print(f"\tBranch Probability Plots....")
+                    make_branch_prob_plot(extension1_list[i], slip_taper=slip_taper, threshold=0.2,
+                                        model_version_results_directory=model_version_results_directory,
+                                        model_version=model_version, plot_order=plot_order, max_sites=max_sites)
 
-                print(f"\t10/2 Displacement Plots....")
-                make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
-                                    model_version_results_directory=model_version_results_directory,
-                                    file_type_list=["png", "pdf"], probability_list=[0.1, 0.02],
-                                    plot_order=plot_order, max_sites=max_sites)
+                    print(f"\t10/2 Displacement Plots....")
+                    make_10_2_disp_plot(extension1=extension1_list[i], slip_taper=slip_taper,
+                                        model_version_results_directory=model_version_results_directory,
+                                        file_type_list=["png", "pdf"], probability_list=[0.1, 0.02],
+                                        plot_order=plot_order, max_sites=max_sites)
 
-                print('\tWriting 10/2 Displacement to geoJSON...\n')
-                save_10_2_disp(extension1=extension1_list[i], slip_taper=slip_taper,
-                               model_version_results_directory=model_version_results_directory)
+                    print('\tWriting 10/2 Displacement to geoJSON...\n')
+                    save_10_2_disp(extension1=extension1_list[i], slip_taper=slip_taper,
+                                model_version_results_directory=model_version_results_directory)
 
 if gf_name == "grid":
     ## calculate rupture branch probabilities and make plots
