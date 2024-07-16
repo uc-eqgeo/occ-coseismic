@@ -278,7 +278,11 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             cumulative_disp_scenarios = np.zeros(n_samples)
             for PPE in PPE_list:
                 if PPE[site_of_interest]["scenario_displacements"].shape[0] != n_samples:
-                    raise Exception(f"n_samples requested ({n_samples}) does not match number of scenarios in loaded cumu_PPE_dict ({PPE[site_of_interest]['scenario_displacements'].shape[0]})")
+                    # Correction to cover a mistake where I saved the chunked displacements. Shouldn't be an issue anymore
+                    try:
+                        PPE[site_of_interest]["scenario_displacements"] = PPE[site_of_interest]["scenario_displacements"].reshape(n_samples)
+                    except:
+                        raise Exception(f"n_samples requested ({n_samples}) does not match number of scenarios in loaded cumu_PPE_dict ({PPE[site_of_interest]['scenario_displacements'].shape[0]})")
                 cumulative_disp_scenarios += PPE[site_of_interest]["scenario_displacements"]
             if benchmarking:
                 print(f"Loaded PPE: {time() - begin:.5f} s")
@@ -482,6 +486,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                         rates = np.array(branch_site_disp_dict[site1]["rates"])
                     else:
                         rates = np.array(branch_site_disp_dict[site1]["scaled_rates"])
+
                     n_ruptures = rates.shape[0]
                     scenarios = rng.poisson(time_interval * rates, size=(int(n_samples), n_ruptures))
                     disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
