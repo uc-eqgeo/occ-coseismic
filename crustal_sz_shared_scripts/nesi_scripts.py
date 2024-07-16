@@ -130,8 +130,21 @@ if __name__ == "__main__":
     n_samples = args.n_samples
     sd = args.sd
 
-    with open(args.site_file, "r") as f:
-        all_sites = f.read().splitlines()
+    # This is a hack to get around multiple tasks trying to open the file at once, so it appearing like it doesn't exist
+    find_file_count = 0
+    attempt_limit = 10
+    while find_file_count < attempt_limit:
+        try:
+            with open(args.site_file, "r") as f:
+                all_sites = f.read().splitlines()
+            find_file_count = attempt_limit + 1
+        except FileNotFoundError:
+            sleep(1 + np.random.rand())
+            find_file_count += 1
+            print(f"Attempt {find_file_count} to find {args.site_file}")
+    
+    if find_file_count == attempt_limit:
+        raise FileNotFoundError(f"File {args.site_file} not found")
 
     if args.slip_taper:
         taper = "_tapered"
