@@ -200,7 +200,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     CAVEATS/choices:
     - need to decide on number of 100-yr simulations to run (n_samples = 1000000)
     """
-
+    commence = time()
     if plot_maximum_displacement:
         maximum_displacement_plot(site_ids, branch_site_disp_dict, model_version_results_directory, extension1, threshold=0.01)
 
@@ -259,7 +259,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
     start = time()
-    benchmarking = True
+    benchmarking = False
     if not benchmarking:
         printProgressBar(0, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix='Complete 00:00:00 (00:00s/site)', length=50)
     for i, site_of_interest in enumerate(site_ids):
@@ -316,7 +316,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 # to another
                 scenarios = all_scenarios[:, slip]
                 if benchmarking:
-                    print(f"Time taken to prep random samples: {time() - begin:.5f} s\n")
+                    print(f"Time taken to prep random samples: {time() - begin:.5f} s")
+                    lap = time()
             else:
                 # Generate n_samples of possible earthquake ruptures for random 100 year intervals
                 # returns boolean array where 0 means "no event" and 1 means "event". rows = 100 yr window, columns = earthquake
@@ -328,6 +329,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 disp_uncertainty = rng.normal(1., sd, size=(int(n_samples), lambdas.size))
                 if benchmarking:
                     print(f"Time taken to generate random samples: {time() - begin:.5f} s")
+                    lap = time()
 
             # for each 100 yr scenario, get displacements from EQs that happened
             disp_scenarios = scenarios * disps
@@ -336,7 +338,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             # sum all displacement values at that site in that 100 yr interval
             cumulative_disp_scenarios = disp_scenarios.sum(axis=1)
             if benchmarking:
-                print(f"Calculated PPE: {time() - begin:.5f} s")
+                print(f"Calculated PPE: {time() - lap:.5f} s")
             lap = time()    
 
         # get displacement thresholds for calculating exceedance (hazard curve x axis)
@@ -360,7 +362,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         cumulative_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)
         n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=n_chunks, error_chunking=error_chunking)
         if benchmarking:
-            print(f"Chuncked Displacements : {time() - lap:.15f} s")
+            print(f"Chunked Displacements : {time() - lap:.15f} s")
 
         lap = time()
         # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
@@ -389,11 +391,15 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "scenario_displacements": cumulative_disp_scenarios}
 
         elapsed = time_elasped(time(), start)
-        if not benchmarking:
+        if benchmarking:
+            print(f"Site Complete: {time() - begin:.5f} s\n")
+        else:
             printProgressBar(i + 1, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix=f'Complete {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length=50)
 
     if 'grid_meta' in branch_site_disp_dict.keys():
         site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
+
+    print(f"Total Time: {time() - commence:.5f} s")
 
     if array_process:
         with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.pkl", "wb") as f:
