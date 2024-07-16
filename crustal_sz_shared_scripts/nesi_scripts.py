@@ -3,7 +3,7 @@ import argparse
 import pickle as pkl
 import numpy as np
 import pandas as pd
-from time import time
+from time import time, sleep
 
 
 def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1, S=""):
@@ -57,7 +57,7 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
 
     site_file = f"../{model_version_results_directory}/site_name_list.txt"
 
-    with open(f"../{model_version_results_directory}/cumu_PPE_slurm_task_array_{str(job_time).replace('.','_')}sec_job.sl", "wb") as f:
+    with open(f"../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl", "wb") as f:
         f.write("#!/bin/bash -e\n".encode())
         f.write(f"#SBATCH --job-name=occ-{os.path.basename(model_version_results_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
@@ -75,7 +75,7 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
         f.write("module purge  2>/dev/null\n".encode())
         f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
 
-        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {tasks_per_array} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} \n\n".encode())
+        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} \n\n".encode())
 
 
 def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension="", S=""):
@@ -122,6 +122,7 @@ if __name__ == "__main__":
     parser.add_argument("--sd", type=float, default=0.4, help="Standard deviation of the normal distribution to use for uncertainty in displacements")
     parser.add_argument("--scaling", type=str, default="", help="Scaling factor for the displacements")
     parser.add_argument("--slip_taper", default=False, action='store_true', help="Tapered slip distribution")
+    parser.add_argument("--overwrite", default=False, action='store_true', help="Overwrite existing files")
     args = parser.parse_args()
 
     start = time()
@@ -166,7 +167,7 @@ if __name__ == "__main__":
         branch_results_directory, scaling = name
 
         if scaling == '_' or scaling == '_\r':
-            scaling = taper
+            scaling = ''
 
         extension1 = os.path.basename(branch_results_directory)
         with open(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}{scaling}.pkl", "rb") as fid:
@@ -180,18 +181,22 @@ if __name__ == "__main__":
 
         if scaling == "":
             if nesi_print:
-                os.system(f"echo Running {len(sites_of_interest)} sites in branch {extension1}...")
-            print(f"Running {len(sites_of_interest)} sites in branch {extension1}...")
+                os.system(f"echo {args.task_number}: Running {n_samples} scenarios for {len(sites_of_interest)} sites in branch {extension1}...")
+            print(f"{args.task_number}: Running {len(sites_of_interest)} sites in branch {extension1}...")
         else:
             if nesi_print:
-                os.system(f"echo Running {len(sites_of_interest)} sites in branch {extension1} with scaling {scaling}...")
-            print(f"Running {len(sites_of_interest)} sites in branch {extension1} with scaling {scaling}...")
+                os.system(f"echo {args.task_number}: echo Running {n_samples} scenarios for {len(sites_of_interest)} sites in branch {extension1} with scaling {scaling}...")
+            print(f"{args.task_number}: Running {len(sites_of_interest)} sites in branch {extension1} with scaling {scaling}...")
 
         # Needs to be run one site at a time so sites can be recombined later
         for ix, site in enumerate(sites_of_interest):
             lap = time()
+            if os.path.exists(f"../{branch_results_directory}/site_cumu_exceed{scaling}/{site}.pkl") and not args.overwrite:
+                if nesi_print:
+                    os.system(f"echo {ix} {extension1} {site}.pkl already exists\n")
+                continue
             get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, [site], n_samples,
-                         extension1, branch_key="nan", time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True,
+                         extension1, branch_key="nan", time_interval=investigation_time, sd=sd, scaling=scaling, load_random=False,
                          plot_maximum_displacement=False, array_process=True)
             if nesi_print:
                 os.system(f"echo {ix} {extension1} {site} complete in {time() - lap:.2f} seconds\n")
