@@ -151,7 +151,7 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
 
     return all_branches_site_disp_dict
 
-if numba:
+if numba_flag:
     @njit()
     def calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=1):
         n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
@@ -400,7 +400,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     if 'grid_meta' in branch_site_disp_dict.keys():
         site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
 
-    print(f"Total Time: {time() - commence:.5f} s")
+    if benchmarking:
+        print(f"Total Time: {time() - commence:.5f} s")
 
     if array_process:
         with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.pkl", "wb") as f:
@@ -418,7 +419,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension,
                               nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
-                              time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=5):
+                              time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=5, load_random=False,
+                              force_new_PPE=False):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -470,23 +472,23 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         ### get exceedance probability dictionary
         if nesi:
             if nesi_step == 'prep':
-                print('\tPreparing random arrays...')
-                os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}", exist_ok=True)
-                site1 = list(branch_site_disp_dict.keys())[0]
-                rng = np.random.default_rng()
-                if "scaled_rates" not in branch_site_disp_dict[site1].keys():
-                    # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
-                    rates = np.array(branch_site_disp_dict[site1]["rates"])
-                else:
-                    rates = np.array(branch_site_disp_dict[site1]["scaled_rates"])
-
-                n_ruptures = rates.shape[0]
-                scenarios = rng.poisson(time_interval * rates, size=(int(n_samples), n_ruptures))
-                disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
-                with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}/scenarios.pkl", "wb") as fid:
-                    pkl.dump(scenarios, fid)
-                with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}/disp_uncertainty.pkl", "wb") as fid:
-                    pkl.dump(disp_uncertainty, fid)
+                if load_random:
+                    print('\tPreparing random arrays...')
+                    os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}", exist_ok=True)
+                    site1 = list(branch_site_disp_dict.keys())[0]
+                    rng = np.random.default_rng()
+                    if "scaled_rates" not in branch_site_disp_dict[site1].keys():
+                        # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
+                        rates = np.array(branch_site_disp_dict[site1]["rates"])
+                    else:
+                        rates = np.array(branch_site_disp_dict[site1]["scaled_rates"])
+                    n_ruptures = rates.shape[0]
+                    scenarios = rng.poisson(time_interval * rates, size=(int(n_samples), n_ruptures))
+                    disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
+                    with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}/scenarios.pkl", "wb") as fid:
+                        pkl.dump(scenarios, fid)
+                    with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}/disp_uncertainty.pkl", "wb") as fid:
+                        pkl.dump(disp_uncertainty, fid)
 
                 print(f"\tPrepping for NESI....")
                 prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
@@ -498,10 +500,16 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                                                              taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
 
         else:
-            branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict,
-                                                site_ids=branch_site_disp_dict.keys(),
-                                                model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
-                                                time_interval=100, n_samples=n_samples, extension1="")
+            compiled_cumu_PPE_dict_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.pkl"
+            if os.path.exists(compiled_cumu_PPE_dict_file) and not force_new_PPE:
+                print(f"\tLoading compiled PPE dictionary:  {extension1}/cumu_exceed_prob_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.pkl")
+                with open(compiled_cumu_PPE_dict_file, "rb") as f:
+                    branch_cumu_PPE_dict = pkl.load(f)
+            else:
+                branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict,
+                                                    site_ids=branch_site_disp_dict.keys(),
+                                                    model_version_results_directory=model_version_results_directory, slip_taper=slip_taper,
+                                                    time_interval=100, n_samples=n_samples, extension1="")
 
         fault_model_allbranch_PPE_dict[branch_id] = {"cumu_PPE_dict": branch_cumu_PPE_dict, "branch_weight":
             branch_weight}
