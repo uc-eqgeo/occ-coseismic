@@ -4,7 +4,6 @@ try:
     import rasterio
     from rasterio.transform import Affine
     from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile, maximum_displacement_plot
-    from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE
     from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
     import xarray as xr
 except:
@@ -23,11 +22,12 @@ finally:
     from matplotlib.patches import Rectangle
     import matplotlib.ticker as mticker
     from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
-    numba = True
+    from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE
+    numba_flag = True
     try:
         from numba import njit
     except:
-        numba = False
+        numba_flag = False
 
 matplotlib.rcParams['pdf.fonttype'] = 42
 
@@ -153,7 +153,7 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
 
 if numba:
     @njit()
-    def calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=1, error_chunking=1):
+    def calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=1):
         n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
         n_exceedances_up = np.zeros((len(thresholds), n_chunks))
         n_exceedances_down = np.zeros((len(thresholds), n_chunks))
@@ -168,7 +168,7 @@ if numba:
 
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 else:
-    def calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=1, error_chunking=1):
+    def calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=1):
         n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
         n_exceedances_up = np.zeros((len(thresholds), n_chunks))
         n_exceedances_down = np.zeros((len(thresholds), n_chunks))
@@ -204,8 +204,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     if plot_maximum_displacement:
         maximum_displacement_plot(site_ids, branch_site_disp_dict, model_version_results_directory, extension1, threshold=0.01)
 
-    if numba:
-        calc_thresholds(np.array([1]), np.ones((100, 1)))
+    if numba_flag:
+        _ = calc_thresholds(np.arange(0,1,1), np.ones((1, 100)))
 
     # use random number generator to initialise monte carlo sampling
     rng = np.random.default_rng()
@@ -309,8 +309,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
             if load_random:
                 # As a concession to not regenerating random samples and scenarios, randomly shift the loaded uncertainty arrays
-                sample_shift = np.random.randint(-scenarios.shape[0], scenarios.shape[0])
-                rupture_shift = np.random.randint(-scenarios.shape[1], scenarios.shape[1])
+                sample_shift = np.random.randint(-all_uncertainty.shape[0], all_uncertainty.shape[0])
+                rupture_shift = np.random.randint(-all_uncertainty.shape[1], all_uncertainty.shape[1])
                 disp_uncertainty = np.roll(all_uncertainty, (sample_shift, rupture_shift))[:, :lambdas.size]
                 # Leave scenarios alone - no point rolling sample order, and can't shift sideways as can't appy one rupture's distribution
                 # to another
@@ -359,8 +359,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         exceedance_probs_up = n_exceedances_up / n_samples
         exceedance_probs_down = n_exceedances_down / n_samples
 
-        cumulative_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)
-        n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=n_chunks, error_chunking=error_chunking)
+        chunked_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)
+
+        n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, chunked_disp_scenarios, n_chunks=n_chunks)
         if benchmarking:
             print(f"Chunked Displacements : {time() - lap:.15f} s")
 
@@ -451,7 +452,6 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         # get site displacement dictionary and branch weights
         extension1 = gf_name + branch_weight_dict[branch_id]["file_suffix"]
         branch_weight = branch_weight_dict[branch_id]["total_weight_RN"]
-
         # Extract rates from the NSHM solution directory, but it is not scaled by the rate scaling factor
         branch_site_disp_dict = get_site_disp_dict(extension1, slip_taper=slip_taper,
                            model_version_results_directory=model_version_results_directory)
@@ -519,11 +519,10 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         print('\nCreating SLURM submission script....')
         prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks, hours=int(hours), mins=int(mins), mem=mem, cpus=cpus,
                               account=account, time_interval=100, n_samples=n_samples, sd=0.4, job_time=job_time)
-        print(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array_{str(job_time).replace('.','_')}sec_job.sl")
-        exit()
+        raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
     else:
         outfile_name = f"allbranch_PPE_dict{outfile_extension}{taper_extension}"
-
+        print(f"Saving {model_version_results_directory}/{outfile_name}.pkl....")
         with open(f"../{model_version_results_directory}/{outfile_name}.pkl", "wb") as f:
             pkl.dump(fault_model_allbranch_PPE_dict, f)
 
@@ -573,7 +572,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             for unique_id in unique_id_list:
                 probabilities_i_site = fault_model_PPE_dict[unique_id]["cumu_PPE_dict"][site][
                     f"exceedance_probs_{exceed_type}"]
-                site_df[unique_id] = probabilities_i_site
+                site_df[unique_id] = probabilities_i_site.reshape(-1)
                 errors_df[unique_id] = fault_model_PPE_dict[unique_id]["cumu_PPE_dict"][site][
                     f"error_{exceed_type}"]
             site_probabilities_df = pd.DataFrame(site_df)
@@ -669,6 +668,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         # make all the combinations of crustal and subduction zone branch pairs
         crustal_sz_branch_pairs = list(itertools.product(crustal_sz_branch_pairs,
                                                             sz_branch_weight_dict.keys()))
+
         if isinstance(crustal_sz_branch_pairs[0][0], tuple):
             crustal_sz_branch_pairs = [t1 + tuple([t2]) for t1, t2 in crustal_sz_branch_pairs]
 
@@ -784,6 +784,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                                             taper_extension=taper_extension, return_dict=True)
             paired_crustal_sz_PPE_dict[pair_unique_id] = {"cumu_PPE_dict": pair_cumu_PPE_dict, "branch_weight": pair_weight}
 
+    print(f"Saving {out_directory}/{paired_PPE_pickle_name}.pkl....")
     with open(f"../{out_directory}/{paired_PPE_pickle_name}", "wb") as f:
         pkl.dump(paired_crustal_sz_PPE_dict, f)
     return paired_crustal_sz_PPE_dict
