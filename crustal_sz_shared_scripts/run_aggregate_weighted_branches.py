@@ -12,11 +12,11 @@ from nesi_scripts import nesi_get_weighted_mean_PPE_dict
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_Model_CFM_national_10km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_national_10km"                    # must match suffix in the subduction directory with gfs
+crustal_model_version = "_Model_CFM_wellington_1km"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_wellington_1km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = True    # Prepares code for NESI runs
-testing = False   # Impacts number of samples runs, job time etc
+nesi = False    # Prepares code for NESI runs
+testing = True   # Impacts number of samples runs, job time etc
 
 
 # Processing Flags (True/False)
@@ -25,9 +25,9 @@ load_random = False             # Do you want to uses the same grid for scenario
 calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
 remake_PPE = False              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
-save_arrays = False             # Do you want to save the displacement and probability arrays?
-default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
-make_hazcurves = True       # Do you want to make hazard curves?
+save_arrays = True             # Do you want to save the displacement and probability arrays?
+default_plot_order = False       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
+make_hazcurves = False       # Do you want to make hazard curves?
 make_colorful_hazcurves = False # Do you want to make colorful hazard curves?
 plot_order_csv = "../wellington_10km_grid_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 
@@ -254,7 +254,7 @@ if paired_crustal_sz:
             sz_model_version_results_directory_list=model_version_results_directory[1:],
             paired_PPE_pickle_name=paired_PPE_pickle_name, slip_taper=slip_taper, n_samples=int(n_samples),
             out_directory=out_version_results_directory, outfile_extension=outfile_extension, sz_type_list=fault_type[1:],
-            nesi=False, nesi_step=nesi_step, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array,
+            nesi=nesi, nesi_step=nesi_step, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array,
             mem=mem, time_interval=time_interval, sd=sd, job_time=job_time, remake_PPE=remake_PPE)
 
     if not nesi and calculate_weighted_mean_PPE:
