@@ -11,60 +11,61 @@ import pickle as pkl
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_Model_CFM_national_10km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_national_10km"                    # must match suffix in the subduction directory with gfs
+sz_model_version = "_jaime_sites_test"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-default_plot_order = True
-plot_order_csv = "../national_10km_grid_points_trim.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
-nesi = False
-nesi_step = 'prep'  # 'prep' or 'combine'
-testing = True
+nesi = False    # Prepares code for NESI runs
+testing = False
 
-probability_plot = True                # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
-displacement_chart = True                 # plots the displacement at the 10% and 2% probability of exceedance
-# thresholds
-make_hazcurves = False
-make_colorful_hazcurves = False
-make_geotiffs = True
-#make_map = True
 
-# Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
-paired_crustal_sz = False       # True or False
-load_random = False
+# Processing Flags (True/False)
+paired_crustal_sz = False       # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
+calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
+calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
+save_arrays = False             # Do you want to save the displacement and probability arrays?
+default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
+make_hazcurves = True       # Do you want to make hazard curves?
+make_colorful_hazcurves = False # Do you want to make colorful hazard curves?
+plot_order_csv = "../wellington_10km_grid_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 
-if testing:
-    n_samples = 1e4
-    job_time = 1
-    mem = 5
-else:
-    n_samples = 1e6
-    job_time = 30
-    mem = 25
+# Processing Parameters
+time_interval = 100     # Time span of hazard forecast (yrs)
+sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 
-n_array_tasks = 1000
-min_tasks_per_array = 100
-job_time = 4
-time_interval = 100
-sd = 0.4
+# Nesi Parameters
+nesi_step = 'prep'  # 'prep' or 'combine
+n_array_tasks = 1000    # Number of array tasks
+min_tasks_per_array = 100   # Minimum number of sites per array
+min_branches_per_array = 1  # Minimum number of branches per array
 
-# Do you want to calculate PPEs for the fault model?
-# This only has to be done once because it is saved a pickle file
-# If False, it just makes figures and skips making the PPEs
-calculate_fault_model_PPE = False   # True or False
 
-if nesi and nesi_step == 'prep':
-    calculate_fault_model_PPE = True
-
+# Parameters that shouldn't need to be changed
+crustal_directory = "crustal"
+sz_directory = "subduction"
+results_directory = "results"
 figure_file_type_list = ["png", "pdf"]             # file types for figures
-
 unique_id_keyphrase_list = ["N165", "N279"]         # sz
 #unique_id_keyphrase_list = ["N27", "N46"]          # crustal
 #unique_id_keyphrase_list = ["S066", "S141"]
 #unique_id_keyphrase_list = ["S042", "S158"]
 
-# set up file directories
-crustal_directory = "crustal"
-sz_directory = "subduction"
-results_directory = "results"
+
+if testing:
+    n_samples = 1e4   # Number of scenarios to run
+    job_time = 1    # Amount of time to allocate per site in the cumu_PPE task array
+    mem = 5    # Memory allocation for cumu_PPE task array
+else:
+    n_samples = 1e5
+    job_time = 30
+    mem = 25
+
+## Solving processing conflicts
+if nesi and nesi_step == 'prep':
+    calculate_fault_model_PPE = True
+
+if calculate_fault_model_PPE:
+    calculate_weighted_mean_PPE = True  # If recalculating PPEs, you need to recalculate the weighted mean PPEs
+
 
 if not default_plot_order and not os.path.exists(plot_order_csv):
     raise Exception("Manual plot order selected but no plot order csv found. Please create a csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId)")
@@ -83,7 +84,6 @@ else:
         raise Exception("Can't have fault type = 'all' and paired_crustal_sz = False")
     fault_type = [fault_type]
 
-#plot_order_temp = ["Porirua CBD north", "Porirua CBD south"]
 ######################################################
 
 def make_branch_weight_dict(branch_weight_file_path, sheet_name):
@@ -226,7 +226,7 @@ if not paired_crustal_sz:
             time_interval=time_interval, sd=sd, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array, job_time=job_time,
             load_random=load_random, remake_PPE=False)
 
-    print('Loading fault model PPE dictionary...')
+    print('Loading pre-prepared fault model PPE dictionary...')
     with open(fault_model_PPE_filepath, 'rb') as f:
         PPE_dict = pkl.load(f)
 
@@ -260,22 +260,26 @@ if paired_crustal_sz:
         PPE_dict = pkl.load(f)
 
 # calculate weighted mean PPE for the branch or paired dataset
-weighted_mean_PPE_dict = get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict,
-                                                    out_directory=out_version_results_directory,
-                                                    outfile_extension=outfile_extension, slip_taper=slip_taper)
-
-# open the saved weighted mean PPE dictionary
 weighted_mean_PPE_filepath = f"../{out_version_results_directory}/weighted_mean_PPE_dict_{outfile_extension}" \
                              f"{taper_extension}.pkl"
-with open(weighted_mean_PPE_filepath, 'rb') as f:
-    weighted_mean_PPE_dict = pkl.load(f)
+if calculate_weighted_mean_PPE or not os.path.exists(weighted_mean_PPE_filepath):
+    print('Calculating weighted mean PPE...')
+    weighted_mean_PPE_dict = get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict,
+                                                        out_directory=out_version_results_directory,
+                                                        outfile_extension=outfile_extension, slip_taper=slip_taper)
+else:
+    # open the saved weighted mean PPE dictionary
+    print('Loading pre-prepared weighted mean PPE dictionary...')
+    with open(weighted_mean_PPE_filepath, 'rb') as f:
+        weighted_mean_PPE_dict = pkl.load(f)
 
 
 # plot hazard curves and save to file
-print('Saving data arrays...')
-ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                       thresh_lims=[0, 3], thresh_step=0.01, output_thresh=True, probs_lims = [0.01, 0.20], probs_step=0.01,
-                       output_probs=True, grid=False, weighted=True)
+if save_arrays:
+    print('Saving data arrays...')
+    ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
+                        thresh_lims=[0, 3], thresh_step=0.01, output_thresh=True, probs_lims = [0.01, 0.20], probs_step=0.01,
+                        output_probs=True, grid=False, weighted=True)
 
 if paired_crustal_sz:
     model_version_title = f"paired crustal{crustal_model_version} and "
