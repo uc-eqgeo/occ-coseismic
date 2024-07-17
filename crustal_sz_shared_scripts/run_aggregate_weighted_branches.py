@@ -60,7 +60,7 @@ if testing:
     mem = 5    # Memory allocation for cumu_PPE task array
 else:
     n_samples = 1e5
-    job_time = 30
+    job_time = 3
     mem = 25
 
 ## Solving processing conflicts

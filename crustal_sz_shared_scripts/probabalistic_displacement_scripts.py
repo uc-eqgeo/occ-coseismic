@@ -1,8 +1,11 @@
-import geopandas as gpd
-import rasterio
-from rasterio.transform import Affine
+try:
+    import geopandas as gpd
+    import rasterio
+    from rasterio.transform import Affine
+    from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
+except:
+    print("Running on Nesi. Some functions won't work....")
 from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile, maximum_displacement_plot
-from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
 import xarray as xr
 import os
 import random
@@ -663,7 +666,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     crustal_model_version_results_directory, sz_model_version_results_directory_list,
                                     paired_PPE_pickle_name, slip_taper, n_samples, out_directory, outfile_extension, sz_type_list,
                                     nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
-                                    n_array_tasks=1000, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=5, remake_PPE=True):
+                                    n_array_tasks=1000, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=5, remake_PPE=True, load_random=False):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -753,23 +756,24 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
             if not os.path.exists(f"../{out_directory}"):
                 os.mkdir(f"../{out_directory}")
             if nesi and nesi_step == 'prep':
-                print('\tPreparing random arrays...')
-                os.makedirs(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed", exist_ok=True)
-                site1 = list(pair_site_disp_dict.keys())[0]
-                rng = np.random.default_rng()
-                if "scaled_rates" not in pair_site_disp_dict[site1].keys():
-                    # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
-                    rates = np.array(pair_site_disp_dict[site1]["rates"])
-                else:
-                    rates = np.array(pair_site_disp_dict[site1]["scaled_rates"])
+                if load_random:
+                    print('\tPreparing random arrays...')
+                    os.makedirs(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed", exist_ok=True)
+                    site1 = list(pair_site_disp_dict.keys())[0]
+                    rng = np.random.default_rng()
+                    if "scaled_rates" not in pair_site_disp_dict[site1].keys():
+                        # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
+                        rates = np.array(pair_site_disp_dict[site1]["rates"])
+                    else:
+                        rates = np.array(pair_site_disp_dict[site1]["scaled_rates"])
 
-                n_ruptures = rates.shape[0]
-                scenarios = rng.poisson(time_interval * rates, size=(n_samples, n_ruptures))
-                disp_uncertainty = rng.normal(1, sd, size=(n_samples, n_ruptures))
-                with open(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed/scenarios.pkl", "wb") as fid:
-                    pkl.dump(scenarios, fid)
-                with open(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed/disp_uncertainty.pkl", "wb") as fid:
-                    pkl.dump(disp_uncertainty, fid)
+                    n_ruptures = rates.shape[0]
+                    scenarios = rng.poisson(time_interval * rates, size=(n_samples, n_ruptures))
+                    disp_uncertainty = rng.normal(1, sd, size=(n_samples, n_ruptures))
+                    with open(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed/scenarios.pkl", "wb") as fid:
+                        pkl.dump(scenarios, fid)
+                    with open(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed/disp_uncertainty.pkl", "wb") as fid:
+                        pkl.dump(disp_uncertainty, fid)
 
                 print(f"\tPrepping for NESI....")
                 prep_nesi_site_list(out_directory, pair_site_disp_dict, pair_unique_id)

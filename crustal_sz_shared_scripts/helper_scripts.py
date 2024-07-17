@@ -1,17 +1,18 @@
-import pandas as pd
-import geopandas as gpd
-from shapely.geometry import Point
-import os
-from functools import reduce
-import numpy as np
-from numpy.lib.function_base import _check_interpolation_as_method, _quantile_is_valid, _QuantileMethods, \
-                                    _get_indexes, _get_gamma, _lerp
-from numpy.core.numeric import normalize_axis_tuple
-from numpy import minimum, take, concatenate
-import pickle as pkl
-from scipy.interpolate import griddata
-import matplotlib.pyplot as plt
-
+try:
+    import geopandas as gpd
+    from shapely.geometry import Point
+finally:
+    import pandas as pd
+    import os
+    from functools import reduce
+    import numpy as np
+    from numpy.lib.function_base import _check_interpolation_as_method, _quantile_is_valid, _QuantileMethods, \
+                                        _get_indexes, _get_gamma, _lerp
+    from numpy.core.numeric import normalize_axis_tuple
+    from numpy import minimum, take, concatenate
+    import pickle as pkl
+    from scipy.interpolate import griddata
+    import matplotlib.pyplot as plt
 
 def get_probability_color(exceed_type):
     """ exceed type can be "total_abs", "up", or "down
@@ -229,7 +230,7 @@ def filter_ruptures_by_rate(directory):
 # This runs a bit slowly
 def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, model_version,
                                 crustal_directory="crustal_files", sz_directory="subduction_files",
-                                location=Point(1749150, 5428092), search_radius=2.5e5):
+                                location=[1749150, 5428092], search_radius=2.5e5):
     """ filters the initial rupture scenarios by which patches are involved
         set a distance from interest area and cut out scenarios that don't intersect
 
@@ -238,6 +239,7 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
 
         fault_type = "crustal" or "sz"
         """
+    location = Point(location)
 
     if fault_type == "crustal":
         fault_rectangle_centroids_gdf = gpd.read_file(f"../{crustal_directory}/out_files{model_version}"
@@ -364,7 +366,7 @@ def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectang
 
 def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf_name, model_version,
                           results_version_directory, crustal_directory="crustal_files", sz_directory="subduction_files",
-                          location=Point(1749150, 5428092), search_radius=2.5e5):
+                          location=[1749150, 5428092], search_radius=2.5e5):
     """
     inputs: uses extension naming scheme to load NSHM rate/slip data and fault geometry, state slip taper
 

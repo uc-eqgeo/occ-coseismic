@@ -7,7 +7,6 @@ import sys
 import matplotlib
 nesi_running = False
 try:
-    from shapely.geometry import Point
     from helper_scripts import get_rupture_disp_dict, save_target_rates
     from rupture_scenario_plotting_scripts import vertical_disp_figure
 except:
@@ -237,7 +236,7 @@ if skip_displacements:
                 skip_displacements = False
 
 if not only_make_figures and not skip_displacements:
-    Wellington = Point(1749150, 5428092)  # Wellington coordinates in NZTM
+    Wellington = [1749150, 5428092]  # Wellington coordinates in NZTM
     # Calculate displacements and make displacement dictionary once per branch. Save to pickle file in branch directory.
     for i in range(len(extension1_list)):
         print(f"\nbranch {i + 1} of {len(extension1_list)}")
