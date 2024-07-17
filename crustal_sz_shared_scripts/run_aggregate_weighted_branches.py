@@ -11,7 +11,7 @@ from nesi_scripts import nesi_get_weighted_mean_PPE_dict
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "crustal"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_Model_CFM_wellington_1km"           # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_wellington_1km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
@@ -38,7 +38,7 @@ sd = 0.4                # Standard deviation of the normal distribution to use f
 # Nesi Parameters
 launch_sbatch = False   # Run sbatch command to launch nesi jobs 
 nesi_step = 'prep'  # 'prep' or 'combine
-n_array_tasks = 1000    # Number of array tasks
+n_array_tasks = 100    # Number of array tasks
 min_tasks_per_array = 100   # Minimum number of sites per array
 min_branches_per_array = 1  # Minimum number of branches per array
 
