@@ -4,7 +4,6 @@ import pickle as pkl
 import numpy as np
 import pandas as pd
 from time import time, sleep
-from probabalistic_displacement_scripts import get_weighted_mean_PPE_dict
 
 
 def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1, S=""):
@@ -147,7 +146,7 @@ def nesi_get_weighted_mean_PPE_dict(out_directory='', ppe_name='', outfile_exten
 
 if __name__ == "__main__":
     # Import here to prevent circular imports
-    from probabalistic_displacement_scripts import get_cumu_PPE
+    from probabalistic_displacement_scripts import get_cumu_PPE, get_weighted_mean_PPE_dict
 
     parser = argparse.ArgumentParser(description="Script to calculate cumulative exceedance probabilities for each site")
     parser.add_argument("--task_number", type=int, default=0, help="Task number for the SLURM array")
