@@ -593,8 +593,10 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     for site in site_list:
         weighted_mean_site_probs_dictionary[site] = {}
 
-    for exceed_type in ["total_abs", "up", "down"]:
-        for i, site in enumerate(site_list):
+    n_sites = len(site_list)
+    printProgressBar(0, n_sites * 3, prefix=f'\t0/{3 * n_sites} items:', suffix='', length=50)
+    for ii, exceed_type in enumerate(["total_abs", "up", "down"]):
+        for jj, site in enumerate(site_list):
             site_df = {}
             errors_df = {}
             for unique_id in unique_id_list:
@@ -649,7 +651,9 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                 site_weighted_error[zero_weights] = 0
                 weighted_mean_site_probs_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"] = site_weighted_mean_probs
                 weighted_mean_site_probs_dictionary[site][f"{exceed_type}_error"] = site_weighted_error
+            printProgressBar(ii * n_sites + jj + 1, n_sites * 3, prefix=f'\t{ii + 1 * n_sites + jj}/{3 * n_sites} items:', suffix='', length=50)
 
+    print('')
     with open(f"../{out_directory}/weighted_mean_PPE_dict_{outfile_extension}{taper_extension}.pkl", "wb") as f:
         pkl.dump(weighted_mean_site_probs_dictionary, f)
 

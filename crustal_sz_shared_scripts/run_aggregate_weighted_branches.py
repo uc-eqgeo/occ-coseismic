@@ -20,7 +20,7 @@ testing = False   # Impacts number of samples runs, job time etc
 
 
 # Processing Flags (True/False)
-paired_crustal_sz = True       # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+paired_crustal_sz = False       # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
 remake_PPE = False              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
@@ -64,9 +64,6 @@ else:
     mem = 25
 
 ## Solving processing conflicts
-if nesi and nesi_step == 'prep':
-    calculate_fault_model_PPE = True
-
 if calculate_fault_model_PPE:
     calculate_weighted_mean_PPE = True  # If recalculating PPEs, you need to recalculate the weighted mean PPEs
 
@@ -269,6 +266,7 @@ if paired_crustal_sz:
 weighted_mean_PPE_filepath = f"../{out_version_results_directory}/weighted_mean_PPE_dict_{outfile_extension}{taper_extension}.pkl"
 if calculate_weighted_mean_PPE or not os.path.exists(weighted_mean_PPE_filepath):
     if nesi:
+        print('Preparing NESI scripts for weighted mean PPE...')
         time_per_branch = 45 # Seconds
         n_branches = np.product(np.array(n_branches))
         total_time = n_branches * time_per_branch

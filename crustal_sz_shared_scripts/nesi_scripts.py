@@ -160,7 +160,7 @@ if __name__ == "__main__":
     parser.add_argument("--overwrite", default=False, action='store_true', help="Overwrite existing files")
     parser.add_argument("--weighted_PPE", dest='site_PPE', default=True, action='store_false', help="Run get_weighted_mean_PPE_dict not get_cumu_PPE")
     parser.add_argument("--outDir", type=str, help="Output directory for the results")
-    parser.add_argument("--PPE_name", ype=str, defualt="", help="Name of the Paired PPE file to load")
+    parser.add_argument("--PPE_name", type=str, default="", help="Name of the Paired PPE file to load")
     parser.add_argument("--outfile_extension", type=str, default="", help="Extension for the output file")
     args = parser.parse_args()
 
@@ -244,9 +244,12 @@ if __name__ == "__main__":
         print(f"All sites complete in {time() - start:.2f} seconds (Average {(time() - start) / len(task_sites):.2f} seconds per site)")
 
     else:
+        os.system('echo Loading fault model PPE dictionary...')
         print('Loading fault model PPE dictionary...')
         paired_PPE_filepath = f"../{args.outDir}/{args.PPE_name}"
         with open(paired_PPE_filepath, 'rb') as f:
             PPE_dict = pkl.load(f)
 
+        os.system('echo Calculating weighted mean PPE dictionary...')
+        print('Calculating weighted mean PPE dictionary...')
         get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=args.outDir, outfile_extension=args.outfile_extension, slip_taper=taper)
