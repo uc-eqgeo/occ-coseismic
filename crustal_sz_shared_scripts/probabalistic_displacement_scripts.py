@@ -7,6 +7,7 @@ except:
     print("Running on Nesi. Some functions won't work....")
 from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile, maximum_displacement_plot
 import xarray as xr
+import json
 import os
 import random
 import itertools
@@ -858,7 +859,7 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
     # get disp threshold (x-value) at defined probability (y-value)
     disps = []
     for site in site_list:
-        threshold_vals = site_PPE_dictionary[site][thresh]
+        threshold_vals = np.array([round(val, 4) for val in site_PPE_dictionary[site][thresh]])
 
         # displacement thresholds are negative for "down" exceedances
         if exceed_type == "down":
@@ -867,7 +868,7 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
         site_PPE = site_PPE_dictionary[site][f"{prefix}exceedance_probs_{exceed_type}"]
 
         # get first index that is < 10% (ideally we would interpolate for exact value but don't have a function)
-        exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= probability), -1)
+        exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= round(probability,4)), -1)
         disp = threshold_vals[exceedance_index]
         disps.append(disp)
 
@@ -898,10 +899,10 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
     probs_threshold = []
     for site in site_list:
         site_PPE = site_PPE_dictionary[site][f"{prefix}exceedance_probs_{exceed_type}"]
-        threshold_vals = list(site_PPE_dictionary[site][thresh])
+        threshold_vals = [round(val, 4) for val in site_PPE_dictionary[site][thresh]]
 
         # find index in threshold_vals where the value matches the parameter threshold
-        index = threshold_vals.index(threshold)
+        index = threshold_vals.index(round(threshold, 4))
         probs_threshold.append(site_PPE[index])
 
     return probs_threshold
@@ -1920,7 +1921,10 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
 
         if not all(np.isin(site_x, x_data)) or not all(np.isin(site_y, y_data)):
             print("Site coordinates cant all be aligned to grid. Check sites are evenly spaced. Saving as sites")
-            pass
+            save_disp_prob_geojson(extension1, slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0.1, thresholds=None,
+                                       probs_lims=[0.01, 0.2], probs_step=0.01, probabilities=None, output_thresh=True, output_probs=True, weighted=weighted, grid=False,
+                                       output_grids=True)
+            return
 
         site_x = (np.array(site_x) - x_data[0]) / x_res
         site_y = (np.array(site_y) - y_data[0]) / y_res
@@ -2002,3 +2006,114 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         ds.to_netcdf(f"{outfile_directory}/{out_name}grids.nc")
 
     return ds
+
+def save_disp_prob_geojson(extension1, slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0.1, thresholds=None,
+                           probs_lims=[0.01, 0.2], probs_step=0.01, probabilities=None, output_thresh=True, output_probs=True, weighted=False, grid=False,
+                           output_grids=True, epsg=2193):
+    """
+    Write site data out as geojson
+    """
+    # Define File Paths
+    exceed_type_list = ["total_abs", "up", "down"]
+
+    if slip_taper is True:
+        taper_extension = "_tapered"
+    else:
+        taper_extension = "_uniform"
+
+    if weighted:
+        dict_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict_{extension1}{taper_extension}.pkl"
+        outfile_directory = f"../{model_version_results_directory}/weighted_mean_xarray"
+        threshold_key = 'threshold_vals'
+    else:
+        dict_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.pkl"
+        outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
+        threshold_key = 'thresholds'
+
+    with open(dict_file, "rb") as fid:
+        PPE_dict = pkl.load(fid)
+
+    sites = [*PPE_dict]
+    if 'branch_weights' in sites:
+        sites.remove('branch_weights')
+
+    if not os.path.exists(f"{outfile_directory}"):
+        os.mkdir(f"{outfile_directory}")
+
+    if thresholds is None:
+        thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
+    
+    if probabilities is None:
+        probabilities = np.arange(probs_lims[0], probs_lims[1] + probs_step, probs_step)
+        
+    probs = np.zeros([len(sites), len(thresholds), 3])
+    for ii, exceed_type in enumerate(exceed_type_list):
+        for jj, threshold in enumerate(thresholds):
+            probs[:, jj, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
+                                                              threshold=round(threshold, 4), site_list=sites, weighted=weighted)
+    
+    disps = np.zeros([len(sites), len(probabilities), 3])
+    for ii, exceed_type in enumerate(exceed_type_list):
+        for jj, probability in enumerate(probabilities):
+                disps[:, jj, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
+                                                             site_list=sites, probability=probability, weighted=weighted)
+    
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [],
+        "crs": {
+        "type": "name",
+        "properties": {"name": f"urn:ogc:def:crs:EPSG::{epsg}"}  # NZTM CRS (EPSG:2193)
+        }}
+    
+    for ix, site in enumerate(sites):
+        df = pd.DataFrame(probs[ix, :, :], columns=exceed_type_list, index=thresholds)
+        for index, row in df.iterrows():
+            properties = {"Threshold (m)": round(index, 4)}
+            properties = properties | row.astype(float).to_dict()
+            feature = {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [float(coord) for coord in PPE_dict[site]['site_coords']]
+                    },
+                "properties": properties,
+                }
+            geojson["features"].append(feature)
+
+    # Convert the GeoJSON object to a JSON string
+    geojson_str = json.dumps(geojson, indent=2)
+    
+    # Write the GeoJSON string to a file
+    with open(f"{outfile_directory}/displacements.geojson", 'w') as f:
+        f.write(geojson_str)
+    
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [],
+        "crs": {
+        "type": "name",
+        "properties": {"name": f"urn:ogc:def:crs:EPSG::{epsg}"}  # NZTM CRS (EPSG:2193)
+        }}
+    
+    for ix, site in enumerate(sites):
+        df = pd.DataFrame(disps[ix, :, :], columns=exceed_type_list, index=probabilities)
+        for index, row in df.iterrows():
+            properties = {"Probability (%)": round(index, 4)}
+            properties = properties | row.astype(float).to_dict()
+            feature = {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [float(coord) for coord in PPE_dict[site]['site_coords']]
+                    },
+                "properties": properties,
+                }
+            geojson["features"].append(feature)
+
+    # Convert the GeoJSON object to a JSON string
+    geojson_str = json.dumps(geojson, indent=2)
+    
+    # Write the GeoJSON string to a file
+    with open(f"{outfile_directory}/probabilities.geojson", 'w') as f:
+        f.write(geojson_str)
