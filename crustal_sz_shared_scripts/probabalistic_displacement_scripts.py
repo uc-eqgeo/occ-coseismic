@@ -1,33 +1,27 @@
-nesi_print = False
+import geopandas as gpd
+import rasterio
+from rasterio.transform import Affine
+from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile, maximum_displacement_plot
+from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
+import xarray as xr
+import os
+import random
+import itertools
+import numpy as np
+import pandas as pd
+import pickle as pkl
+from time import time
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+import matplotlib.ticker as mticker
+from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
+from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE
+numba_flag = True
 try:
-    import geopandas as gpd
-    import rasterio
-    from rasterio.transform import Affine
-    from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile, maximum_displacement_plot
-    from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
-    import xarray as xr
+    from numba import njit
 except:
-    print("Some modules not loaded - assume you're just running get_cumu_PPE on NESI")
-    nesi_print = True
-finally:
-    import os
-    import random
-    import itertools
-    import numpy as np
-    import pandas as pd
-    import pickle as pkl
-    from time import time
-    import matplotlib
-    import matplotlib.pyplot as plt
-    from matplotlib.patches import Rectangle
-    import matplotlib.ticker as mticker
-    from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
-    from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE
-    numba_flag = True
-    try:
-        from numba import njit
-    except:
-        numba_flag = False
+    numba_flag = False
 
 matplotlib.rcParams['pdf.fonttype'] = 42
 
@@ -186,7 +180,7 @@ else:
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
                  extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling='', load_random=False,
                  thresh_lims=[0, 3], thresh_step=0.01, plot_maximum_displacement=True, array_process=False,
-                 crustal_model_dir="", subduction_model_dirs="", load_PPE=False):
+                 crustal_model_dir="", subduction_model_dirs="", load_cumu_disp=False):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
 
@@ -221,7 +215,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         error_chunking = int(n_samples / 10)
         print(f'Too few chunks for accurate error estimation. Decreasing error_chunking to {error_chunking}')
 
-    if load_PPE:
+    if load_cumu_disp:
         PPE_list = []
         for branch in branch_key:
             model, branch_id = branch.split('_')[-2:]
@@ -235,7 +229,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                     ix += 1
                     branch_PPE_pkl = f"../{subduction_model_dirs[ix]}/sites_{model}_{branch_id}/cumu_exceed_prob_sites_{model}_{branch_id}_{branch_scaling}.pkl"
                     if ix >= len(subduction_model_dirs):
-                        raise Exception(f"Could not find PPE for {branch}")
+                        print(f"Could not find cumu_PPE dict for {branch}...")
+                        load_cumu_disp = False
+                        continue
 
             with open(branch_PPE_pkl, 'rb') as f:
                 PPE_list.append(pkl.load(f))
@@ -274,7 +270,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         # print(f"calculating {branch_key} PPE ({i} of {len(branch_site_disp_dict.keys())} branches)")
         site_dict_i = branch_site_disp_dict[site_of_interest]
 
-        if load_PPE:
+        if load_cumu_disp:
             cumulative_disp_scenarios = np.zeros(n_samples)
             for PPE in PPE_list:
                 if PPE[site_of_interest]["scenario_displacements"].shape[0] != n_samples:
@@ -424,7 +420,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension,
                               nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
                               time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=5, load_random=False,
-                              remake_PPE=True):
+                              remake_PPE=True, sbatch=False):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -444,6 +440,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
 
     fault_model_allbranch_PPE_dict = {}
+    os.makedirs(f"../{model_version_results_directory}/branch_cumu/", exist_ok=True)
 
     if nesi and nesi_step == 'prep':
         if os.path.exists(f"../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl"):
@@ -503,9 +500,12 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 print(f"\tCombining site dictionaries....")
                 branch_cumu_PPE_dict = compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1,
                                                              taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
+                weighted_pair_cumu_PPE_dict = {"cumu_PPE_dict": branch_cumu_PPE_dict, "branch_weight": branch_weight}
+
+                with open(f"../{model_version_results_directory}/branch_cumu/{branch_id}_cumu.pkl", "wb") as f:
+                    pkl.dump(weighted_pair_cumu_PPE_dict, f)
 
         else:
-            os.makedirs(f"../{model_version_results_directory}/branch_cumu/", exist_ok=True)
             compiled_cumu_PPE_dict_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.pkl"
             if remake_PPE or not os.path.exists(f"../{model_version_results_directory}/branch_cumu/{branch_id}_cumu.pkl"):
                 if os.path.exists(compiled_cumu_PPE_dict_file) and not remake_PPE:
@@ -523,13 +523,6 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 with open(f"../{model_version_results_directory}/branch_cumu/{branch_id}_cumu.pkl", "wb") as f:
                     pkl.dump(weighted_pair_cumu_PPE_dict, f)
 
-    print('Building all branch PPE dictionary....')
-    printProgressBar(0, len((branch_weight_dict.keys())), prefix=f'\t0/{len((branch_weight_dict.keys()))}', suffix='', length=50)
-    for counter, branch_id in enumerate((branch_weight_dict.keys())):
-        with open(f"../{model_version_results_directory}/branch_cumu/{branch_id}_cumu.pkl", "rb") as f:
-                fault_model_allbranch_PPE_dict[branch_id] = pkl.load(f)
-        printProgressBar(counter, len(c(branch_weight_dict.keys())), prefix=f'\t{counter}/{len((branch_weight_dict.keys()))}', suffix='', length=50)
-
     if nesi and nesi_step == 'prep':
         n_sites = len(branch_site_disp_dict)
         n_jobs = len(branch_weight_dict.keys()) * n_sites
@@ -543,10 +536,21 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         print('\nCreating SLURM submission script....')
         prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks, hours=int(hours), mins=int(mins), mem=mem, cpus=cpus,
                               account=account, time_interval=100, n_samples=n_samples, sd=0.4, job_time=job_time)
-        raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
+        if sbatch:
+            os.system(f"sbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
+            raise Exception(f"Wait for task to complete, and change nesi_step to 'combine'")
+        else:
+            raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
     else:
+        print('Building all branch PPE dictionary....')
+        printProgressBar(0, len((branch_weight_dict.keys())), prefix=f'\t0/{len((branch_weight_dict.keys()))}', suffix='', length=50)
+        for counter, branch_id in enumerate((branch_weight_dict.keys())):
+            with open(f"../{model_version_results_directory}/branch_cumu/{branch_id}_cumu.pkl", "rb") as f:
+                    fault_model_allbranch_PPE_dict[branch_id] = pkl.load(f)
+            printProgressBar(counter + 1, len(branch_weight_dict.keys()), prefix=f'\t{counter}/{len((branch_weight_dict.keys()))}', suffix='', length=50)
+
         outfile_name = f"allbranch_PPE_dict{outfile_extension}{taper_extension}"
-        print(f"Saving {model_version_results_directory}/{outfile_name}.pkl....")
+        print(f"\nSaving {model_version_results_directory}/{outfile_name}.pkl....")
         with open(f"../{model_version_results_directory}/{outfile_name}.pkl", "wb") as f:
             pkl.dump(fault_model_allbranch_PPE_dict, f)
 
@@ -675,6 +679,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
     # make a dictionary of displacements at each site from all the crustal earthquake scenarios
     paired_crustal_sz_PPE_dict = {}
+    os.makedirs(f"../{out_directory}/pair_cumu", exist_ok=True)
 
     # Make crustal_sz pair list
     all_crustal_branches_site_disp_dict = get_all_branches_site_disp_dict(crustal_branch_weight_dict, gf_name, slip_taper,
@@ -774,8 +779,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                                     n_samples=n_samples, extension1="",
                                                     crustal_model_dir=crustal_model_version_results_directory,
                                                     subduction_model_dirs=sz_model_version_results_directory_list,
-                                                    load_PPE=True)
-                    os.makedirs(f"../{out_directory}/pair_cumu", exist_ok=True)
+                                                    load_cumu_disp=True)
                     weighted_pair_cumu_PPE_dict = {"cumu_PPE_dict": pair_cumu_PPE_dict, "branch_weight": pair_weight}
         
                     with open(f"../{out_directory}/pair_cumu/{pair_unique_id}_cumu.pkl", "wb") as f:

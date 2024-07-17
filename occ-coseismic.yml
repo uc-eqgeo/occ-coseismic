@@ -14,4 +14,3 @@ dependencies:
   - numba
   - rasterio
   - meshio
-prefix: /nesi/nobackup/uc03610/jmc753/conda_pkgs

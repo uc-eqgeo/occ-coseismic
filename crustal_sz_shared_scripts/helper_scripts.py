@@ -574,7 +574,9 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
     # Set up which branches you want to calculate displacements and probabilities for
     file_suffix_list = []
     NSHM_directory_list = []
+    n_branches = []
     for fault_type in fault_type_list:
+        fault_branches = 0
         if fault_type == "crustal":
             model_version = crustal_model_extension
             if time_independent and not single_branch:
@@ -593,6 +595,7 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
                                             ]
                     file_suffix_list.extend(file_suffix_list_i)
                     NSHM_directory_list.extend(NSHM_directory_list_i)
+                    fault_branches += len(file_suffix_list_i)
                 if "geodetic" in deformation_model:
                     file_suffix_list_i = ["_c_MDE2", "_c_MDE3", "_c_MDE4", "_c_MDE5", "_c_MDIw", "_c_MDIx", "_c_MDIz",
                                         "_c_MDIy", "_c_MDI0"]
@@ -607,7 +610,7 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
                                             "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDI0"]
                     file_suffix_list.extend(file_suffix_list_i)
                     NSHM_directory_list.extend(NSHM_directory_list_i)
-
+                    fault_branches += len(file_suffix_list_i)
             if time_dependent and not single_branch:
                 if "geologic" in deformation_model:
                     file_suffix_list_i = ["_c_NjE5", "_c_MjIw", "_c_MjIx", "_c_NjIy", "_c_NjIz", "_c_NjI0", "_c_NjI1",
@@ -623,6 +626,7 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
                                             "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI3"]
                     file_suffix_list.extend(file_suffix_list_i)
                     NSHM_directory_list.extend(NSHM_directory_list_i)
+                    fault_branches += len(file_suffix_list_i)
                 if "geodetic" in deformation_model:
                     file_suffix_list_i = ["_c_NjI5", "_c_NjMw", "_c_NjMx", "_c_NjMy", "_c_NjMz", "_c_NjM0", "_c_NjM1",
                                         "_c_NjM2", "_c_NjM3"]
@@ -637,7 +641,7 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
                                             "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjM3"]
                     file_suffix_list.extend(file_suffix_list_i)
                     NSHM_directory_list.extend(NSHM_directory_list_i)
-
+                    fault_branches += len(file_suffix_list_i)
             if single_branch:
                 file_suffix_list_i = ["_c_MDEz"]
                 NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"]
@@ -657,6 +661,7 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
 
                 file_suffix_list.extend(file_suffix_list_i)
                 NSHM_directory_list.extend(NSHM_directory_list_i)
+                fault_branches += len(file_suffix_list_i) * 3  # For scaling
             if single_branch:
                 file_suffix_list_i = ["_sz_NzE0"]  # "_sz_NzE0" Highest weighted Branch
                 NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
@@ -670,13 +675,15 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
                 NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTMyNzM5NQ=="]
                 file_suffix_list.extend(file_suffix_list_i)
                 NSHM_directory_list.extend(NSHM_directory_list_i)
+                fault_branches += len(file_suffix_list_i) * 3  # For scaling
             if single_branch:
                 file_suffix_list_i = ["_py_M5NQ"]
                 NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTMyNzM5NQ=="]
                 file_suffix_list.extend(file_suffix_list_i)
                 NSHM_directory_list.extend(NSHM_directory_list_i)
+        n_branches.append(fault_branches)
 
-    return NSHM_directory_list, file_suffix_list
+    return NSHM_directory_list, file_suffix_list, n_branches
 
 
 ## These scripts are those required by numpy v2.0.0 to run the weighted percentiles.
