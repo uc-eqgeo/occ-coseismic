@@ -11,7 +11,7 @@ from nesi_scripts import nesi_get_weighted_mean_PPE_dict
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "crustal"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_Model_CFM_national_10km"           # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_national_10km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
@@ -176,31 +176,11 @@ branch_weight_dict_list = []
 for sheet in sheet_list:
     branch_weight_dict_list.append(make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
                                                             sheet_name=sheet))
-#if paired_crustal_sz or fault_type=="crustal":
-#    crustal_branch_weight_dict = make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
-#                                                        sheet_name=crustal_sheet_name)
-#if fault_type in ['sz', 'py']:
-#    sz_branch_weight_dict = make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
-#                                                    sheet_name=sz_sheet_name)
 
 # designate which branch weight dictionary to use based on the fault type
 fault_model_branch_weight_dict = {}
 for ii in range(len(fault_type)):
     fault_model_branch_weight_dict = fault_model_branch_weight_dict | branch_weight_dict_list[ii]
-
-#if not paired_crustal_sz and fault_type=="crustal":
-#    fault_model_branch_weight_dict = crustal_branch_weight_dict
-#if not paired_crustal_sz and any([fault_type=="sz", fault_type=="py"]):
-#    fault_model_branch_weight_dict = sz_branch_weight_dict
-
-# Is this section necessary?
-## extract the solution suffix based on the fault type and solution folder name
-#crustal_file_suffix_list = [crustal_branch_weight_dict[key]["file_suffix"] for key in crustal_branch_weight_dict.keys()]
-#sz_file_suffix_list = [sz_branch_weight_dict[key]["file_suffix"] for key in sz_branch_weight_dict.keys()]
-#
-## make list of file extensions with green's function type and solution suffix
-#crustal_extension1_list = [gf_name + suffix for suffix in crustal_file_suffix_list]
-#sz_extension1_list = [gf_name + suffix for suffix in sz_file_suffix_list]
 
 NSHM_directory_list, file_suffix_list, n_branches = get_NSHM_directories(fault_type, crustal_model_version, sz_model_version, deformation_model='geologic and geodetic', time_independent=True,
                          time_dependent=True, single_branch=False)
@@ -223,7 +203,7 @@ for ix, extension1 in enumerate(extension1_list):
 if not paired_crustal_sz:
     fault_type = fault_type[0]
     out_version_results_directory = f"{results_directory}/{fault_type}{model_version_list[0]}"
-    PPE_filepath = f"../{out_version_results_directory}/allbranch_PPE_dict{outfile_extension}{taper_extension}.pkl"
+    PPE_filepath = f"../{out_version_results_directory}/all_branch_PPE_dict{outfile_extension}{taper_extension}.pkl"
     if use_saved_dictionary:
         if not os.path.exists(PPE_filepath):
             print('No fault model PPE pkl file found. Making a new one...')
