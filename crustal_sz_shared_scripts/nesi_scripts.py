@@ -80,7 +80,8 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
 
 def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension="", S=""):
     """
-    Script to recompile all individual site PPE dictionaries into a single branch dictionary
+    Script to recompile all individual site PPE dictionaries into a single branch dictionary.
+    For the sake of saving space, the individual site dictionaries are deleted after being combined into the branch dictionary.
     """
 
     sites = branch_site_disp_dict.keys()
@@ -93,20 +94,20 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
         with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.pkl", "rb") as f:
             single_site_dict = pkl.load(f)
         site_PPE_dict.update(single_site_dict)
-        # os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.pkl")
-    # os.rmdir(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
+        os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.pkl")
+    os.rmdir(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
+
     if S == "":
-        extension2 = taper_extension
-    else:
-        extension2 = S
+        S = taper_extension
 
     if 'grid_meta' in branch_site_disp_dict.keys():
         site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
 
-    with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{extension2}.pkl", "wb") as f:
+    PPE_dict_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{S}.pkl"
+    with open(PPE_dict_file, "wb") as f:
         pkl.dump(site_PPE_dict, f)
 
-    return site_PPE_dict
+    return PPE_dict
 
 
 def nesi_get_weighted_mean_PPE_dict(out_directory='', ppe_name='', outfile_extension='', slip_taper=False, sbatch=False,
