@@ -265,13 +265,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     for i, site_of_interest in enumerate(site_ids):
         begin = time()
         lap = time()
-        # print('\t\tSite:', site_of_interest, '(', i, 'of', len(branch_site_disp_dict.keys()), ')')
-        # if i == 0:
-        #     if branch_key not in ["nan", ""]:
-        #         print(f"calculating {branch_key} PPE for site {i} of {len(branch_site_disp_dict.keys())}")
-        #     if extension1 not in ["nan", ""]:
-        #         print(f"calculating {extension1} PPE for site {i} of {len(branch_site_disp_dict.keys())}")
-        # print(f"calculating {branch_key} PPE ({i} of {len(branch_site_disp_dict.keys())} branches)")
+
         site_dict_i = branch_site_disp_dict[site_of_interest]
 
         if load_cumu_disp:
@@ -377,10 +371,11 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         exceedance_errs_up = n_exceedances_up / error_chunking
         exceedance_errs_down = n_exceedances_down / error_chunking
 
-        # Output 1 sigma error limits
-        error_abs = np.std(exceedance_errs_total_abs, axis=1)
-        error_up = np.std(exceedance_errs_up, axis=1)
-        error_down = np.std(exceedance_errs_down, axis=1)
+        # Output errors
+        sigma_lims = [2.27, 15.865, 84.135, 97.725]
+        error_abs = np.percentile(exceedance_errs_total_abs, sigma_lims, axis=1)
+        error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
+        error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
 
         # CAVEAT: at the moment only absolute value thresholds are stored, but for "down" the thresholds are
         # actually negative.
@@ -393,6 +388,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "error_total_abs": error_abs,
                                            "error_up": error_up,
                                            "error_down": error_down,
+                                           "sigma_lims": sigma_lims,
                                            "scenario_displacements": cumulative_disp_scenarios}
 
         elapsed = time_elasped(time(), start)
@@ -551,7 +547,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         for counter, branch_id in enumerate((branch_weight_dict.keys())):
             with open(f"../{model_version_results_directory}/branch_cumu/{branch_id}_cumu.pkl", "rb") as f:
                     fault_model_allbranch_PPE_dict[branch_id] = pkl.load(f)
-            printProgressBar(counter + 1, len(branch_weight_dict.keys()), prefix=f'\t{counter}/{len((branch_weight_dict.keys()))}', suffix='', length=50)
+            printProgressBar(counter + 1, len(branch_weight_dict.keys()), prefix=f'\t{counter + 1}/{len((branch_weight_dict.keys()))}', suffix='', length=50)
 
         if save_dictionary:
             outfile_name = f"allbranch_PPE_dict{outfile_extension}{taper_extension}"
@@ -611,7 +607,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                 errors_df[unique_id] = fault_model_PPE_dict[unique_id]["cumu_PPE_dict"][site][
                     f"error_{exceed_type}"]
             site_probabilities_df = pd.DataFrame(site_df)
-
+            breakpoint()
             # collapse each row into a weighted mean value
             branch_weighted_mean_probs = site_probabilities_df.apply(
                 lambda x: np.average(x, weights=branch_weights), axis=1)
@@ -625,18 +621,13 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             weighted_mean_site_probs_dictionary[site]["site_coords"] = site_coords_dict[site]
 
             # Calculate errors based on 1 and 2 sigma percentiles of all of the branches for each threshold
-            percentiles = np.percentile(site_probabilities_df, [97.725, 84.135, 15.865, 2.275], axis=1)
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_97_725_vals"] = percentiles[0, :]
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_84_135_vals"] = percentiles[1, :]
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_15_865_vals"] = percentiles[2, :]
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_2_275_vals"] = percentiles[3, :]
+            sigma_lims = [2.27, 15.865, 84.135, 97.725]
+            #percentiles = np.percentile(site_probabilities_df, sigma_lims, axis=1)
+            #weighted_mean_site_probs_dictionary[site][f"{exceed_type}_percentile_error"] = percentiles
 
             # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
-            percentiles = percentile(site_probabilities_df, [97.725, 84.135, 15.865, 2.275], axis=1, weights=branch_weights)
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w97_725_vals"] = percentiles[0, :]
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w84_135_vals"] = percentiles[1, :]
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w15_865_vals"] = percentiles[2, :]
-            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_w2_275_vals"] = percentiles[3, :]
+            percentiles = percentile(site_probabilities_df, sigma_lims, axis=1, weights=branch_weights)
+            weighted_mean_site_probs_dictionary[site][f"{exceed_type}_weighted_percentile_error"] = percentiles
 
             calc_uc_weighting = False
             # This method uses the uncertainty calculated for each branch, as well as the branch weights, to calculate the weighted mean and error.
@@ -656,7 +647,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                 site_weighted_error[zero_weights] = 0
                 weighted_mean_site_probs_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"] = site_weighted_mean_probs
                 weighted_mean_site_probs_dictionary[site][f"{exceed_type}_error"] = site_weighted_error
-            printProgressBar(ii * n_sites + jj + 1, n_sites * 3, prefix=f'\t{ii + 1 * n_sites + jj}/{3 * n_sites} items:', suffix='', length=50)
+            printProgressBar(ii * n_sites + jj + 1, n_sites * 3, prefix=f'\t{ii * n_sites + jj + 1}/{n_sites * 3} items:', suffix='', length=50)
 
     print('')
     with open(f"../{out_directory}/weighted_mean_PPE_dict_{outfile_extension}{taper_extension}.pkl", "wb") as f:
@@ -806,7 +797,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
             with open(f"../{out_directory}/pair_cumu/{pair_unique_id}_cumu.pkl", "rb") as f:
                     paired_crustal_sz_PPE_dict[pair_unique_id] = pkl.load(f)
-            printProgressBar(counter, len(crustal_sz_branch_pairs), prefix=f'\t{counter}/{len(crustal_sz_branch_pairs)}', suffix='', length=50)
+            printProgressBar(counter + 1, len(crustal_sz_branch_pairs), prefix=f'\t{counter + 1}/{len(crustal_sz_branch_pairs)}', suffix='', length=50)
         
         if nesi and nesi_step == 'prep':
             n_sites = len(site_names)
