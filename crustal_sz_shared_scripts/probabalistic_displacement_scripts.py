@@ -424,7 +424,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension,
                               nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
                               time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=5, load_random=False,
-                              remake_PPE=True, sbatch=False):
+                              remake_PPE=True, sbatch=False, save_dictionary=True):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -553,10 +553,11 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                     fault_model_allbranch_PPE_dict[branch_id] = pkl.load(f)
             printProgressBar(counter + 1, len(branch_weight_dict.keys()), prefix=f'\t{counter}/{len((branch_weight_dict.keys()))}', suffix='', length=50)
 
-        outfile_name = f"allbranch_PPE_dict{outfile_extension}{taper_extension}"
-        print(f"\nSaving {model_version_results_directory}/{outfile_name}.pkl....")
-        with open(f"../{model_version_results_directory}/{outfile_name}.pkl", "wb") as f:
-            pkl.dump(fault_model_allbranch_PPE_dict, f)
+        if save_dictionary:
+            outfile_name = f"allbranch_PPE_dict{outfile_extension}{taper_extension}"
+            print(f"\nSaving {model_version_results_directory}/{outfile_name}.pkl....")
+            with open(f"../{model_version_results_directory}/{outfile_name}.pkl", "wb") as f:
+                pkl.dump(fault_model_allbranch_PPE_dict, f)
 
         return fault_model_allbranch_PPE_dict
 
@@ -667,7 +668,8 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     crustal_model_version_results_directory, sz_model_version_results_directory_list,
                                     paired_PPE_pickle_name, slip_taper, n_samples, out_directory, outfile_extension, sz_type_list,
                                     nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
-                                    n_array_tasks=1000, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=5, remake_PPE=True, load_random=False):
+                                    n_array_tasks=1000, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=5, remake_PPE=True, load_random=False,
+                                    save_dictionary=True):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -839,9 +841,10 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                                             taper_extension=taper_extension, return_dict=True)
             paired_crustal_sz_PPE_dict[pair_unique_id] = {"cumu_PPE_dict": pair_cumu_PPE_dict, "branch_weight": pair_weight}
 
-    print(f"Saving {out_directory}/{paired_PPE_pickle_name}.pkl....")
-    with open(f"../{out_directory}/{paired_PPE_pickle_name}", "wb") as f:
-        pkl.dump(paired_crustal_sz_PPE_dict, f)
+    if save_dictionary:
+        print(f"Saving {out_directory}/{paired_PPE_pickle_name}.pkl....")
+        with open(f"../{out_directory}/{paired_PPE_pickle_name}", "wb") as f:
+            pkl.dump(paired_crustal_sz_PPE_dict, f)
     return paired_crustal_sz_PPE_dict
 
 def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type, site_list, weighted=False):

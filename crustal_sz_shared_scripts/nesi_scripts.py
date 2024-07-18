@@ -108,6 +108,7 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
 
     return site_PPE_dict
 
+
 def nesi_get_weighted_mean_PPE_dict(out_directory='', ppe_name='', outfile_extension='', slip_taper=False, sbatch=False,
                                     hours: int = 1, mins: int = 0, mem: int = 50, account='uc03610', cpus=1):
 
@@ -121,14 +122,14 @@ def nesi_get_weighted_mean_PPE_dict(out_directory='', ppe_name='', outfile_exten
 
     with open(f"../{out_directory}/get_weighted_mean_PPE.sl", "wb") as f:
         f.write("#!/bin/bash -e\n".encode())
-        f.write(f"#SBATCH --job-name=occ-{out_directory}\n".encode())
+        f.write(f"#SBATCH --job-name=occ-w_{os.path.basename(out_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
         f.write(f"#SBATCH --mem={mem}GB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
 
-        f.write(f"#SBATCH -o logs/{out_directory}_task%a_%j.out\n".encode())
-        f.write(f"#SBATCH -e logs/{out_directory}_task%a_%j.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/{os.path.basename(out_directory)}_weighted_%j.out\n".encode())
+        f.write(f"#SBATCH -e logs/{os.path.basename(out_directory)}_weighted_%j.err\n\n".encode())
 
         f.write("# Activate the conda environment\n".encode())
         f.write("mkdir -p logs\n".encode())
@@ -193,7 +194,10 @@ if __name__ == "__main__":
         if find_file_count == attempt_limit:
             raise FileNotFoundError(f"File {args.site_file} not found")
 
+        all_sites = [all_sites[ix] for ix in np.random.permutation(len(all_sites))]  # Shuffle for reduce chance of task arrays not having unprocessed sites (useful if time expired on previous attempt)
         task_sites = all_sites[args.task_number * args.tasks_per_array:(args.task_number + 1) * args.tasks_per_array]
+        if len(task_sites) == 0:
+            raise Exception(f"Task {args.task_number} has no sites to process")
 
         sites = np.array([site_info.split(" ")[0] for site_info in task_sites])
         branch_directories = np.array([site_info.split(" ")[1] for site_info in task_sites])
@@ -231,12 +235,12 @@ if __name__ == "__main__":
             for ix, site in enumerate(sites_of_interest):
                 lap = time()
                 if os.path.exists(f"../{branch_results_directory}/site_cumu_exceed{scaling}/{site}.pkl") and not args.overwrite:
-                    os.system(f"echo {ix} {extension1} {site}.pkl already exists\n")
+                    print(f"{ix} {extension1} {site}.pkl already exists")  # Don't do os.system here - it's unnessecarily slow for this
                     continue
                 get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, [site], n_samples,
                             extension1, branch_key="nan", time_interval=investigation_time, sd=sd, scaling=scaling, load_random=False,
                             plot_maximum_displacement=False, array_process=True)
-                os.system(f"echo {ix} {extension1} {site} complete in {time() - lap:.2f} seconds\n")
+                # os.system(f"echo {ix} {extension1} {site} complete in {time() - lap:.2f} seconds\n")
 
             os.system(f"echo {extension1} complete in {time() - begin:.2f} seconds\n")
             print(f"{extension1} complete in : {time() - begin:.2f} seconds\n")

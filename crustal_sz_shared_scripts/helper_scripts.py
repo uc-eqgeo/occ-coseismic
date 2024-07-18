@@ -1,6 +1,8 @@
 try:
     import geopandas as gpd
     from shapely.geometry import Point
+except:
+    print("Running on Nesi. Some functions won't work....")
 finally:
     import pandas as pd
     import os
