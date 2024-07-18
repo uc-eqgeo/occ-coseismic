@@ -1,17 +1,20 @@
-import pandas as pd
-import geopandas as gpd
-from shapely.geometry import Point
-import os
-from functools import reduce
-import numpy as np
-from numpy.lib.function_base import _check_interpolation_as_method, _quantile_is_valid, _QuantileMethods, \
-                                    _get_indexes, _get_gamma, _lerp
-from numpy.core.numeric import normalize_axis_tuple
-from numpy import minimum, take, concatenate
-import pickle as pkl
-from scipy.interpolate import griddata
-import matplotlib.pyplot as plt
-
+try:
+    import geopandas as gpd
+    from shapely.geometry import Point
+except:
+    print("Running on Nesi. Some functions won't work....")
+finally:
+    import pandas as pd
+    import os
+    from functools import reduce
+    import numpy as np
+    from numpy.lib.function_base import _check_interpolation_as_method, _quantile_is_valid, _QuantileMethods, \
+                                        _get_indexes, _get_gamma, _lerp
+    from numpy.core.numeric import normalize_axis_tuple
+    from numpy import minimum, take, concatenate
+    import pickle as pkl
+    from scipy.interpolate import griddata
+    import matplotlib.pyplot as plt
 
 def get_probability_color(exceed_type):
     """ exceed type can be "total_abs", "up", or "down
@@ -229,7 +232,7 @@ def filter_ruptures_by_rate(directory):
 # This runs a bit slowly
 def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, model_version,
                                 crustal_directory="crustal_files", sz_directory="subduction_files",
-                                location=Point(1749150, 5428092), search_radius=2.5e5):
+                                location=[1749150, 5428092], search_radius=2.5e5):
     """ filters the initial rupture scenarios by which patches are involved
         set a distance from interest area and cut out scenarios that don't intersect
 
@@ -238,6 +241,7 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
 
         fault_type = "crustal" or "sz"
         """
+    location = Point(location)
 
     if fault_type == "crustal":
         fault_rectangle_centroids_gdf = gpd.read_file(f"../{crustal_directory}/out_files{model_version}"
@@ -364,7 +368,7 @@ def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectang
 
 def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf_name, model_version,
                           results_version_directory, crustal_directory="crustal_files", sz_directory="subduction_files",
-                          location=Point(1749150, 5428092), search_radius=2.5e5):
+                          location=[1749150, 5428092], search_radius=2.5e5):
     """
     inputs: uses extension naming scheme to load NSHM rate/slip data and fault geometry, state slip taper
 
@@ -460,7 +464,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
 
     # save displacements
     if not os.path.exists(f"../{results_version_directory}/{extension1}"):
-        os.mkdir(f"../{results_version_directory}/{extension1}")
+        os.makedirs(f"../{results_version_directory}/{extension1}")
 
     with open(f"../{results_version_directory}/{extension1}/all_rupture_disps_{extension1}{extension3}.pkl",
               "wb") as f:
@@ -567,6 +571,124 @@ def maximum_displacement_plot(site_ids, branch_site_disp_dict, model_dir, branch
         fig.savefig(f"../{model_dir}/weighted_max_disp.png", dpi=300)
     else:
         fig.savefig(f"../{model_dir}/{branch_name}/{branch_name}_max_disp.png", dpi=300)
+    plt.close(fig)
+
+def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_version, deformation_model='geologic and geodetic', time_independent=True,
+                         time_dependent=True, single_branch=False):
+    # Set up which branches you want to calculate displacements and probabilities for
+    file_suffix_list = []
+    NSHM_directory_list = []
+    n_branches = []
+    for fault_type in fault_type_list:
+        fault_branches = 0
+        if fault_type == "crustal":
+            model_version = crustal_model_extension
+            if time_independent and not single_branch:
+                if "geologic" in deformation_model:
+                    file_suffix_list_i = ["_c_MDA2", "_c_MDEz", "_c_MDE1", "_c_MDA3", "_c_MDA4", "_c_MDA5", "_c_MDEw",
+                                        "_c_MDEx", "_c_MDEy"]
+                    NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA2",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE1",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA3",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA4",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA5",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEw",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEx",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEy",
+                                            ]
+                    file_suffix_list.extend(file_suffix_list_i)
+                    NSHM_directory_list.extend(NSHM_directory_list_i)
+                    fault_branches += len(file_suffix_list_i)
+                if "geodetic" in deformation_model:
+                    file_suffix_list_i = ["_c_MDE2", "_c_MDE3", "_c_MDE4", "_c_MDE5", "_c_MDIw", "_c_MDIx", "_c_MDIz",
+                                        "_c_MDIy", "_c_MDI0"]
+                    NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE2",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE3",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE4",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE5",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDIw",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDIx",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDIz",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDIy",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDI0"]
+                    file_suffix_list.extend(file_suffix_list_i)
+                    NSHM_directory_list.extend(NSHM_directory_list_i)
+                    fault_branches += len(file_suffix_list_i)
+            if time_dependent and not single_branch:
+                if "geologic" in deformation_model:
+                    file_suffix_list_i = ["_c_NjE5", "_c_MjIw", "_c_MjIx", "_c_NjIy", "_c_NjIz", "_c_NjI0", "_c_NjI1",
+                                        "_c_NjI2", "_c_NjI3"]
+                    NSHM_directory_list_i = ["crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjE5",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjIw",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjIx",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjIy",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjIz",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI0",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI1",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI2",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI3"]
+                    file_suffix_list.extend(file_suffix_list_i)
+                    NSHM_directory_list.extend(NSHM_directory_list_i)
+                    fault_branches += len(file_suffix_list_i)
+                if "geodetic" in deformation_model:
+                    file_suffix_list_i = ["_c_NjI5", "_c_NjMw", "_c_NjMx", "_c_NjMy", "_c_NjMz", "_c_NjM0", "_c_NjM1",
+                                        "_c_NjM2", "_c_NjM3"]
+                    NSHM_directory_list_i = ["crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI5",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjMw",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjMx",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjMy",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjMz",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjM0",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjM1",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjM2",
+                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjM3"]
+                    file_suffix_list.extend(file_suffix_list_i)
+                    NSHM_directory_list.extend(NSHM_directory_list_i)
+                    fault_branches += len(file_suffix_list_i)
+            if single_branch:
+                file_suffix_list_i = ["_c_MDEz"]
+                NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"]
+                file_suffix_list_i = ["_c_MDEw"]
+                NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEw"]
+                file_suffix_list.extend(file_suffix_list_i)
+                NSHM_directory_list.extend(NSHM_directory_list_i)
+
+        elif fault_type == "sz":
+            model_version = sz_model_version
+            slip_taper = False
+            if not single_branch:
+                file_suffix_list_i = ["_sz_NJk2", "_sz_NTE2", "_sz_NzE0"]
+                NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2",
+                                        "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzEx",
+                                        "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
+
+                file_suffix_list.extend(file_suffix_list_i)
+                NSHM_directory_list.extend(NSHM_directory_list_i)
+                fault_branches += len(file_suffix_list_i) * 3  # For scaling
+            if single_branch:
+                file_suffix_list_i = ["_sz_NzE0"]  # "_sz_NzE0" Highest weighted Branch
+                NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
+                file_suffix_list.extend(file_suffix_list_i)
+                NSHM_directory_list.extend(NSHM_directory_list_i)
+        elif fault_type == "py":
+            model_version = sz_model_version
+            slip_taper = False
+            if not single_branch:
+                file_suffix_list_i = ["_py_M5NQ"]
+                NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTMyNzM5NQ=="]
+                file_suffix_list.extend(file_suffix_list_i)
+                NSHM_directory_list.extend(NSHM_directory_list_i)
+                fault_branches += len(file_suffix_list_i) * 3  # For scaling
+            if single_branch:
+                file_suffix_list_i = ["_py_M5NQ"]
+                NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTMyNzM5NQ=="]
+                file_suffix_list.extend(file_suffix_list_i)
+                NSHM_directory_list.extend(NSHM_directory_list_i)
+        n_branches.append(fault_branches)
+
+    return NSHM_directory_list, file_suffix_list, n_branches
+
 
 ## These scripts are those required by numpy v2.0.0 to run the weighted percentiles.
 # As numpy v2.0 does not have backwards compatibility (and I couldn't install it), I have ripped

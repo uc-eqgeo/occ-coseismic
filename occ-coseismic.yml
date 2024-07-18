@@ -1,0 +1,16 @@
+name: occ-coseismic
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python==3.10
+  - numpy==1.26.4
+  - pandas
+  - geopandas
+  - matplotlib
+  - shapely
+  - scipy
+  - xarray
+  - numba
+  - rasterio
+  - meshio
