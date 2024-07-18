@@ -12,8 +12,8 @@ from nesi_scripts import nesi_get_weighted_mean_PPE_dict
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_Model_CFM_wellington_1km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_wellington_1km"                    # must match suffix in the subduction directory with gfs
+crustal_model_version = "_Model_CFM_national_10km"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_national_10km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False    # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
@@ -230,7 +230,7 @@ if not paired_crustal_sz:
             calculate_fault_model_PPE = True
             use_saved_dictionary = False
 
-    if calculate_fault_model_PPE:
+    if calculate_fault_model_PPE or not use_saved_dictionary:
         PPE_dict = make_fault_model_PPE_dict(
                     branch_weight_dict=fault_model_branch_weight_dict,
                     model_version_results_directory=out_version_results_directory, n_samples=n_samples,
@@ -259,7 +259,7 @@ if paired_crustal_sz:
         use_saved_dictionary = False
 
     #### skip this part if you've already run it once and saved to a pickle file
-    if calculate_fault_model_PPE:
+    if calculate_fault_model_PPE or not use_saved_dictionary:
         PPE_dict = make_sz_crustal_paired_PPE_dict(
             crustal_branch_weight_dict=branch_weight_dict_list[0], sz_branch_weight_dict_list=branch_weight_dict_list[1:],
             crustal_model_version_results_directory=model_version_results_directory[0],
