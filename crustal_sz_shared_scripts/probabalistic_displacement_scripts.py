@@ -536,7 +536,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         n_tasks = int(np.ceil(n_jobs / tasks_per_array))
         print('\nCreating SLURM submission script....')
         prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks, hours=int(hours), mins=int(mins), mem=mem, cpus=cpus,
-                              account=account, time_interval=100, n_samples=n_samples, sd=0.4, job_time=job_time)
+                              account=account, time_interval=100, n_samples=n_samples, sd=0.4)
         if sbatch:
             os.system(f"sbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
             raise Exception(f"Wait for task to complete, and change nesi_step to 'combine'")

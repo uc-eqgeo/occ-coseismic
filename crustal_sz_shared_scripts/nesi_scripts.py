@@ -237,7 +237,7 @@ if __name__ == "__main__":
                     branch_disp_dict = pkl.load(fid)
                     branch_unique_ids = 'nan'
                     crustal_model_dir = ''
-                    sz_model_dirs = ''
+                    subduction_model_dir = ''
             else:
                 with open(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}{scaling}.pkl", "rb") as fid:
                     pair_site_disp_dict = pkl.load(fid)
