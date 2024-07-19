@@ -12,8 +12,8 @@ from nesi_scripts import nesi_get_weighted_mean_PPE_dict
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "crustal"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_Model_CFM_national_10km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_national_10km"                    # must match suffix in the subduction directory with gfs
+crustal_model_version = "_jaime_sites_test"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_jaime_sites_test"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False    # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
@@ -22,7 +22,7 @@ testing = False   # Impacts number of samples runs, job time etc
 # Processing Flags (True/False)
 paired_crustal_sz = False       # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
-calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
+calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = False              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
 save_arrays = True             # Do you want to save the displacement and probability arrays?
@@ -216,7 +216,7 @@ if not paired_crustal_sz:
                     model_version_results_directory=out_version_results_directory, n_samples=n_samples,
                     slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step, sbatch=launch_sbatch, mem=mem,
                     time_interval=time_interval, sd=sd, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array, job_time=job_time,
-                    load_random=load_random, remake_PPE=remake_PPE, save_dictionary=save_dictionaries)
+                    load_random=load_random, remake_PPE=remake_PPE, save_dictionary=True)
 
     if not nesi and calculate_weighted_mean_PPE and use_saved_dictionary:
         print('Loading pre-prepared fault model PPE dictionary...')
