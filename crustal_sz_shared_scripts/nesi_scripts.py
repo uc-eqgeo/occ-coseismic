@@ -3,7 +3,9 @@ import argparse
 import pickle as pkl
 import numpy as np
 import pandas as pd
+import h5py as h5
 from time import time, sleep
+from helper_scripts import dict_to_hdf5
 
 
 def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1, S=""):
@@ -35,12 +37,12 @@ def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, 
     # Append site information for this branch to the main list
     with open(site_file, "a") as f:
         for site in sites_of_interest:
-            f.write(f"{site} {branchdir} {S}\n")
+            f.write(f"{site.replace(' ','-/-')} {branchdir} {S}\n")
 
 
 def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks,
                           hours: int = 0, mins: int = 3, mem: int = 45, cpus: int = 1, account: str = 'uc03610',
-                          time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4, job_time=5):
+                          time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4, NSHM_branch=True):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
 
@@ -55,9 +57,19 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
     - need to decide on number of 100-yr simulations to run (n_samples = 1000000)
     """
 
+    slurm_file = f"../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl"
+
+    if os.path.exists(slurm_file):
+                os.remove(slurm_file)
+
     site_file = f"../{model_version_results_directory}/site_name_list.txt"
 
-    with open(f"../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl", "wb") as f:
+    if NSHM_branch:
+        NSHM = ''
+    else:
+        NSHM = '--paired_branch'
+
+    with open(slurm_file, "wb") as f:
         f.write("#!/bin/bash -e\n".encode())
         f.write(f"#SBATCH --job-name=occ-{os.path.basename(model_version_results_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
@@ -75,7 +87,7 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
         f.write("module purge  2>/dev/null\n".encode())
         f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
 
-        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} \n\n".encode())
+        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} {NSHM}\n\n".encode())
 
 
 def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension="", S=""):
@@ -86,16 +98,19 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
 
     sites = branch_site_disp_dict.keys()
     site_PPE_dict = {}
+    branch_h5 = h5.File(f"../{model_version_results_directory}/{extension1}/{extension1}_cumu_PPE.h5", "w")
 
     if 'grid_meta' in sites:
         sites.remove('grid_meta')
 
     for site_of_interest in sites:
-        with open(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.pkl", "rb") as f:
-            single_site_dict = pkl.load(f)
-        site_PPE_dict.update(single_site_dict)
-        os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.pkl")
-    os.rmdir(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
+        with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5", "r") as site_h5:
+            #single_site_dict = pkl.load(f)
+            branch_h5.create_group(site_of_interest)
+            for key in site_h5[site_of_interest].keys():
+                branch_h5[site_of_interest].create_dataset(key, data=site_h5[site_of_interest][key][()])
+        #os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5")
+    #os.rmdir(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
 
     if S == "":
         S = taper_extension
@@ -103,11 +118,9 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
     if 'grid_meta' in branch_site_disp_dict.keys():
         site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
 
-    PPE_dict_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{S}.pkl"
-    with open(PPE_dict_file, "wb") as f:
-        pkl.dump(site_PPE_dict, f)
+    branch_h5.close()
 
-    return PPE_dict
+    return
 
 
 def nesi_get_weighted_mean_PPE_dict(out_directory='', ppe_name='', outfile_extension='', slip_taper=False, sbatch=False,
@@ -159,6 +172,7 @@ if __name__ == "__main__":
     parser.add_argument("--sd", type=float, default=0.4, help="Standard deviation of the normal distribution to use for uncertainty in displacements")
     parser.add_argument("--scaling", type=str, default="", help="Scaling factor for the displacements")
     parser.add_argument("--slip_taper", default=False, action='store_true', help="Tapered slip distribution")
+    parser.add_argument("--paired_branch", dest='NSHM_branch', default=True, action='store_false', help="Run for paired branch")
     parser.add_argument("--overwrite", default=False, action='store_true', help="Overwrite existing files")
     parser.add_argument("--weighted_PPE", dest='site_PPE', default=True, action='store_false', help="Run get_weighted_mean_PPE_dict not get_cumu_PPE")
     parser.add_argument("--outDir", type=str, help="Output directory for the results")
@@ -200,7 +214,7 @@ if __name__ == "__main__":
         if len(task_sites) == 0:
             raise Exception(f"Task {args.task_number} has no sites to process")
 
-        sites = np.array([site_info.split(" ")[0] for site_info in task_sites])
+        sites = np.array([site_info.split(" ")[0].replace('-/-', ' ') for site_info in task_sites])
         branch_directories = np.array([site_info.split(" ")[1] for site_info in task_sites])
         scalings = np.array([site_info.split(" ")[2] for site_info in task_sites])
         site_df = pd.DataFrame(np.vstack([sites, branch_directories, scalings]).T, columns=['Site', 'Branch Directory', 'Scaling'])
@@ -215,11 +229,46 @@ if __name__ == "__main__":
             if scaling == '_' or scaling == '_\r':
                 scaling = ''
 
-            extension1 = os.path.basename(branch_results_directory)
-            with open(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}{scaling}.pkl", "rb") as fid:
-                branch_disp_dict = pkl.load(fid)
-
             sites_of_interest = group['Site'].values
+
+            extension1 = os.path.basename(branch_results_directory)
+            if args.NSHM_branch:
+                with open(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}{scaling}.pkl", "rb") as fid:
+                    branch_disp_dict = pkl.load(fid)
+                    branch_unique_ids = 'nan'
+                    crustal_model_dir = ''
+                    sz_model_dirs = ''
+            else:
+                with open(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}{scaling}.pkl", "rb") as fid:
+                    pair_site_disp_dict = pkl.load(fid)
+
+                out_directory = pair_site_disp_dict[[key for key in pair_site_disp_dict.keys()][0]]['out_directory']
+                crustal_model_dir = pair_site_disp_dict[[key for key in pair_site_disp_dict.keys()][0]]['crustal_directory']
+                subduction_model_dir = pair_site_disp_dict[[key for key in pair_site_disp_dict.keys()][0]]['subduction_directory']
+                with open(f"../{out_directory}/crustal_site_disp_dict.pkl", "rb") as fid:
+                    all_crustal_branches_site_disp_dict = pkl.load(fid)
+                with open(f"../{out_directory}/subduction_site_disp_dict.pkl", "rb") as fid:
+                    all_sz_branches_site_disp_dict = pkl.load(fid)
+                
+                branch_disp_dict = {}
+
+                for site in sites_of_interest:
+                    crustal_unique_id = pair_site_disp_dict[site]['crustal_unique_id']
+                    sz_unique_ids = pair_site_disp_dict[site]['sz_unique_ids']
+                    site_coords = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["site_coords"]
+
+                    pair_site_disps = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["disps"]
+                    pair_scaled_rates = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][
+                        site]["scaled_rates"]
+
+                    for sz_unique_id in sz_unique_ids:
+                        sz_site_disps = all_sz_branches_site_disp_dict[sz_unique_id]["site_disp_dict"][site]["disps"]
+                        sz_site_scaled_rates = all_sz_branches_site_disp_dict[sz_unique_id]["site_disp_dict"][site]["scaled_rates"]
+
+                        pair_site_disps += sz_site_disps
+                        pair_scaled_rates += sz_site_scaled_rates
+                    
+                    branch_disp_dict[site] = {"disps": pair_site_disps, "scaled_rates": pair_scaled_rates, "site_coords": site_coords}
 
             if isinstance([key for key in branch_disp_dict.keys()][0], int):
                 if '_' not in sites_of_interest[0]:
@@ -234,13 +283,15 @@ if __name__ == "__main__":
 
             # Needs to be run one site at a time so sites can be recombined later
             for ix, site in enumerate(sites_of_interest):
+                if not args.NSHM_branch:
+                    branch_unique_ids = pair_site_disp_dict[site]['branch_key']
                 lap = time()
                 if os.path.exists(f"../{branch_results_directory}/site_cumu_exceed{scaling}/{site}.pkl") and not args.overwrite:
                     print(f"{ix} {extension1} {site}.pkl already exists")  # Don't do os.system here - it's unnessecarily slow for this
                     continue
                 get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, [site], n_samples,
-                            extension1, branch_key="nan", time_interval=investigation_time, sd=sd, scaling=scaling, load_random=False,
-                            plot_maximum_displacement=False, array_process=True)
+                            extension1, branch_key=branch_unique_ids, time_interval=investigation_time, sd=sd, scaling=scaling, load_random=False,
+                            plot_maximum_displacement=False, array_process=True, NSHM_branch=args.NSHM_branch, crustal_model_dir=crustal_model_dir, subduction_model_dirs=subduction_model_dir)
                 # os.system(f"echo {ix} {extension1} {site} complete in {time() - lap:.2f} seconds\n")
 
             os.system(f"echo {extension1} complete in {time() - begin:.2f} seconds\n")
