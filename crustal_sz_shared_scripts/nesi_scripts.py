@@ -294,7 +294,7 @@ if __name__ == "__main__":
                             plot_maximum_displacement=False, array_process=True, NSHM_branch=args.NSHM_branch, crustal_model_dir=crustal_model_dir, subduction_model_dirs=subduction_model_dir)
                 # os.system(f"echo {ix} {extension1} {site} complete in {time() - lap:.2f} seconds\n")
 
-            os.system(f"echo {extension1} complete in {time() - begin:.2f} seconds\n")
+            os.system(f"echo {extension1} {scaling} complete in {time() - begin:.2f} seconds\n")
             print(f"{extension1} complete in : {time() - begin:.2f} seconds\n")
 
         print(f"All sites complete in {time() - start:.2f} seconds (Average {(time() - start) / len(task_sites):.2f} seconds per site)")

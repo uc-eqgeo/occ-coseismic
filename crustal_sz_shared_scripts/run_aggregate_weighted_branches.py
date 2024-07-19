@@ -68,7 +68,7 @@ if testing:
 else:
     n_samples = 1e5
     job_time = 3
-    mem = 25
+    mem = 5
 
 ## Solving processing conflicts
 if calculate_fault_model_PPE:
