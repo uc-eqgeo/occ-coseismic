@@ -412,8 +412,17 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         print(f"Total Time: {time() - commence:.5f} s")
 
     if array_process:
-        with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5", "w") as site_PPEh5:
-            dict_to_hdf5(site_PPEh5, site_PPE_dict)
+        try:
+            with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5", "w") as site_PPEh5:
+                dict_to_hdf5(site_PPEh5, site_PPE_dict)
+        except:
+            print(f"Error writing ../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5")
+            if os.path.exists(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5"):
+                print(f"Deleting file, then trying again..")
+                os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5")
+            with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5", "w") as site_PPEh5:
+                dict_to_hdf5(site_PPEh5, site_PPE_dict)
+            print('If you see this, then deleting and remaking worked')
     else:
         if extension1 != "" and scaling == "":
             with h5.File(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.h5", "w") as site_PPEh5:
@@ -505,8 +514,12 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
             elif nesi_step == 'combine':
                 print(f"\tCombining site dictionaries....")
-                compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
-                shutil.rmtree(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}")
+                if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]):
+                    print(f"\tFound Pre-Prepared Branch PPE:  {fault_model_allbranch_PPE_dict[branch_id]}. Delete manually to remake...")
+                else:
+                    compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
+                                          taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
+                    #shutil.rmtree(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}")
 
         else:
             if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_PPE:
@@ -519,10 +532,10 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 with h5.File(fault_model_allbranch_PPE_dict[branch_id], "w") as branch_PPEh5:
                     dict_to_hdf5(branch_PPEh5, branch_cumu_PPE_dict)
 
-            with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r+") as branch_PPEh5:
-                if 'branch_weight' in branch_PPEh5.keys():
-                    del branch_PPEh5['branch_weight']
-                branch_PPEh5.create_dataset('branch_weight', data=branch_weight_list[-1])
+        with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r+") as branch_PPEh5:
+            if 'branch_weight' in branch_PPEh5.keys():
+                del branch_PPEh5['branch_weight']
+            branch_PPEh5.create_dataset('branch_weight', data=branch_weight_list[-1])
 
     if nesi and nesi_step == 'prep':
         n_sites = len(branch_site_disp_dict)
@@ -788,7 +801,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 continue
             elif nesi_step == 'combine':
                 print(f"Combining {pair_unique_id} PPE\t({counter + 1} of {len(crustal_sz_branch_pairs)} branches)")                   
-                compile_site_cumu_PPE(pair_site_disp_dict, out_directory, pair_unique_id, taper_extension=taper_extension)
+                compile_site_cumu_PPE(pair_site_disp_dict, out_directory, pair_unique_id, branch_h5file=paired_crustal_sz_PPE_dict[pair_unique_id], taper_extension=taper_extension)
                 shutil.rmtree(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed")
 
         else:

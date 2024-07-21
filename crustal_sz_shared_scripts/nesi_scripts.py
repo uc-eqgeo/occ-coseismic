@@ -5,8 +5,27 @@ import numpy as np
 import pandas as pd
 import h5py as h5
 from time import time, sleep
-from helper_scripts import dict_to_hdf5
 
+def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
+    # Print New Line on Complete
+    if iteration == total: 
+        print()
 
 def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1, S=""):
     """
@@ -90,7 +109,7 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
         f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} {NSHM}\n\n".encode())
 
 
-def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, taper_extension="", S=""):
+def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S=""):
     """
     Script to recompile all individual site PPE dictionaries into a single branch dictionary.
     For the sake of saving space, the individual site dictionaries are deleted after being combined into the branch dictionary.
@@ -98,17 +117,19 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
 
     sites = branch_site_disp_dict.keys()
     site_PPE_dict = {}
-    branch_h5 = h5.File(f"../{model_version_results_directory}/{extension1}/{extension1}_cumu_PPE.h5", "w")
+    branch_h5 = h5.File(branch_h5file, "w")
 
     if 'grid_meta' in sites:
         sites.remove('grid_meta')
 
-    for site_of_interest in sites:
+    printProgressBar(0, len(sites), prefix=f'\tAdded {0}/{len(sites)} Sites:', suffix='', length=50)
+    for ix, site_of_interest in enumerate(sites):
         with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5", "r") as site_h5:
             #single_site_dict = pkl.load(f)
             branch_h5.create_group(site_of_interest)
             for key in site_h5[site_of_interest].keys():
                 branch_h5[site_of_interest].create_dataset(key, data=site_h5[site_of_interest][key][()])
+        printProgressBar(ix + 1, len(sites), prefix=f'\tAdded {ix + 1}/{len(sites)} Sites:', suffix='', length=50)
         #os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5")
     #os.rmdir(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
 
@@ -209,8 +230,11 @@ if __name__ == "__main__":
         if find_file_count == attempt_limit:
             raise FileNotFoundError(f"File {args.site_file} not found")
 
-        all_sites = [all_sites[ix] for ix in np.random.permutation(len(all_sites))]  # Shuffle for reduce chance of task arrays not having unprocessed sites (useful if time expired on previous attempt)
-        task_sites = all_sites[args.task_number * args.tasks_per_array:(args.task_number + 1) * args.tasks_per_array]
+        # all_sites = [all_sites[ix] for ix in np.random.permutation(len(all_sites))]  # Shuffle for reduced chance of task arrays not having unprocessed sites (useful if time expired on previous attempt)
+        if args.tasks_per_array == 0:
+            task_sites = all_sites
+        else:
+            task_sites = all_sites[args.task_number * args.tasks_per_array:(args.task_number + 1) * args.tasks_per_array]
         if len(task_sites) == 0:
             raise Exception(f"Task {args.task_number} has no sites to process")
 
