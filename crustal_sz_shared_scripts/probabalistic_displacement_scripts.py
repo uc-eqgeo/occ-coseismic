@@ -281,7 +281,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             cumulative_disp_scenarios = np.zeros(n_samples)
             for NSHM_PPE in NSHM_PPEh5_list:
                 with h5.File(NSHM_PPE, "r") as PPEh5:
-                    NSHM_displacements = PPEh5[site_of_interest]["scenario_displacements"][:]
+                    NSHM_displacements = PPEh5[site_of_interest]["scenario_displacements"][:].astype(np.float64) / 1000  # Load as mm, convert to m
                 cumulative_disp_scenarios += NSHM_displacements.reshape(-1)
             if benchmarking:
                 print(f"Loaded PPE: {time() - begin:.5f} s")
@@ -389,7 +389,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
             error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
 
-            site_PPE_dict[site_of_interest].update({"scenario_displacements": cumulative_disp_scenarios,
+            site_PPE_dict[site_of_interest].update({"scenario_displacements": (cumulative_disp_scenarios * 1000).astype(np.int8),  # Save as mm, but as 8-bit integers to save space
                                                     "thresholds": thresholds,
                                                     "site_coords": site_dict_i["site_coords"],
                                                     "standard_deviation": sd,
