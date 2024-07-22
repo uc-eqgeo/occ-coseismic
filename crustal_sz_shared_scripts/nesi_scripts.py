@@ -1,4 +1,5 @@
 import os
+import shutil
 import argparse
 import pickle as pkl
 import numpy as np
@@ -151,7 +152,9 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
         branch_h5.create_dataset('branch_weight', data=weight)
 
     branch_h5.close()
-    if not all_good:
+    if all_good:
+        shutil.rmtree(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
+    else:
         print(f"Error with {len(bad_sites)} sites: ../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}")
         os.remove(branch_h5file)
         with open(f"../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}", "w") as f:
