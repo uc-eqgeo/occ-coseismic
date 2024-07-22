@@ -434,7 +434,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension,
                               nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
-                              time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=5, load_random=False,
+                              time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=3, load_random=False,
                               remake_PPE=True, sbatch=False):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
@@ -457,8 +457,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         if nesi_step == 'prep' and os.path.exists(f"../{model_version_results_directory}/site_name_list.txt"):
             os.remove(f"../{model_version_results_directory}/site_name_list.txt")
         if nesi_step == 'combine':
-            if os.path.exists(f"../{model_version_results_directory}/branch_compile_list.txt"):
-                os.remove(f"../{model_version_results_directory}/branch_compile_list.txt")
+            if os.path.exists(f"../{model_version_results_directory}/branch_combine_list.txt"):
+                os.remove(f"../{model_version_results_directory}/branch_combine_list.txt")
             if os.path.exists(f"../{model_version_results_directory}/combine_site_meta.pkl"):
                 os.remove(f"../{model_version_results_directory}/combine_site_meta.pkl")
                 with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
@@ -561,7 +561,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         mins = np.ceil(secs / 60)
         n_tasks = int(np.ceil(n_jobs / tasks_per_array))
         print('\nCreating SLURM submission script....')
-        prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks, hours=int(hours), mins=int(mins), mem=mem, cpus=cpus,
+        prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks, hours=int(hours), mins=int(mins), job_time=job_time, mem=mem, cpus=cpus,
                             account=account, time_interval=100, n_samples=n_samples, sd=0.4)
         raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
 
@@ -576,8 +576,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         mins = np.ceil(secs / 60)
         n_tasks = int(np.ceil(n_branches / tasks_per_array))
         print('\nCreating SLURM submission script....')
-        combine_dict_file=''
-        branch_combine_list_file=''
+        combine_dict_file = f"../{model_version_results_directory}/combine_site_meta.pkl"
+        branch_combine_list_file = f"../{model_version_results_directory}/branch_combine_list.txt"
         prep_SLURM_combine_submission(combine_dict_file, branch_combine_list_file, model_version_results_directory, 
                                 tasks_per_array, n_tasks, hours=hours, mins=mins, mem=10)
         raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/combine_sites.sl")
@@ -702,7 +702,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     crustal_model_version_results_directory, sz_model_version_results_directory_list,
                                     paired_PPE_pickle_name, slip_taper, n_samples, out_directory, outfile_extension, sz_type_list,
                                     nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
-                                    n_array_tasks=1000, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=5, remake_PPE=True, load_random=False,
+                                    n_array_tasks=1000, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=3, remake_PPE=True, load_random=False,
                                     sbatch=True):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
@@ -725,8 +725,8 @@ cd
         if nesi_step == 'prep' and os.path.exists(f"../{out_directory}/site_name_list.txt"):
             os.remove(f"../{out_directory}/site_name_list.txt")
         if nesi_step == 'combine':
-            if os.path.exists(f"../{out_directory}/branch_compile_list.txt"):
-                os.remove(f"../{out_directory}/branch_compile_list.txt")
+            if os.path.exists(f"../{out_directory}/branch_combine_list.txt"):
+                os.remove(f"../{out_directory}/branch_combine_list.txt")
             if os.path.exists(f"../{out_directory}/combine_site_meta.pkl"):
                 os.remove(f"../{out_directory}/combine_site_meta.pkl")
                 with open(f"../{out_directory}/combine_site_meta.pkl", "wb") as f:
@@ -872,8 +872,8 @@ cd
         mins = np.ceil(secs / 60)
         n_tasks = int(np.ceil(n_jobs / tasks_per_array))
         print('\nCreating SLURM submission script....')
-        prep_SLURM_submission(out_directory, tasks_per_array, n_tasks, hours=int(hours), mins=int(mins), mem=mem, cpus=cpus,
-                            account=account, time_interval=100, n_samples=n_samples, sd=0.4, NSHM_branch=False)
+        prep_SLURM_submission(out_directory, tasks_per_array, n_tasks, hours=int(hours), mins=int(mins), job_time=job_time,
+                              mem=mem, cpus=cpus, account=account, time_interval=100, n_samples=n_samples, sd=0.4, NSHM_branch=False)
         raise Exception(f"Now run\n\tsbatch ../{out_directory}/cumu_PPE_slurm_task_array.sl")
 
     elif nesi and nesi_step == 'combine' and sbatch:
@@ -890,8 +890,8 @@ cd
         mins = np.ceil(secs / 60)
         n_tasks = int(np.ceil(n_branches / branches_per_array))
         print('\nCreating SLURM submission script....')
-        combine_dict_file=''
-        branch_combine_list_file=''
+        combine_dict_file=f"../{out_directory}/combine_site_meta.pkl"
+        branch_combine_list_file=f"../{out_directory}/branch_combine_list.txt"
         prep_SLURM_combine_submission(combine_dict_file, branch_combine_list_file, out_directory, 
                                 branches_per_array, n_tasks, hours=hours, mins=mins, mem=10)
         raise Exception(f"Now run\n\tsbatch ../{out_directory}/combine_sites.sl")

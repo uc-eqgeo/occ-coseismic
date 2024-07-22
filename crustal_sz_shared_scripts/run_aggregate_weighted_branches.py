@@ -16,12 +16,12 @@ fault_type = "sz"                       # "crustal", "sz" or "py"; only matters 
 crustal_model_version = "_Model_CFM_wellington_1km"           # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_wellington_1km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = False   # Prepares code for NESI runs
+nesi = True   # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
 
 
 # Processing Flags (True/False)
-paired_crustal_sz = True       # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+paired_crustal_sz = False       # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = True              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
@@ -67,11 +67,12 @@ if testing:
     mem = 5    # Memory allocation for cumu_PPE task array
 else:
     n_samples = 1e5
-    job_time = 3
+    job_time = 1
     mem = 5
 
 if paired_crustal_sz and nesi_step == 'prep':
     n_array_tasks = 250
+    job_time = 1.5
 
 ## Solving processing conflicts
 if calculate_fault_model_PPE:

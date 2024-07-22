@@ -28,6 +28,7 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total: 
         print()
 
+
 def nesiprint(string):
     os.system(f'echo {string}')
     print(string)
@@ -67,7 +68,7 @@ def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, 
 
 def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks,
                           hours: int = 0, mins: int = 3, mem: int = 45, cpus: int = 1, account: str = 'uc03610',
-                          time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4, NSHM_branch=True):
+                          time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4, job_time = 0, NSHM_branch=True):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
 
@@ -97,11 +98,12 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
     with open(slurm_file, "wb") as f:
         f.write("#!/bin/bash -e\n".encode())
         f.write(f"#SBATCH --job-name=occ-{os.path.basename(model_version_results_directory)}\n".encode())
-        f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
+        f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS), {job_time} secs/job\n".encode())
         f.write(f"#SBATCH --mem={mem}GB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
-        f.write("#SBATCH --partition=large\n".encode())
+        if mem > 25:
+            f.write("#SBATCH --partition=large\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
         f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_task%a_%j.out\n".encode())
@@ -166,7 +168,7 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
 
 def prep_combine_branch_list(branch_site_disp_dict, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=0):
 
-    with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
+    with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "rb") as f:
         combine_dict = pkl.load(f)
 
     combine_dict[os.path.basename(branch_h5file)] = {'branch_site_disp_dict': branch_site_disp_dict,
@@ -177,10 +179,10 @@ def prep_combine_branch_list(branch_site_disp_dict, model_version_results_direct
                                                      'S': S,
                                                      'weight': weight}
 
-    with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "rb") as f:
+    with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
         pkl.dump(combine_dict, f)
 
-    with open(f"../{model_version_results_directory}/branch_compine_list.txt", "a") as f:
+    with open(f"../{model_version_results_directory}/branch_combine_list.txt", "a") as f:
         f.write(f"{os.path.basename(branch_h5file)}\n")
 
 
