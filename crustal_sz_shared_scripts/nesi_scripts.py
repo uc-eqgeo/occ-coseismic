@@ -121,7 +121,6 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
     """
 
     sites = branch_site_disp_dict.keys()
-    site_PPE_dict = {}
     branch_h5 = h5.File(branch_h5file, "w")
 
     if 'grid_meta' in sites:
@@ -250,7 +249,7 @@ def nesi_get_weighted_mean_PPE_dict(out_directory='', ppe_name='', outfile_exten
 
 if __name__ == "__main__":
     # Import here to prevent circular imports
-    from probabalistic_displacement_scripts import get_cumu_PPE, get_weighted_mean_PPE_dict
+    from probabalistic_displacement_scripts import get_cumu_PPE, get_weighted_mean_PPE_dict, get_all_branches_site_disp_dict
 
     parser = argparse.ArgumentParser(description="Script to calculate cumulative exceedance probabilities for each site")
     parser.add_argument("--task_number", type=int, default=0, help="Task number for the SLURM array")
@@ -339,10 +338,20 @@ if __name__ == "__main__":
                 out_directory = pair_site_disp_dict[[key for key in pair_site_disp_dict.keys()][0]]['out_directory']
                 crustal_model_dir = pair_site_disp_dict[[key for key in pair_site_disp_dict.keys()][0]]['crustal_directory']
                 subduction_model_dir = pair_site_disp_dict[[key for key in pair_site_disp_dict.keys()][0]]['subduction_directory']
-                with open(f"../{out_directory}/crustal_site_disp_dict.pkl", "rb") as fid:
-                    all_crustal_branches_site_disp_dict = pkl.load(fid)
-                with open(f"../{out_directory}/subduction_site_disp_dict.pkl", "rb") as fid:
-                    all_sz_branches_site_disp_dict = pkl.load(fid)
+                with open(f"../{out_directory}/branch_weight_dict_crustal.pkl", "rb") as f:
+                    crustal_branch_weight_dict = pkl.load(f)
+                all_crustal_branches_site_disp_dict = get_all_branches_site_disp_dict(crustal_branch_weight_dict, 'sites', args.slip_taper,
+                                                                                      crustal_model_dir)
+                all_sz_branches_site_disp_dict = {}
+                ix = 0
+                for fault_type in ['sz', 'py']:
+                    if f'_{fault_type}_' in os.path.basename(out_directory):
+                        with open(f"../{out_directory}/branch_weight_dict_{fault_type}.pkl", "rb") as f:
+                            sz_branch_weight_dict = pkl.load(f)
+                        all_single_sz_branches_site_disp_dict = get_all_branches_site_disp_dict(sz_branch_weight_dict, 'sites', args.slip_taper,
+                                                                                                subduction_model_dir[ix])
+                        ix += 1
+                    all_sz_branches_site_disp_dict = all_sz_branches_site_disp_dict | all_single_sz_branches_site_disp_dict
                 
                 branch_disp_dict = {}
 
@@ -418,8 +427,6 @@ if __name__ == "__main__":
             nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
             compile_site_cumu_PPE(combine_dict[branch]['branch_site_disp_dict'], combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
                                   branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'])
-
-
 
     elif args.nesi_job == 'weighted_mean':
         nesiprint('Loading fault model PPE dictionary...')

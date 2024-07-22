@@ -21,7 +21,7 @@ testing = False   # Impacts number of samples runs, job time etc
 
 
 # Processing Flags (True/False)
-paired_crustal_sz = False       # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+paired_crustal_sz = True       # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = True              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
@@ -40,7 +40,7 @@ n_cpus = 1
 
 # Nesi Parameters
 prep_sbatch = True   # Prep jobs for sbatch
-nesi_step = 'combine'  # 'prep' or 'combine'
+nesi_step = 'prep'  # 'prep' or 'combine'
 n_array_tasks = 100    # Number of array tasks
 min_tasks_per_array = 100   # Minimum number of sites per array
 min_branches_per_array = 1  # Minimum number of branches per array
@@ -70,12 +70,15 @@ else:
     job_time = 3
     mem = 5
 
+if paired_crustal_sz and nesi_step == 'prep':
+    n_array_tasks = 250
+
 ## Solving processing conflicts
 if calculate_fault_model_PPE:
     calculate_weighted_mean_PPE = True  # If recalculating PPEs, you need to recalculate the weighted mean PPEs
 
 if nesi and calculate_weighted_mean_PPE and paired_crustal_sz:
-    mem = 50
+    mem = 10
 
 if not default_plot_order and not os.path.exists(plot_order_csv):
     raise Exception("Manual plot order selected but no plot order csv found. Please create a csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId)")
@@ -230,6 +233,12 @@ if paired_crustal_sz:
     for sub in fault_type[1:]:
         out_version_results_directory += f"_{sub}{sz_model_version}"
         pickle_prefix += f"{sub}_"
+    if not os.path.exists(f"../{out_version_results_directory}"):
+        os.mkdir(f"../{out_version_results_directory}")
+    for ix, branch_weight_dict in enumerate(branch_weight_dict_list):
+        with open(f"../{out_version_results_directory}/branch_weight_dict_{fault_type[ix]}.pkl", 'wb') as f:
+            pkl.dump(branch_weight_dict, f)
+
     paired_PPE_pickle_name = f"{pickle_prefix}crustal_paired_PPE_dict{outfile_extension}{taper_extension}.pkl"
     PPE_filepath = f"../{out_version_results_directory}/{paired_PPE_pickle_name}"
 
@@ -269,15 +278,15 @@ if calculate_weighted_mean_PPE or not os.path.exists(weighted_mean_PPE_filepath)
                                         hours=int(hours), mins=int(mins), mem=mem, account=account, cpus=n_cpus)
     else:
         print('Calculating weighted mean PPE...')
-        weighted_mean_PPE_dict = get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict,
-                                                            out_directory=out_version_results_directory,
-                                                            outfile_extension=outfile_extension, slip_taper=slip_taper)
-else:
-    # open the saved weighted mean PPE dictionary
-    print('Loading pre-prepared weighted mean PPE dictionary...')
+        weighted_mean_PPE_filepath = get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict,
+                                                                out_directory=out_version_results_directory,
+                                                                outfile_extension=outfile_extension, slip_taper=slip_taper)
+        
+# open the saved weighted mean PPE dictionary
+print('Loading pre-prepared weighted mean PPE dictionary...')
 #    with open(weighted_mean_PPE_filepath, 'rb') as f:
 #        weighted_mean_PPE_dict = pkl.load(f)
-    weighted_mean_PPE_dict = h5.File(f"../{out_version_results_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5", 'r')
+weighted_mean_PPE_dict = h5.File(weighted_mean_PPE_filepath, 'r')
 
 # plot hazard curves and save to file
 if save_arrays:
