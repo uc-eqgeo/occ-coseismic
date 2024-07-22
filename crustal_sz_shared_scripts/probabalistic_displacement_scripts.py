@@ -3,8 +3,10 @@ try:
     import rasterio
     from rasterio.transform import Affine
     from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
+    running_on_nesi = False
 except:
     print("Running on Nesi. Some functions won't work....")
+    running_on_nesi = True
 from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile, maximum_displacement_plot, dict_to_hdf5
 import xarray as xr
 import h5py as h5
@@ -22,7 +24,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
-from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE
+from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE, prep_combine_branch_list, prep_SLURM_combine_submission
 numba_flag = True
 try:
     from numba import njit
@@ -436,7 +438,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension,
                               nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
                               time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=5, load_random=False,
-                              remake_PPE=True, sbatch=False, save_dictionary=True):
+                              remake_PPE=True, sbatch=False):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -454,10 +456,16 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
     else:
         taper_extension = "_uniform"
 
-
-    if nesi and nesi_step == 'prep':
-        if os.path.exists(f"../{model_version_results_directory}/site_name_list.txt"):
+    if nesi:
+        if nesi_step == 'prep' and os.path.exists(f"../{model_version_results_directory}/site_name_list.txt"):
             os.remove(f"../{model_version_results_directory}/site_name_list.txt")
+        if nesi_step == 'combine':
+            if os.path.exists(f"../{model_version_results_directory}/branch_compile_list.txt"):
+                os.remove(f"../{model_version_results_directory}/branch_compile_list.txt")
+            if os.path.exists(f"../{model_version_results_directory}/combine_site_meta.pkl"):
+                os.remove(f"../{model_version_results_directory}/combine_site_meta.pkl")
+                with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
+                    pkl.dump({}, f)
 
     branch_weight_list = []
     fault_model_allbranch_PPE_dict = {}
@@ -513,12 +521,18 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 continue
 
             elif nesi_step == 'combine':
-                print(f"\tCombining site dictionaries....")
                 if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]):
                     print(f"\tFound Pre-Prepared Branch PPE:  {fault_model_allbranch_PPE_dict[branch_id]}. Delete manually to remake...")
                 else:
-                    compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
-                                          taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
+                    if sbatch:
+                        print(f"\tPreparing NESI combination for {fault_model_allbranch_PPE_dict[branch_id]}....")
+                        prep_combine_branch_list(branch_site_disp_dict, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
+                                            taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1])
+                        continue
+                    else:
+                        print(f"\tCombining site dictionaries into {fault_model_allbranch_PPE_dict[branch_id]}....")
+                        compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
+                                            taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
                     #shutil.rmtree(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}")
 
         else:
@@ -532,10 +546,12 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 with h5.File(fault_model_allbranch_PPE_dict[branch_id], "w") as branch_PPEh5:
                     dict_to_hdf5(branch_PPEh5, branch_cumu_PPE_dict)
 
-        with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r+") as branch_PPEh5:
-            if 'branch_weight' in branch_PPEh5.keys():
-                del branch_PPEh5['branch_weight']
-            branch_PPEh5.create_dataset('branch_weight', data=branch_weight_list[-1])
+        if not all([nesi, nesi_step == 'combine', sbatch]):
+            if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]):
+                with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r+") as branch_PPEh5:
+                    if 'branch_weight' in branch_PPEh5.keys():
+                        del branch_PPEh5['branch_weight']
+                    branch_PPEh5.create_dataset('branch_weight', data=branch_weight_list[-1])
 
     if nesi and nesi_step == 'prep':
         n_sites = len(branch_site_disp_dict)
@@ -549,12 +565,25 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         n_tasks = int(np.ceil(n_jobs / tasks_per_array))
         print('\nCreating SLURM submission script....')
         prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks, hours=int(hours), mins=int(mins), mem=mem, cpus=cpus,
-                              account=account, time_interval=100, n_samples=n_samples, sd=0.4)
-        if sbatch:
-            os.system(f"sbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
-            raise Exception(f"Wait for task to complete, and change nesi_step to 'combine'")
-        else:
-            raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
+                            account=account, time_interval=100, n_samples=n_samples, sd=0.4)
+        raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
+
+    elif nesi and nesi_step == 'combine' and sbatch:
+        n_branches = len(branch_weight_dict.keys())
+        tasks_per_array = np.ceil(n_branches / n_array_tasks)
+        min_branches_per_array = 5
+        if tasks_per_array < min_branches_per_array:
+            tasks_per_array = min_branches_per_array
+        array_time = 180 * tasks_per_array
+        hours, secs = divmod(array_time, 3600)
+        mins = np.ceil(secs / 60)
+        n_tasks = int(np.ceil(n_branches / tasks_per_array))
+        print('\nCreating SLURM submission script....')
+        combine_dict_file=''
+        branch_combine_list_file=''
+        prep_SLURM_combine_submission(combine_dict_file, branch_combine_list_file, model_version_results_directory, 
+                                tasks_per_array, n_tasks, hours=hours, mins=mins, mem=10)
+        raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/combine_sites.sl")
     else:
         print('Building all branch PPE dictionary....')
         site_list = [site for site in branch_site_disp_dict.keys()]
@@ -673,7 +702,8 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     crustal_model_version_results_directory, sz_model_version_results_directory_list,
                                     paired_PPE_pickle_name, slip_taper, n_samples, out_directory, outfile_extension, sz_type_list,
                                     nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
-                                    n_array_tasks=1000, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=5, remake_PPE=True, load_random=False):
+                                    n_array_tasks=1000, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=5, remake_PPE=True, load_random=False,
+                                    sbatch=True):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -691,9 +721,16 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     else:
         taper_extension = "_uniform"
 
-    if nesi and nesi_step == 'prep':
-        if os.path.exists(f"../{out_directory}/site_name_list.txt"):
+    if nesi:
+        if nesi_step == 'prep' and os.path.exists(f"../{out_directory}/site_name_list.txt"):
             os.remove(f"../{out_directory}/site_name_list.txt")
+        if nesi_step == 'combine':
+            if os.path.exists(f"../{out_directory}/branch_compile_list.txt"):
+                os.remove(f"../{out_directory}/branch_compile_list.txt")
+            if os.path.exists(f"../{out_directory}/combine_site_meta.pkl"):
+                os.remove(f"../{out_directory}/combine_site_meta.pkl")
+                with open(f"../{out_directory}/combine_site_meta.pkl", "wb") as f:
+                    pkl.dump({}, f)
 
     # Make crustal_sz pair list
     all_crustal_branches_site_disp_dict = get_all_branches_site_disp_dict(crustal_branch_weight_dict, gf_name, slip_taper,
@@ -800,9 +837,14 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 prep_nesi_site_list(out_directory, pair_site_disp_dict, pair_unique_id)
                 continue
             elif nesi_step == 'combine':
-                print(f"Combining {pair_unique_id} PPE\t({counter + 1} of {len(crustal_sz_branch_pairs)} branches)")                   
-                compile_site_cumu_PPE(pair_site_disp_dict, out_directory, pair_unique_id, branch_h5file=paired_crustal_sz_PPE_dict[pair_unique_id], taper_extension=taper_extension)
-                shutil.rmtree(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed")
+                if sbatch:
+                    print(f"\tPreparing NESI combination for {paired_crustal_sz_PPE_dict[pair_unique_id]}....")
+                    prep_combine_branch_list(pair_site_disp_dict, out_directory, pair_unique_id, branch_h5file=paired_crustal_sz_PPE_dict[pair_unique_id], taper_extension=taper_extension)
+                    continue
+                else:
+                    print(f"Combining {pair_unique_id} PPE\t({counter + 1} of {len(crustal_sz_branch_pairs)} branches)")                   
+                    compile_site_cumu_PPE(pair_site_disp_dict, out_directory, pair_unique_id, branch_h5file=paired_crustal_sz_PPE_dict[pair_unique_id], taper_extension=taper_extension)
+                    shutil.rmtree(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed")
 
         else:
             if os.path.exists(paired_crustal_sz_PPE_dict[pair_unique_id]) and not remake_PPE:
@@ -837,8 +879,25 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         print('\nCreating SLURM submission script....')
         prep_SLURM_submission(out_directory, tasks_per_array, n_tasks, hours=int(hours), mins=int(mins), mem=mem, cpus=cpus,
                             account=account, time_interval=100, n_samples=n_samples, sd=0.4, NSHM_branch=False)
-        print(f"Now run\n\tsbatch ../{out_directory}/cumu_PPE_slurm_task_array.sl")
-        exit()
+        raise Exception(f"Now run\n\tsbatch ../{out_directory}/cumu_PPE_slurm_task_array.sl")
+
+    elif nesi and nesi_step == 'combine' and sbatch:
+        n_branches = len(branch_unique_ids.keys())
+        tasks_per_array = np.ceil(n_branches / n_array_tasks)
+        min_branches_per_array = 5
+        if tasks_per_array < min_branches_per_array:
+            tasks_per_array = min_branches_per_array
+        array_time = 180 * tasks_per_array
+        hours, secs = divmod(array_time, 3600)
+        mins = np.ceil(secs / 60)
+        n_tasks = int(np.ceil(n_branches / tasks_per_array))
+        print('\nCreating SLURM submission script....')
+        combine_dict_file=''
+        branch_combine_list_file=''
+        prep_SLURM_combine_submission(combine_dict_file, branch_combine_list_file, out_directory, 
+                                tasks_per_array, n_tasks, hours=hours, mins=mins, mem=10)
+        raise Exception(f"Now run\n\tsbatch ../{out_directory}/combine_sites.sl")
+
     else:
         print('Building all branch PPE dictionary....')
         site_list = [site for site in pair_site_disp_dict.keys()]

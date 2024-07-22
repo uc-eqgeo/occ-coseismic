@@ -12,19 +12,19 @@ import h5py as h5
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "crustal"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_Model_CFM_wellington_1km"           # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_wellington_1km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = True   # Prepares code for NESI runs
+nesi = False   # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
 
 
 # Processing Flags (True/False)
 paired_crustal_sz = False       # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
-calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
-remake_PPE = False              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
+calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
+remake_PPE = True              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
 save_arrays = False             # Do you want to save the displacement and probability arrays?
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
@@ -39,8 +39,8 @@ sd = 0.4                # Standard deviation of the normal distribution to use f
 n_cpus = 1
 
 # Nesi Parameters
-launch_sbatch = False   # Run sbatch command to launch nesi jobs 
-nesi_step = 'prep'  # 'prep' or 'combine
+prep_sbatch = True   # Prep jobs for sbatch
+nesi_step = 'combine'  # 'prep' or 'combine'
 n_array_tasks = 100    # Number of array tasks
 min_tasks_per_array = 100   # Minimum number of sites per array
 min_branches_per_array = 1  # Minimum number of branches per array
@@ -214,7 +214,7 @@ if not paired_crustal_sz:
         PPE_dict = make_fault_model_PPE_dict(
                     branch_weight_dict=fault_model_branch_weight_dict,
                     model_version_results_directory=out_version_results_directory, n_samples=n_samples,
-                    slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step, sbatch=launch_sbatch, mem=mem,
+                    slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step, sbatch=prep_sbatch, mem=mem,
                     time_interval=time_interval, sd=sd, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array, job_time=job_time,
                     load_random=load_random, remake_PPE=remake_PPE)
 
@@ -259,13 +259,13 @@ weighted_mean_PPE_filepath = f"../{out_version_results_directory}/weighted_mean_
 if calculate_weighted_mean_PPE or not os.path.exists(weighted_mean_PPE_filepath):
     if nesi:
         print('Preparing NESI scripts for weighted mean PPE...')
-        time_per_branch = 45 # Seconds
+        time_per_branch = 180 # Seconds
         n_branches = np.product(np.array(n_branches))
         total_time = n_branches * time_per_branch
         hours, rem = divmod(total_time, 3600)
         mins = np.ceil(rem / 60)
         nesi_get_weighted_mean_PPE_dict(out_directory=out_version_results_directory, ppe_name=os.path.basename(PPE_filepath),
-                                        outfile_extension=outfile_extension, slip_taper=slip_taper, sbatch=launch_sbatch,
+                                        outfile_extension=outfile_extension, slip_taper=slip_taper, sbatch=prep_sbatch,
                                         hours=int(hours), mins=int(mins), mem=mem, account=account, cpus=n_cpus)
     else:
         print('Calculating weighted mean PPE...')

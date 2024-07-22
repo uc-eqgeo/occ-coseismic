@@ -27,6 +27,11 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total: 
         print()
 
+def nesiprint(string):
+    os.system(f'echo {string}')
+    print(string)
+
+
 def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1, S=""):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
@@ -106,10 +111,10 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
         f.write("module purge  2>/dev/null\n".encode())
         f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
 
-        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} {NSHM}\n\n".encode())
+        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} --nesi_job site_PPE {NSHM}\n\n".encode())
 
 
-def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S=""):
+def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=None):
     """
     Script to recompile all individual site PPE dictionaries into a single branch dictionary.
     For the sake of saving space, the individual site dictionaries are deleted after being combined into the branch dictionary.
@@ -121,27 +126,90 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
 
     if 'grid_meta' in sites:
         sites.remove('grid_meta')
-
-    printProgressBar(0, len(sites), prefix=f'\tAdded {0}/{len(sites)} Sites:', suffix='', length=50)
-    for ix, site_of_interest in enumerate(sites):
-        with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5", "r") as site_h5:
-            #single_site_dict = pkl.load(f)
-            branch_h5.create_group(site_of_interest)
-            for key in site_h5[site_of_interest].keys():
-                branch_h5[site_of_interest].create_dataset(key, data=site_h5[site_of_interest][key][()])
-        printProgressBar(ix + 1, len(sites), prefix=f'\tAdded {ix + 1}/{len(sites)} Sites:', suffix='', length=50)
-        #os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5")
-    #os.rmdir(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
-
+    
     if S == "":
         S = taper_extension
 
-    if 'grid_meta' in branch_site_disp_dict.keys():
-        site_PPE_dict['grid_meta'] = branch_site_disp_dict['grid_meta']
+    all_good = True
+    bad_sites = []
+    bad_flag = ''
+    start = time()
+    printProgressBar(0, len(sites), prefix=f'\tAdded {0}/{len(sites)} Sites:', suffix='0 secs', length=50)
+    for ix, site_of_interest in enumerate(sites):
+        try:
+            with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5", "r") as site_h5:
+                branch_h5.create_group(site_of_interest)
+                if all_good:
+                    for key in site_h5[site_of_interest].keys():
+                        branch_h5[site_of_interest].create_dataset(key, data=site_h5[site_of_interest][key][()])
+            printProgressBar(ix + 1, len(sites), prefix=f'\tAdded {ix + 1}/{len(sites)} Sites:', suffix=f'{time() - start:.2f} seconds {site_of_interest}{bad_flag}', length=50)
+        except:
+            bad_sites.append(site_of_interest)
+            all_good = False
+            bad_flag = f" (Error with {len(bad_sites)} sites)"
+
+    if weight:
+        branch_h5.create_dataset('branch_weight', data=weight)
 
     branch_h5.close()
+    if not all_good:
+        print(f"Error with {len(bad_sites)} sites: ../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}")
+        os.remove(branch_h5file)
+        with open(f"../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}", "w") as f:
+            for site in bad_sites:
+                f.write(f"{site} {model_version_results_directory}/{extension1} {S}\n")
 
     return
+
+
+def prep_combine_branch_list(branch_site_disp_dict, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=0):
+
+    with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
+        combine_dict = pkl.load(f)
+
+    combine_dict[os.path.basename(branch_h5file)] = {'branch_site_disp_dict': branch_site_disp_dict,
+                                                     'model_version_results_directory': model_version_results_directory,
+                                                     'extension1': extension1,
+                                                     'branch_h5file': branch_h5file,
+                                                     'taper_extension': taper_extension,
+                                                     'S': S,
+                                                     'weight': weight}
+
+    with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "rb") as f:
+        pkl.dump(combine_dict, f)
+
+    with open(f"../{model_version_results_directory}/branch_compine_list.txt", "a") as f:
+        f.write(f"{os.path.basename(branch_h5file)}\n")
+
+
+def prep_SLURM_combine_submission(combine_dict_file, branch_combine_list, model_version_results_directory, 
+                                  tasks_per_array, n_tasks, hours: int = 0, mins: int = 3, mem: int = 10,
+                                  cpus: int = 1, account: str = 'uc03610'):
+
+
+    slurm_file = f"../{model_version_results_directory}/combine_sites.sl"
+
+    if os.path.exists(slurm_file):
+                os.remove(slurm_file)
+
+    with open(slurm_file, "wb") as f:
+        f.write("#!/bin/bash -e\n".encode())
+        f.write(f"#SBATCH --job-name=occ-{os.path.basename(model_version_results_directory)}\n".encode())
+        f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
+        f.write(f"#SBATCH --mem={mem}GB\n".encode())
+        f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
+        f.write(f"#SBATCH --account={account}\n".encode())
+        f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
+
+        f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_combine_task%a_%j.out\n".encode())
+        f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_combine_task%a_%j.err\n\n".encode())
+
+        f.write("# Activate the conda environment\n".encode())
+        f.write("mkdir -p logs\n".encode())
+        f.write("module purge  2>/dev/null\n".encode())
+        f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
+
+        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {tasks_per_array} --combine_dict_file {combine_dict_file} --branch_combine_list {branch_combine_list} --nesi_job combine_sites\n\n".encode())
 
 
 def nesi_get_weighted_mean_PPE_dict(out_directory='', ppe_name='', outfile_extension='', slip_taper=False, sbatch=False,
@@ -171,7 +239,7 @@ def nesi_get_weighted_mean_PPE_dict(out_directory='', ppe_name='', outfile_exten
         f.write("module purge  2>/dev/null\n".encode())
         f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
 
-        f.write(f"python nesi_scripts.py --outDir {out_directory} --PPE_name {ppe_name} {optional }--weighted_PPE \n\n".encode())
+        f.write(f"python nesi_scripts.py --outDir {out_directory} --PPE_name {ppe_name} --nesi_job weighted_mean {optional} \n\n".encode())
 
     if sbatch:
         os.system(f"sbatch ../{out_directory}/get_weighted_mean_PPE.sl")
@@ -195,10 +263,12 @@ if __name__ == "__main__":
     parser.add_argument("--slip_taper", default=False, action='store_true', help="Tapered slip distribution")
     parser.add_argument("--paired_branch", dest='NSHM_branch', default=True, action='store_false', help="Run for paired branch")
     parser.add_argument("--overwrite", default=False, action='store_true', help="Overwrite existing files")
-    parser.add_argument("--weighted_PPE", dest='site_PPE', default=True, action='store_false', help="Run get_weighted_mean_PPE_dict not get_cumu_PPE")
+    parser.add_argument("--nesi_job", default='site_PPE', help="Select which job you need to run (site_PPE, combine_sites, weighted_mean)")
     parser.add_argument("--outDir", type=str, help="Output directory for the results")
     parser.add_argument("--PPE_name", type=str, default="", help="Name of the Paired PPE file to load")
     parser.add_argument("--outfile_extension", type=str, default="", help="Extension for the output file")
+    parser.add_argument("--combine_dict_file", type=str, default="", help="File containing the dictionary of sites to combine")
+    parser.add_argument("--branch_combine_list", type=str, default="", help="List of branches to combine")
     args = parser.parse_args()
 
     start = time()
@@ -209,7 +279,7 @@ if __name__ == "__main__":
         taper = "_uniform"
 
 
-    if args.site_PPE:
+    if args.nesi_job == 'site_PPE':
         investigation_time = args.time_interval
         n_samples = args.n_samples
         sd = args.sd
@@ -225,7 +295,7 @@ if __name__ == "__main__":
             except FileNotFoundError:
                 sleep(1 + np.random.rand())
                 find_file_count += 1
-                print(f"Attempt {find_file_count} to find {args.site_file}")
+                nesiprint(f"Attempt {find_file_count} to find {args.site_file}")
         
         if find_file_count == attempt_limit:
             raise FileNotFoundError(f"File {args.site_file} not found")
@@ -299,11 +369,9 @@ if __name__ == "__main__":
                     sites_of_interest = [int(site) for site in sites_of_interest]
 
             if scaling == "":
-                os.system(f"echo {args.task_number}: Running {n_samples} scenarios for {len(sites_of_interest)} sites in branch {extension1}...")
-                print(f"{args.task_number}: Running {len(sites_of_interest)} sites in branch {extension1}...")
+                nesiprint(f"{args.task_number}: Running {len(sites_of_interest)} sites in branch {extension1}...")
             else:
-                os.system(f"echo {args.task_number}: echo Running {n_samples} scenarios for {len(sites_of_interest)} sites in branch {extension1} with scaling {scaling}...")
-                print(f"{args.task_number}: Running {len(sites_of_interest)} sites in branch {extension1} with scaling {scaling}...")
+                nesiprint(f"{args.task_number}: Running {len(sites_of_interest)} sites in branch {extension1} with scaling {scaling}...")
 
             # Needs to be run one site at a time so sites can be recombined later
             for ix, site in enumerate(sites_of_interest):
@@ -311,25 +379,56 @@ if __name__ == "__main__":
                     branch_unique_ids = pair_site_disp_dict[site]['branch_key']
                 lap = time()
                 if os.path.exists(f"../{branch_results_directory}/site_cumu_exceed{scaling}/{site}.pkl") and not args.overwrite:
-                    print(f"{ix} {extension1} {site}.pkl already exists")  # Don't do os.system here - it's unnessecarily slow for this
+                    print(f"{ix} {extension1} {site}.pkl already exists")
                     continue
                 get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, [site], n_samples,
                             extension1, branch_key=branch_unique_ids, time_interval=investigation_time, sd=sd, scaling=scaling, load_random=False,
                             plot_maximum_displacement=False, array_process=True, NSHM_branch=args.NSHM_branch, crustal_model_dir=crustal_model_dir, subduction_model_dirs=subduction_model_dir)
                 # os.system(f"echo {ix} {extension1} {site} complete in {time() - lap:.2f} seconds\n")
 
-            os.system(f"echo {extension1} {scaling} complete in {time() - begin:.2f} seconds\n")
-            print(f"{extension1} complete in : {time() - begin:.2f} seconds\n")
+            nesiprint(f"{extension1} complete in : {time() - begin:.2f} seconds\n")
 
         print(f"All sites complete in {time() - start:.2f} seconds (Average {(time() - start) / len(task_sites):.2f} seconds per site)")
 
-    else:
-        os.system('echo Loading fault model PPE dictionary...')
-        print('Loading fault model PPE dictionary...')
+    elif args.nesi_job == 'combine_sites':
+        # This is a hack to get around multiple tasks trying to open the file at once, so it appearing like it doesn't exist
+        find_file_count = 0
+        attempt_limit = 10
+        while find_file_count < attempt_limit:
+            try:
+                with open(args.branch_combine_list, "r") as f:
+                    all_branches = f.read().splitlines()
+                find_file_count = attempt_limit + 1
+            except FileNotFoundError:
+                sleep(1 + np.random.rand())
+                find_file_count += 1
+                nesiprint(f"Attempt {find_file_count} to find {args.branch_combine_list}")
+        
+        if args.tasks_per_array == 0:
+            task_branches = all_branches
+        else:
+            task_branches = all_branches[args.task_number * args.tasks_per_array:(args.task_number + 1) * args.tasks_per_array]
+        if len(task_branches) == 0:
+            raise Exception(f"Task {args.task_number} has no sites to process")
+    
+        with open(f"{args.combine_dict_file}", "wb") as f:
+            combine_dict = pkl.load(f)
+        
+        for branch in task_branches:
+            nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
+            compile_site_cumu_PPE(combine_dict[branch]['branch_site_disp_dict'], combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
+                                  branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'])
+
+
+
+    elif args.nesi_job == 'weighted_mean':
+        nesiprint('Loading fault model PPE dictionary...')
         paired_PPE_filepath = f"../{args.outDir}/{args.PPE_name}"
         with open(paired_PPE_filepath, 'rb') as f:
             PPE_dict = pkl.load(f)
 
-        os.system('echo Calculating weighted mean PPE dictionary...')
-        print('Calculating weighted mean PPE dictionary...')
+        nesiprint('Calculating weighted mean PPE dictionary...')
         get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=args.outDir, outfile_extension=args.outfile_extension, slip_taper=taper)
+
+    else:
+        raise Exception(f"Job {args.nesi_job} not recognised")
