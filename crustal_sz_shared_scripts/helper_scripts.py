@@ -2,7 +2,7 @@ try:
     import geopandas as gpd
     from shapely.geometry import Point
 except:
-    print("Running on Nesi. Some functions won't work....")
+    print("Running on NESI. Some functions won't work....")
 finally:
     import pandas as pd
     import os
@@ -15,6 +15,21 @@ finally:
     import pickle as pkl
     from scipy.interpolate import griddata
     import matplotlib.pyplot as plt
+
+
+def dict_to_hdf5(hdf5_group, dictionary, compression=None):
+    for key, value in dictionary.items():
+        if isinstance(value, dict):
+            # Recursively create sub-groups
+            sub_group = hdf5_group.create_group(key)
+            dict_to_hdf5(sub_group, value)
+        else:
+            # Create datasets for other data types
+            if compression:
+                hdf5_group.create_dataset(key, data=value, compression=compression)
+            else:
+                hdf5_group.create_dataset(key, data=value)
+
 
 def get_probability_color(exceed_type):
     """ exceed type can be "total_abs", "up", or "down
