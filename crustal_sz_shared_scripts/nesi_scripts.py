@@ -106,8 +106,8 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
             f.write("#SBATCH --partition=large\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
-        f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_task%a_%j.out\n".encode())
-        f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_task%a_%j.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_%j_task%a.out\n".encode())
+        f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_%j_task%a.err\n\n".encode())
 
         f.write("# Activate the conda environment\n".encode())
         f.write("mkdir -p logs\n".encode())
@@ -125,12 +125,14 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
 
     sites = branch_site_disp_dict.keys()
     branch_h5 = h5.File(branch_h5file, "w")
-
     if 'grid_meta' in sites:
         sites.remove('grid_meta')
     
     if S == "":
         S = taper_extension
+
+    with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{sites[0]}.h5", "r") as site_h5:
+        branch_h5.create_dataset('thresholds', data=site_h5['thresholds'][:])
 
     all_good = True
     bad_sites = []
@@ -151,13 +153,15 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
             bad_flag = f" (Error with {len(bad_sites)} sites)"
 
     if weight:
-        branch_h5.create_dataset('branch_weight', data=weight)
+        if weight > 0:
+            branch_h5.create_dataset('branch_weight', data=weight)
 
     branch_h5.close()
     if all_good:
         shutil.rmtree(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
     else:
         print(f"Error with {len(bad_sites)} sites: ../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}")
+        print(f"Deleting {branch_h5file}")
         os.remove(branch_h5file)
         with open(f"../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}", "w") as f:
             for site in bad_sites:
@@ -166,12 +170,12 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
     return
 
 
-def prep_combine_branch_list(branch_site_disp_dict, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=0):
+def prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=0):
 
     with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "rb") as f:
         combine_dict = pkl.load(f)
 
-    combine_dict[os.path.basename(branch_h5file)] = {'branch_site_disp_dict': branch_site_disp_dict,
+    combine_dict[os.path.basename(branch_h5file)] = {'branch_site_disp_dict': branch_site_disp_dict_file,
                                                      'model_version_results_directory': model_version_results_directory,
                                                      'extension1': extension1,
                                                      'branch_h5file': branch_h5file,
@@ -205,8 +209,8 @@ def prep_SLURM_combine_submission(combine_dict_file, branch_combine_list, model_
         f.write(f"#SBATCH --account={account}\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
-        f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_combine_task%a_%j.out\n".encode())
-        f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_combine_task%a_%j.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_combine_%j_task%a.out\n".encode())
+        f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_combine_%j_task%a.err\n\n".encode())
 
         f.write("# Activate the conda environment\n".encode())
         f.write("mkdir -p logs\n".encode())
@@ -245,11 +249,7 @@ def nesi_get_weighted_mean_PPE_dict(out_directory='', ppe_name='', outfile_exten
 
         f.write(f"python nesi_scripts.py --outDir {out_directory} --PPE_name {ppe_name} --nesi_job weighted_mean {optional} \n\n".encode())
 
-    if sbatch:
-        os.system(f"sbatch ../{out_directory}/get_weighted_mean_PPE.sl")
-        raise Exception("../{out_directory}/get_weighted_mean_PPE.sl submitted")
-    else:
-        raise Exception(f"Now run\n\tsbatch ../{out_directory}/get_weighted_mean_PPE.sl")
+    raise Exception(f"Now run\n\tsbatch ../{out_directory}/get_weighted_mean_PPE.sl")
 
 
 if __name__ == "__main__":
@@ -281,7 +281,6 @@ if __name__ == "__main__":
         taper = "_tapered"
     else:
         taper = "_uniform"
-
 
     if args.nesi_job == 'site_PPE':
         investigation_time = args.time_interval
@@ -425,13 +424,19 @@ if __name__ == "__main__":
         if len(task_branches) == 0:
             raise Exception(f"Task {args.task_number} has no sites to process")
     
-        with open(f"{args.combine_dict_file}", "wb") as f:
+        with open(f"{args.combine_dict_file}", "rb") as f:
             combine_dict = pkl.load(f)
-        
+       
         for branch in task_branches:
-            nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
-            compile_site_cumu_PPE(combine_dict[branch]['branch_site_disp_dict'], combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
-                                  branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'])
+            if os.path.exists(combine_dict[branch]['branch_h5file']):
+                nesiprint(f"Found Pre-Prepared Branch PPE:  {combine_dict[branch]['branch_h5file']}. Delete manually to remake...")
+            else:
+                with open(combine_dict[branch]['branch_site_disp_dict'], "rb") as f:
+                    branch_site_disp_dict = pkl.load(f)
+                nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
+                compile_site_cumu_PPE(branch_site_disp_dict, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
+                                    branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'])
+        print('All branches combined!')
 
     elif args.nesi_job == 'weighted_mean':
         nesiprint('Loading fault model PPE dictionary...')
@@ -440,7 +445,7 @@ if __name__ == "__main__":
             PPE_dict = pkl.load(f)
 
         nesiprint('Calculating weighted mean PPE dictionary...')
-        get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=args.outDir, outfile_extension=args.outfile_extension, slip_taper=taper)
+        get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=args.outDir, outfile_extension=args.outfile_extension, slip_taper=args.slip_taper)
 
     else:
         raise Exception(f"Job {args.nesi_job} not recognised")

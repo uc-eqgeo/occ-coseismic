@@ -13,22 +13,22 @@ import h5py as h5
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_Model_CFM_wellington_1km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_wellington_1km"                    # must match suffix in the subduction directory with gfs
+crustal_model_version = "_Model_CFM_JDE_sites_test"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_JDE_sites_test"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = True   # Prepares code for NESI runs
+nesi = False   # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
 
 
 # Processing Flags (True/False)
-paired_crustal_sz = False       # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+paired_crustal_sz = True       # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
-remake_PPE = True              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
+remake_PPE = False              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
-save_arrays = False             # Do you want to save the displacement and probability arrays?
+save_arrays = True             # Do you want to save the displacement and probability arrays?
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
-make_hazcurves = True       # Do you want to make hazard curves?
+make_hazcurves = False       # Do you want to make hazard curves?
 make_colorful_hazcurves = False # Do you want to make colorful hazard curves?
 plot_order_csv = "../wellington_10km_grid_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
@@ -64,15 +64,15 @@ if calculate_fault_model_PPE:
 if testing:
     n_samples = 1e4   # Number of scenarios to run
     job_time = 1    # Amount of time to allocate per site in the cumu_PPE task array
-    mem = 5    # Memory allocation for cumu_PPE task array
+    mem = 1    # Memory allocation for cumu_PPE task array
 else:
     n_samples = 1e5
-    job_time = 1
-    mem = 5
+    job_time = 3
+    mem = 3
 
 if paired_crustal_sz and nesi_step == 'prep':
     n_array_tasks = 250
-    job_time = 1.5
+    job_time = 5
 
 ## Solving processing conflicts
 if calculate_fault_model_PPE:
@@ -222,11 +222,6 @@ if not paired_crustal_sz:
                     time_interval=time_interval, sd=sd, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array, job_time=job_time,
                     load_random=load_random, remake_PPE=remake_PPE)
 
-    if not nesi and calculate_weighted_mean_PPE and use_saved_dictionary:
-        print('Loading pre-prepared fault model PPE dictionary...')
-        with open(PPE_filepath, 'rb') as f:
-            PPE_dict = pkl.load(f)
-
 ##### paired crustal and sz PPE
 if paired_crustal_sz:
     out_version_results_directory = f"{results_directory}/paired_c{crustal_model_version}"
@@ -259,19 +254,21 @@ if paired_crustal_sz:
             nesi=nesi, nesi_step=nesi_step, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array,
             mem=mem, time_interval=time_interval, sd=sd, job_time=job_time, remake_PPE=remake_PPE, load_random=load_random)
 
-    if not nesi and calculate_weighted_mean_PPE or use_saved_dictionary:
-        print('Loading fault model PPE dictionary...')
-        with open(PPE_filepath, 'rb') as f:
-            PPE_dict = pkl.load(f)
+if not nesi and calculate_weighted_mean_PPE or use_saved_dictionary:
+    print('Loading pre-prepared fault model PPE dictionary...')
+    with open(PPE_filepath, 'rb') as f:
+        PPE_dict = pkl.load(f)
 
 # calculate weighted mean PPE for the branch or paired dataset
 weighted_mean_PPE_filepath = f"../{out_version_results_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
 if calculate_weighted_mean_PPE or not os.path.exists(weighted_mean_PPE_filepath):
     if nesi:
         print('Preparing NESI scripts for weighted mean PPE...')
-        time_per_branch = 180 # Seconds
+        time_per_site = 2 # Seconds
         n_branches = np.product(np.array(n_branches))
-        total_time = n_branches * time_per_branch
+        branch_ids = list(PPE_dict.keys())
+        n_sites = 8200
+        total_time = n_branches * n_sites * time_per_site
         hours, rem = divmod(total_time, 3600)
         mins = np.ceil(rem / 60)
         nesi_get_weighted_mean_PPE_dict(out_directory=out_version_results_directory, ppe_name=os.path.basename(PPE_filepath),
@@ -294,7 +291,7 @@ if save_arrays:
     print('Saving data arrays...')
     ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
                         thresh_lims=[0, 3], thresh_step=0.01, output_thresh=True, probs_lims = [0.01, 0.20], probs_step=0.01,
-                        output_probs=True, grid=False, weighted=True)
+                        output_probs=True, weighted=True)
 
 if paired_crustal_sz:
     model_version_title = f"paired crustal{crustal_model_version} and "
