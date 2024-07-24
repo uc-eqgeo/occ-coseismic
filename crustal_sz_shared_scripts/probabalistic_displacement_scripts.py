@@ -284,9 +284,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
         if not NSHM_branch:
             cumulative_disp_scenarios = np.zeros(n_samples)
-            for NSHM_PPE in NSHM_PPEh5_list:
+            for NSHM_PPE in NSHM_PPEh5_list[1:]:
                 with h5.File(NSHM_PPE, "r") as PPEh5:
-                    NSHM_displacements = PPEh5[site_of_interest]["scenario_displacements"][:].astype(np.float64) / 1000  # Load as mm, convert to m
+                    NSHM_displacements = PPEh5[site_of_interest]["scenario_displacements"][:]  # Load as mm, convert to m
                 cumulative_disp_scenarios += NSHM_displacements.reshape(-1)
             if benchmarking:
                 print(f"Loaded PPE: {time() - begin:.5f} s")
@@ -391,7 +391,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
             error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
 
-            site_PPE_dict[site_of_interest].update({"scenario_displacements": (cumulative_disp_scenarios * 1000).astype(np.int8),  # Save as mm, but as 8-bit integers to save space
+            site_PPE_dict[site_of_interest].update({"scenario_displacements": cumulative_disp_scenarios,  # Save as mm, but as 8-bit integers to save space
                                                     "site_coords": site_dict_i["site_coords"],
                                                     "standard_deviation": sd,
                                                     "error_total_abs": error_abs,
@@ -1919,7 +1919,7 @@ def save_disp_prob_tifs(extension1, slip_taper, model_version_results_directory,
             probs = np.zeros([len(sites), len(thresholds)])
             for ii, threshold in enumerate(thresholds):
                 probs[:, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
-                                                              threshold=threshold, threshold_vals=threshold_vals, site_list=sites, weighted=weighted)
+                                                              threshold=threshold, site_list=sites, weighted=weighted)
             if grid:
                 thresh_grd[ii, :, :] = np.reshape(probs, (len(y_data), len(x_data)))
             else:
