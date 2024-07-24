@@ -431,8 +431,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             with h5.File(f"../{model_version_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.h5", "w") as site_PPEh5:
                 dict_to_hdf5(site_PPEh5, site_PPE_dict)
         else:
-            with h5.File(f"../{model_version_results_directory}/{pair_unique_id}/{pair_unique_id}.h5", "w") as site_PPEh5:
-                dict_to_hdf5(site_PPEh5, site_PPE_dict)
             return site_PPE_dict
 
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension,
