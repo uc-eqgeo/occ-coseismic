@@ -814,11 +814,11 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         print(site)
         site_group = weighted_h5.create_group(site)
         site_group.create_dataset("site_coords", data=all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["site_coords"])
-        cumulative_disp_scenarios = np.zeros(n_samples)
         site_df_abs = {}
         site_df_up = {}
         site_df_down = {}
         for pair_id in weighted_h5['branch_ids'].asstr():
+            cumulative_disp_scenarios = np.zeros(n_samples)
             for branch in pair_id.split('_-_'):
                 fault_type = branch.split('_')[-2]
                 branch_tag = branch.split('_')[-1]
@@ -828,7 +828,8 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                     fault_dir = next((sz_dir for sz_dir in sz_model_version_results_directory_list if f'/{fault_type}_' in sz_dir))
                 NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
                 with h5.File(NSHM_file, 'r') as NSHM_h5:
-                    cumulative_disp_scenarios += (NSHM_h5[site]['scenario_displacements'][:].astype(np.float64) / 1000).reshape(-1)  # Load as mm, convert to m
+                    NSHM_displacements = NSHM_h5[site]['scenario_displacements'][:].astype(np.float64) / 1000  # Load as mm, convert to m
+                cumulative_disp_scenarios += NSHM_displacements.reshape(-1)
 
             n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
             site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)
@@ -1087,7 +1088,7 @@ def plot_many_hazard_curves(file_suffix_list, slip_taper, gf_name, fault_type, m
     return fig, axs
 
 
-def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, exceed_type_list,
+def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list,
                                   model_version_title, out_directory, file_type_list, slip_taper, plot_order):
     """
     Plots the weighted mean hazard curve for each site, for each exceedance type (total_abs, up, down)
@@ -1102,7 +1103,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
     else:
         taper_extension = "_uniform"
 
-    unique_id_list = list(PPE_dictionary.keys())
+    unique_id_list = weighted_mean_PPE_dictionary['branch_ids'].asstr()
     weights = weighted_mean_PPE_dictionary['branch_weights'][:]
     threshold_vals = weighted_mean_PPE_dictionary["threshold_vals"][:]
     threshold_vals = threshold_vals[1:]
@@ -1158,11 +1159,11 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
             # plot all the branches as light grey lines
             # for each branch, plot the exceedance probabilities for each site
             for k, unique_id in enumerate([unique_id_list[id] for id in weight_order]):
+
                 # this loop isn't really needed, but it's useful if you calculate Green's functions
                 # at more sites than you want to plot
                 for i, site in enumerate(sites):
-                    with h5.File(PPE_dictionary[unique_id], 'r') as PPEh5:
-                        site_exceedance_probs = PPEh5[site][f"exceedance_probs_{exceed_type}"][1:]
+                    site_exceedance_probs = weighted_mean_PPE_dictionary[site]['branch_exceedance_probs_up'][1:, k]
                     ax = plt.subplot(n_rows, n_cols, i + 1)
                     #ax.plot(threshold_vals, site_exceedance_probs, color=[weights[weight_order[k]] / max_weight, 1-(weights[weight_order[k]] / max_weight), 0],
                     #        linewidth=0.1)

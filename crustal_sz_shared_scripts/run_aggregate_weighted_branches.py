@@ -15,20 +15,20 @@ slip_taper = False                           # True or False, only matters if cr
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_Model_CFM_JDE_sites_test"           # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_JDE_sites_test"                    # must match suffix in the subduction directory with gfs
-outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
+outfile_extension = "_pleb"               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
 
 
 # Processing Flags (True/False)
-paired_crustal_sz = True       # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+paired_crustal_sz = False       # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
-calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
+calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
 remake_PPE = False              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
-calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
-save_arrays = True             # Do you want to save the displacement and probability arrays?
+calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
+save_arrays = False             # Do you want to save the displacement and probability arrays?
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
-make_hazcurves = False       # Do you want to make hazard curves?
+make_hazcurves = True      # Do you want to make hazard curves?
 make_colorful_hazcurves = False # Do you want to make colorful hazard curves?
 plot_order_csv = "../wellington_10km_grid_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
@@ -236,6 +236,7 @@ if paired_crustal_sz:
             pkl.dump(branch_weight_dict, f)
 
     paired_PPE_pickle_name = f"{pickle_prefix}crustal_paired_PPE_dict{outfile_extension}{taper_extension}.pkl"
+    paired_PPE_pickle_name = f"weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
     PPE_filepath = f"../{out_version_results_directory}/{paired_PPE_pickle_name}"
 
     if not os.path.exists(PPE_filepath):
@@ -253,11 +254,6 @@ if paired_crustal_sz:
             out_directory=out_version_results_directory, outfile_extension=outfile_extension, sz_type_list=fault_type[1:],
             nesi=nesi, nesi_step=nesi_step, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array,
             mem=mem, time_interval=time_interval, sd=sd, job_time=job_time, remake_PPE=remake_PPE, load_random=load_random)
-
-if not nesi and calculate_weighted_mean_PPE or use_saved_dictionary:
-    print('Loading pre-prepared fault model PPE dictionary...')
-    with open(PPE_filepath, 'rb') as f:
-        PPE_dict = pkl.load(f)
 
 # calculate weighted mean PPE for the branch or paired dataset
 weighted_mean_PPE_filepath = f"../{out_version_results_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
@@ -302,7 +298,7 @@ else:
     model_version_title = f"{fault_type[0]}{model_version_list[0]}"
 
 if default_plot_order:
-    plot_order = [key for key in weighted_mean_PPE_dict.keys() if key != 'branch_weights']
+    plot_order = [key for key in weighted_mean_PPE_dict.keys() if key not in ['branch_weights', 'branch_ids', 'threshold_vals']]
 else:
     print('Using custom plot order from', plot_order_csv)
     plot_order = pd.read_csv(plot_order_csv)
@@ -322,7 +318,7 @@ if make_hazcurves or make_colorful_hazcurves:
 if make_hazcurves:
     print(f"\nMaking hazard curves...")
     plot_weighted_mean_haz_curves(
-        PPE_dictionary=PPE_dict, weighted_mean_PPE_dictionary=weighted_mean_PPE_dict,
+        weighted_mean_PPE_dictionary=weighted_mean_PPE_dict,
         model_version_title=model_version_title, exceed_type_list=["up", "down", "total_abs"],
         out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)
 
