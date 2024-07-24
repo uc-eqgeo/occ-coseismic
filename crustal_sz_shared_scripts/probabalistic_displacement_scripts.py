@@ -721,12 +721,13 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
 
     return f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
 
+
 def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight_dict_list,
                                     crustal_model_version_results_directory, sz_model_version_results_directory_list,
                                     paired_PPE_pickle_name, slip_taper, n_samples, out_directory, outfile_extension, sz_type_list,
                                     nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
-                                    n_array_tasks=1000, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=3, remake_PPE=True, load_random=False,
-                                    sbatch=True):
+                                    n_array_tasks=100, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=3, remake_PPE=True, load_random=False,
+                                    sbatch=True, thresh_lims=[0, 3], thresh_step=0.01):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -783,7 +784,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         pair_unique_id = crustal_unique_id
         branch_unique_ids = [crustal_unique_id]
         for sz_unique_id in sz_unique_ids:
-            pair_unique_id += "_" + sz_unique_id
+            pair_unique_id += "_-_" + sz_unique_id
             branch_unique_ids.append(sz_unique_id)
         pair_id_list.append(pair_unique_id)
         pair_cumu_PPE_dict_file = f"../{out_directory}/{pair_unique_id}/{pair_unique_id}_cumu_PPE.h5"
@@ -796,147 +797,72 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
             pair_weight = pair_weight * all_sz_branches_site_disp_dict[sz_unique_id]["branch_weight"]
         pair_weight_list.append(pair_weight)
 
-        print(f"calculating {pair_unique_id} PPE\t({counter + 1} of {len(crustal_sz_branch_pairs)} branches)")
-        # loop over all the sites for the crustal and sz branches of interest
-        # make one long list of displacements and corresponding scaled rates per site
-        pair_site_disp_dict = {}
-        for j, site in enumerate(site_names):
-            site_coords = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["site_coords"]
+    # Create weighted h5 file with associated metadata
+    weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
+    if os.path.exists(weighted_h5_file):
+        os.remove(weighted_h5_file)
+    weighted_h5 = h5.File(weighted_h5_file, "w")
+    weighted_h5.create_dataset('branch_weights', data=pair_weight_list)
+    weighted_h5.create_dataset('branch_ids', data=pair_id_list)
 
-#            pair_site_disps = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["disps"]
-#            pair_scaled_rates = all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][
-#                site]["scaled_rates"]
+    thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
+    weighted_h5.create_dataset("threshold_vals", data=thresholds)
 
-#            for sz_unique_id in sz_unique_ids:
-#                sz_site_disps = all_sz_branches_site_disp_dict[sz_unique_id]["site_disp_dict"][site]["disps"]
-#                sz_site_scaled_rates = all_sz_branches_site_disp_dict[sz_unique_id]["site_disp_dict"][site]["scaled_rates"]
+    exceed_type_list = ["total_abs", "up", "down"]
 
-#                pair_site_disps += sz_site_disps
-#                pair_scaled_rates += sz_site_scaled_rates
-             
-#            pair_site_disp_dict[site] = {"disps": pair_site_disps, "scaled_rates": pair_scaled_rates, "site_coords": site_coords}
-            pair_site_disp_dict[site] = {"crustal_unique_id": branch_unique_ids[0], "sz_unique_ids": branch_unique_ids[1:],
-                                         "branch_key": branch_unique_ids, "site_coords": site_coords,
-                                         "out_directory": out_directory, "crustal_directory": crustal_model_version_results_directory,
-                                         "subduction_directory": sz_model_version_results_directory_list}
-
-
-        os.makedirs(os.path.dirname(paired_crustal_sz_PPE_dict[pair_unique_id]), exist_ok=True)
-        if nesi:
-            with open(f"../{out_directory}/{pair_unique_id}/branch_site_disp_dict_{pair_unique_id}.pkl", "wb") as f:
-                pkl.dump(pair_site_disp_dict, f)
-
-        # get exceedence probabilities for each crustal/sz pair
-        if not os.path.exists(f"../{out_directory}"):
-            os.mkdir(f"../{out_directory}")
-        if nesi:
-            if nesi_step == 'prep':
-                if load_random:
-                    print('\tPreparing random arrays...')
-                    os.makedirs(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed", exist_ok=True)
-                    site1 = list(pair_site_disp_dict.keys())[0]
-                    rng = np.random.default_rng()
-                    if "scaled_rates" not in pair_site_disp_dict[site1].keys():
-                        # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
-                        rates = np.array(pair_site_disp_dict[site1]["rates"])
-                    else:
-                        rates = np.array(pair_site_disp_dict[site1]["scaled_rates"])
-
-                    n_ruptures = rates.shape[0]
-                    scenarios = rng.poisson(time_interval * rates, size=(n_samples, n_ruptures))
-                    disp_uncertainty = rng.normal(1, sd, size=(n_samples, n_ruptures))
-                    with open(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed/scenarios.pkl", "wb") as fid:
-                        pkl.dump(scenarios, fid)
-                    with open(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed/disp_uncertainty.pkl", "wb") as fid:
-                        pkl.dump(disp_uncertainty, fid)
-
-                print(f"\tPrepping for NESI....")
-                prep_nesi_site_list(out_directory, pair_site_disp_dict, pair_unique_id)
-                continue
-            elif nesi_step == 'combine':
-                if sbatch:
-                    print(f"\tPreparing NESI combination for {paired_crustal_sz_PPE_dict[pair_unique_id]}....")
-                    prep_combine_branch_list(pair_site_disp_dict, out_directory, pair_unique_id, branch_h5file=paired_crustal_sz_PPE_dict[pair_unique_id], taper_extension=taper_extension)
-                    continue
+    for site in site_names:
+        print(site)
+        site_group = weighted_h5.create_group(site)
+        site_group.create_dataset("site_coords", data=all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["site_coords"])
+        cumulative_disp_scenarios = np.zeros(n_samples)
+        site_df_abs = {}
+        site_df_up = {}
+        site_df_down = {}
+        for pair_id in weighted_h5['branch_ids'].asstr():
+            for branch in pair_id.split('_-_'):
+                fault_type = branch.split('_')[-2]
+                branch_tag = branch.split('_')[-1]
+                if fault_type == 'c':
+                    fault_dir = crustal_model_version_results_directory
                 else:
-                    print(f"Combining {pair_unique_id} PPE\t({counter + 1} of {len(crustal_sz_branch_pairs)} branches)")                   
-                    compile_site_cumu_PPE(pair_site_disp_dict, out_directory, pair_unique_id, branch_h5file=paired_crustal_sz_PPE_dict[pair_unique_id], taper_extension=taper_extension)
-                    shutil.rmtree(f"../{out_directory}/{pair_unique_id}/site_cumu_exceed")
+                    fault_dir = next((sz_dir for sz_dir in sz_model_version_results_directory_list if f'/{fault_type}_' in sz_dir))
+                NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
+                with h5.File(NSHM_file, 'r') as NSHM_h5:
+                    cumulative_disp_scenarios += (NSHM_h5[site]['scenario_displacements'][:].astype(np.float64) / 1000).reshape(-1)  # Load as mm, convert to m
 
-        else:
-            if os.path.exists(paired_crustal_sz_PPE_dict[pair_unique_id]) and not remake_PPE:
-                print(f"\tFound Pre-Prepared Branch PPE:  {paired_crustal_sz_PPE_dict[pair_unique_id]}")
-            else:
-                pair_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_unique_ids, branch_site_disp_dict=pair_site_disp_dict,
-                                                site_ids=pair_site_disp_dict.keys(),
-                                                model_version_results_directory=out_directory,
-                                                slip_taper=slip_taper, time_interval=time_interval,
-                                                n_samples=n_samples, extension1="",
-                                                crustal_model_dir=crustal_model_version_results_directory,
-                                                subduction_model_dirs=sz_model_version_results_directory_list,
-                                                NSHM_branch=False, pair_unique_id=pair_unique_id)
-                with h5.File(paired_crustal_sz_PPE_dict[pair_unique_id], "w") as branch_PPEh5:
-                    dict_to_hdf5(branch_PPEh5, pair_cumu_PPE_dict)
+            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
+            site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)
+            site_df_up[pair_id] = (n_exceedances_up / n_samples).reshape(-1)
+            site_df_down[pair_id] = (n_exceedances_down / n_samples).reshape(-1)
 
-        with h5.File(paired_crustal_sz_PPE_dict[pair_unique_id], "r+") as branch_PPEh5:
-            if 'branch_weight' in branch_PPEh5.keys():
-                del branch_PPEh5['branch_weight']
-            branch_PPEh5.create_dataset('branch_weight', data=pair_weight_list[-1])
+        site_df_dict = {"total_abs": site_df_abs, "up": site_df_up, "down": site_df_down}
+        for exceed_type in exceed_type_list:
+            site_probabilities_df = pd.DataFrame(site_df_dict[exceed_type])
 
-    if nesi and nesi_step == 'prep':
-        n_sites = len(site_names)
-        n_jobs = len(crustal_sz_branch_pairs) * n_sites
-        tasks_per_array = np.ceil(n_jobs / n_array_tasks)
-        if tasks_per_array < min_tasks_per_array:
-            tasks_per_array = min_tasks_per_array
-        array_time = job_time * tasks_per_array
-        hours, secs = divmod(array_time, 3600)
-        mins = np.ceil(secs / 60)
-        n_tasks = int(np.ceil(n_jobs / tasks_per_array))
-        print('\nCreating SLURM submission script....')
-        prep_SLURM_submission(out_directory, tasks_per_array, n_tasks, hours=int(hours), mins=int(mins), job_time=job_time,
-                              mem=mem, cpus=cpus, account=account, time_interval=100, n_samples=n_samples, sd=0.4, NSHM_branch=False)
-        raise Exception(f"Now run\n\tsbatch ../{out_directory}/cumu_PPE_slurm_task_array.sl")
+            # collapse each row into a weighted mean value
+            branch_weighted_mean_probs = site_probabilities_df.apply(
+                lambda x: np.average(x, weights=weighted_h5['branch_weights'][:]), axis=1)
+            site_max_probs = site_probabilities_df.max(axis=1)
+            site_min_probs = site_probabilities_df.min(axis=1)
 
-    elif nesi and nesi_step == 'combine' and sbatch:
-        n_branches = len(branch_unique_ids.keys())
-        n_sites = len(site_names)
-        site_time = 0.4
-        time_per_branch = n_sites * site_time
-        branches_per_array = np.ceil(n_branches / n_array_tasks)
-        min_branches_per_array = 5
-        if branches_per_array < min_branches_per_array:
-            branches_per_array = min_branches_per_array
-        array_time = time_per_branch * branches_per_array
-        hours, secs = divmod(array_time, 3600)
-        mins = np.ceil(secs / 60)
-        n_tasks = int(np.ceil(n_branches / branches_per_array))
-        print('\nCreating SLURM submission script....')
-        combine_dict_file=f"../{out_directory}/combine_site_meta.pkl"
-        branch_combine_list_file=f"../{out_directory}/branch_combine_list.txt"
-        prep_SLURM_combine_submission(combine_dict_file, branch_combine_list_file, out_directory, 
-                                branches_per_array, n_tasks, hours=int(hours), mins=int(mins), mem=10)
-        raise Exception(f"Now run\n\tsbatch ../{out_directory}/combine_sites.sl")
+            site_group.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs)
+            site_group.create_dataset(f"{exceed_type}_max_vals", data=site_max_probs)
+            site_group.create_dataset(f"{exceed_type}_min_vals", data=site_min_probs)
+            site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy())
+            site_group['branch_exceedance_probs_total_abs'].attrs['branch_ids'] = pair_id_list
 
-    else:
-        print('Building all branch PPE dictionary....')
-        site_list = [site for site in pair_site_disp_dict.keys()]
+            # Calculate errors based on 1 and 2 sigma percentiles of all of the branches for each threshold
+            sigma_lims = [2.27, 15.865, 84.135, 97.725]
+            #percentiles = np.percentile(site_probabilities_df, sigma_lims, axis=1)
+            #weighted_mean_site_probs_dictionary[site][f"{exceed_type}_percentile_error"] = percentiles
 
-        site_coords_dict = {}
-        for site in site_list:
-            site_coords_dict[site] = pair_site_disp_dict[site]["site_coords"]
-        paired_crustal_sz_PPE_dict['meta'] = {'branch_ids': pair_id_list, 'site_ids': site_list, 'branch_weights': pair_weight_list, 'site_coords_dict': site_coords_dict}
+            # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
+            percentiles = percentile(site_probabilities_df, sigma_lims, axis=1, weights=weighted_h5['branch_weights'][:])
+            site_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles)
 
-        outfile_name = f"all_branch_PPE_dict{outfile_extension}{taper_extension}"
-        print(f"\nSaving {out_directory}/{outfile_name}.pkl....")
-        with open(f"../{out_directory}/{outfile_name}.pkl", "wb") as f:
-            pkl.dump(out_directory, f)
-
-    print(f"Saving {out_directory}/{paired_PPE_pickle_name}.pkl....")
-    with open(f"../{out_directory}/{paired_PPE_pickle_name}", "wb") as f:
-        pkl.dump(paired_crustal_sz_PPE_dict, f)
-
-    return paired_crustal_sz_PPE_dict
+    weighted_h5.close()
+    
+    return
 
 
 def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type, site_list, threshold_vals=None, weighted=False):
@@ -973,6 +899,7 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
 
     return disps
 
+
 def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, threshold_vals=None, site_list=None, weighted=False):
     """ function that finds the probability at each site for the specified displacement threshold on the hazard curve
         Inputs:
@@ -1005,6 +932,7 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
         probs_threshold.append(site_PPE[index])
 
     return probs_threshold
+
 
 def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_directory, file_type_list, plot_order=[]):
     """makes hazard curves for each site. includes the probability of cumulative displacement from multiple
@@ -1157,6 +1085,7 @@ def plot_many_hazard_curves(file_suffix_list, slip_taper, gf_name, fault_type, m
         f"{model_version}.png", dpi=300)
 
     return fig, axs
+
 
 def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, exceed_type_list,
                                   model_version_title, out_directory, file_type_list, slip_taper, plot_order):
@@ -1346,6 +1275,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, PPE_dictionary, 
                             f".{file_type}", dpi=300)
             plt.close()
             printProgressBar(plot_n + 1, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
+
 
 def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dictionary, exceed_type_list,
                                            model_version_title, out_directory, file_type_list, slip_taper, file_name,
@@ -1751,6 +1681,7 @@ def make_prob_bar_chart(extension1,  slip_taper, model_version, model_version_re
     fig.savefig(f"../{model_version_results_directory}/{extension1}/probability_figures/prob_bar_chart_{extension1}"
                 f"{taper_extension}.png", dpi=300)
 
+
 def make_branch_prob_plot(extension1,  slip_taper, model_version, model_version_results_directory,
                       file_type_list=["png", "pdf"], threshold=0.2, plot_order=None, max_sites=12):
     """ """
@@ -2100,6 +2031,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         ds.to_netcdf(f"{outfile_directory}/{out_name}grids.nc")
 
     return ds
+
 
 def save_disp_prob_geojson(extension1, slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0.1, thresholds=None,
                            probs_lims=[0.01, 0.2], probs_step=0.01, probabilities=None, weighted=False, epsg=2193):
