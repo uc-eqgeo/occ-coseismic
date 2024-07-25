@@ -12,7 +12,7 @@ import h5py as h5
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "all"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_Model_CFM_50km"           # "_Model1", "_Model2", or "_CFM"
 sz_model_version = "_national_50km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
@@ -26,7 +26,7 @@ load_random = False             # Do you want to uses the same grid for scenario
 calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
 remake_PPE = False              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
-save_arrays = False             # Do you want to save the displacement and probability arrays?
+save_arrays = False            # Do you want to save the displacement and probability arrays?
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = True      # Do you want to make hazard curves?
 make_colorful_hazcurves = False # Do you want to make colorful hazard curves?
@@ -248,6 +248,8 @@ if paired_crustal_sz:
 
     #### skip this part if you've already run it once and saved to a pickle file
     if calculate_fault_model_PPE or not use_saved_dictionary:
+        if os.path.exists(PPE_filepath):
+            os.remove(PPE_filepath)
         make_sz_crustal_paired_PPE_dict(
             crustal_branch_weight_dict=branch_weight_dict_list[0], sz_branch_weight_dict_list=branch_weight_dict_list[1:],
             crustal_model_version_results_directory=model_version_results_directory[0],
