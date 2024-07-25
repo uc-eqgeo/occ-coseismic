@@ -284,9 +284,10 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
         if not NSHM_branch:
             cumulative_disp_scenarios = np.zeros(n_samples)
-            for NSHM_PPE in NSHM_PPEh5_list:
+            for NSHM_PPE in NSHM_PPEh5_list[1:]:
                 with h5.File(NSHM_PPE, "r") as PPEh5:
                     NSHM_displacements = PPEh5[site_of_interest]["scenario_displacements"][:]
+
                 cumulative_disp_scenarios += NSHM_displacements.reshape(-1)
             if benchmarking:
                 print(f"Loaded PPE: {time() - begin:.5f} s")

@@ -21,7 +21,7 @@ testing = False   # Impacts number of samples runs, job time etc
 
 
 # Processing Flags (True/False)
-paired_crustal_sz = True       # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+paired_crustal_sz = True      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
 remake_PPE = False              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
@@ -51,6 +51,7 @@ crustal_directory = "crustal"
 sz_directory = "subduction"
 results_directory = "results"
 figure_file_type_list = ["png", "pdf"]             # file types for figures
+figure_file_type_list = ["png"]
 unique_id_keyphrase_list = ["N165", "N279"]         # sz
 #unique_id_keyphrase_list = ["N27", "N46"]          # crustal
 #unique_id_keyphrase_list = ["S066", "S141"]
