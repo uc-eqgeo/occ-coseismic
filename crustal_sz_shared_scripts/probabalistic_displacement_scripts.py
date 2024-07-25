@@ -286,7 +286,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             cumulative_disp_scenarios = np.zeros(n_samples)
             for NSHM_PPE in NSHM_PPEh5_list:
                 with h5.File(NSHM_PPE, "r") as PPEh5:
-                    NSHM_displacements = PPEh5[site_of_interest]["scenario_displacements"][:].astype(np.float64) / 1000  # Load as mm, convert to m
+                    NSHM_displacements = PPEh5[site_of_interest]["scenario_displacements"][:]
                 cumulative_disp_scenarios += NSHM_displacements.reshape(-1)
             if benchmarking:
                 print(f"Loaded PPE: {time() - begin:.5f} s")
@@ -391,7 +391,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
             error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
 
-            site_PPE_dict[site_of_interest].update({"scenario_displacements": (cumulative_disp_scenarios * 1000).astype(np.int8),  # Save as mm, but as 8-bit integers to save space
+            site_PPE_dict[site_of_interest].update({"scenario_displacements": cumulative_disp_scenarios,
                                                     "site_coords": site_dict_i["site_coords"],
                                                     "standard_deviation": sd,
                                                     "error_total_abs": error_abs,
@@ -431,8 +431,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             with h5.File(f"../{model_version_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.h5", "w") as site_PPEh5:
                 dict_to_hdf5(site_PPEh5, site_PPE_dict)
         else:
-            with h5.File(f"../{model_version_results_directory}/{pair_unique_id}/{pair_unique_id}.h5", "w") as site_PPEh5:
-                dict_to_hdf5(site_PPEh5, site_PPE_dict)
             return site_PPE_dict
 
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension,
@@ -645,6 +643,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     weighted_h5 = h5.File(f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5", "w")
     weighted_h5.create_dataset('branch_weights', data=branch_weights)
     weighted_h5.create_dataset("threshold_vals", data=threshold_vals)
+    weighted_h5.create_dataset("branch_ids", data=unique_id_list)
 
     n_sites = len(site_list)
     printProgressBar(0, n_sites * 3, prefix=f'\t0/{n_sites} sites:', suffix='00:00:00 0 s/site', length=50)
@@ -811,7 +810,6 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     exceed_type_list = ["total_abs", "up", "down"]
 
     for site in site_names:
-        print(site)
         site_group = weighted_h5.create_group(site)
         site_group.create_dataset("site_coords", data=all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["site_coords"])
         site_df_abs = {}
@@ -828,7 +826,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                     fault_dir = next((sz_dir for sz_dir in sz_model_version_results_directory_list if f'/{fault_type}_' in sz_dir))
                 NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
                 with h5.File(NSHM_file, 'r') as NSHM_h5:
-                    NSHM_displacements = NSHM_h5[site]['scenario_displacements'][:].astype(np.float64) / 1000  # Load as mm, convert to m
+                    NSHM_displacements = NSHM_h5[site]['scenario_displacements'][:]
                 cumulative_disp_scenarios += NSHM_displacements.reshape(-1)
 
             n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
@@ -850,7 +848,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
             site_group.create_dataset(f"{exceed_type}_max_vals", data=site_max_probs)
             site_group.create_dataset(f"{exceed_type}_min_vals", data=site_min_probs)
             site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy())
-            site_group['branch_exceedance_probs_total_abs'].attrs['branch_ids'] = pair_id_list
+            site_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = pair_id_list
 
             # Calculate errors based on 1 and 2 sigma percentiles of all of the branches for each threshold
             sigma_lims = [2.27, 15.865, 84.135, 97.725]
@@ -1108,7 +1106,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
     threshold_vals = weighted_mean_PPE_dictionary["threshold_vals"][:]
     threshold_vals = threshold_vals[1:]
     weight_order = np.argsort(weights)
-    weight_colouring = False
+    weight_colouring = True
     if weight_colouring:
         colouring = "_c"
         c_weight = weights / max(weights)
@@ -1158,17 +1156,14 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
 
             # plot all the branches as light grey lines
             # for each branch, plot the exceedance probabilities for each site
-            for k, unique_id in enumerate([unique_id_list[id] for id in weight_order]):
-
-                # this loop isn't really needed, but it's useful if you calculate Green's functions
-                # at more sites than you want to plot
+            for kk in weight_order:
                 for i, site in enumerate(sites):
-                    site_exceedance_probs = weighted_mean_PPE_dictionary[site]['branch_exceedance_probs_up'][1:, k]
+                    site_exceedance_probs = weighted_mean_PPE_dictionary[site][f'branch_exceedance_probs_{exceed_type}'][1:, kk]
                     ax = plt.subplot(n_rows, n_cols, i + 1)
                     #ax.plot(threshold_vals, site_exceedance_probs, color=[weights[weight_order[k]] / max_weight, 1-(weights[weight_order[k]] / max_weight), 0],
                     #        linewidth=0.1)
                     if weight_colouring:
-                        ax.plot(threshold_vals, site_exceedance_probs, color=colours[weight_order[k]], linewidth=0.2, alpha=0.5)
+                        ax.plot(threshold_vals, site_exceedance_probs, color=colours[kk], linewidth=0.2, alpha=0.5)
                     else:
                         ax.plot(threshold_vals, site_exceedance_probs, color='grey', linewidth=0.2, alpha=0.5)
 
@@ -1853,7 +1848,7 @@ def save_disp_prob_tifs(extension1, slip_taper, model_version_results_directory,
             probs = np.zeros([len(sites), len(thresholds)])
             for ii, threshold in enumerate(thresholds):
                 probs[:, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
-                                                              threshold=threshold, threshold_vals=threshold_vals, site_list=sites, weighted=weighted)
+                                                              threshold=threshold, site_list=sites, weighted=weighted)
             if grid:
                 thresh_grd[ii, :, :] = np.reshape(probs, (len(y_data), len(x_data)))
             else:
