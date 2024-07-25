@@ -631,7 +631,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     branch_weights = fault_model_PPE_dict['meta']['branch_weights']
 
     # need a more elegant solution to this I think
-    threshold_vals = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
+    thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
 
     # extract site coordinates from fault model PPE dictionary
     site_coords_dict = fault_model_PPE_dict['meta']['site_coords_dict']
@@ -643,7 +643,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
 
     weighted_h5 = h5.File(f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5", "w")
     weighted_h5.create_dataset('branch_weights', data=branch_weights)
-    weighted_h5.create_dataset("threshold_vals", data=threshold_vals)
+    weighted_h5.create_dataset("thresholds", data=thresholds)
     weighted_h5.create_dataset("branch_ids", data=unique_id_list)
 
     n_sites = len(site_list)
@@ -806,7 +806,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     weighted_h5.create_dataset('branch_ids', data=pair_id_list)
 
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
-    weighted_h5.create_dataset("threshold_vals", data=thresholds)
+    weighted_h5.create_dataset("thresholds", data=thresholds)
 
     sigma_lims = [2.275, 15.865, 84.135, 97.725]
     sigma_lims.sort()
@@ -868,7 +868,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     return
 
 
-def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type, site_list, threshold_vals=None, weighted=False):
+def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type, site_list, thresholds=None, weighted=False):
     """returns displacements at the X% probabilities of exceedance for each site
 
     define exceedance type. Options are "total_abs", "up", "down"
@@ -876,34 +876,33 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
 
     if weighted:
         prefix = 'weighted_'
-        thresh = 'threshold_vals'
     else:
-        prefix, thresh = '', 'thresholds'
+        prefix = ''
 
-    if threshold_vals is None and exceed_type == "down":
-        threshold_vals = -threshold_vals
+    if thresholds is None and exceed_type == "down":
+        thresholds = -thresholds
 
     # get disp threshold (x-value) at defined probability (y-value)
     disps = []
     for site in site_list:
-        if threshold_vals is None:
-            threshold_vals = np.array([round(val, 4) for val in site_PPE_dictionary[site][thresh]])
+        if thresholds is None:
+            thresholds = np.array([round(val, 4) for val in site_PPE_dictionary[site]["thresholds"]])
             # displacement thresholds are negative for "down" exceedances
             if exceed_type == "down":
-                threshold_vals = -threshold_vals
+                thresholds = -thresholds
 
         site_PPE = site_PPE_dictionary[site][f"{prefix}exceedance_probs_{exceed_type}"]
 
         # get first index that is < 10% (ideally we would interpolate for exact value but don't have a function)
         exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= round(probability,4)), -1)
-        disp = threshold_vals[exceedance_index]
+        disp = thresholds[exceedance_index]
 
         disps.append(disp)
 
     return disps
 
 
-def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, threshold_vals=None, site_list=None, weighted=False):
+def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, thresholds=None, site_list=None, weighted=False):
     """ function that finds the probability at each site for the specified displacement threshold on the hazard curve
         Inputs:
         :param: dictionary of exceedance probabilities for each site (key = site)
@@ -917,9 +916,8 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
 
     if weighted:
         prefix = 'weighted_'
-        thresh = 'threshold_vals'
     else:
-        prefix, thresh = '', 'thresholds'	
+        prefix = ''	
 
     if site_list == None:
         site_list = list(site_PPE_dictionary.keys())
@@ -928,10 +926,10 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
     probs_threshold = []
     for site in site_list:
         site_PPE = site_PPE_dictionary[site][f"{prefix}exceedance_probs_{exceed_type}"]
-        if threshold_vals is None:
-            threshold_vals = [round(val, 4) for val in site_PPE_dictionary[thresh]]
-        # find index in threshold_vals where the value matches the parameter threshold
-        index = threshold_vals.index(round(threshold, 4))
+        if thresholds is None:
+            thresholds = [round(val, 4) for val in site_PPE_dictionary["thresholds"]]
+        # find index in thresholds where the value matches the parameter threshold
+        index = thresholds.index(round(threshold, 4))
         probs_threshold.append(site_PPE[index])
 
     return probs_threshold
@@ -984,9 +982,9 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
             for j, exceed_type in enumerate(exceed_type_list):
                 curve_color = get_probability_color(exceed_type)
                 exceedance_probs = PPE_dictionary[site][f"exceedance_probs_{exceed_type}"]
-                threshold_vals = PPE_dictionary[site]["thresholds"]
+                thresholds = PPE_dictionary[site]["thresholds"]
 
-                ax.plot(threshold_vals, exceedance_probs, color=curve_color)
+                ax.plot(thresholds, exceedance_probs, color=curve_color)
                 ax.axhline(y=0.02, color="0.7", linestyle='dashed')
                 ax.axhline(y=0.1, color="0.7", linestyle='dotted')
 
@@ -1057,9 +1055,9 @@ def plot_many_hazard_curves(file_suffix_list, slip_taper, gf_name, fault_type, m
                 curve_color = plot_colors[k]
 
                 exceedance_probs = PPE_dictionary[site][f"exceedance_probs_{exceed_type}"]
-                threshold_vals = PPE_dictionary[site]["thresholds"]
+                thresholds = PPE_dictionary[site]["thresholds"]
 
-                ax.plot(threshold_vals, exceedance_probs, color=curve_color)
+                ax.plot(thresholds, exceedance_probs, color=curve_color)
                 ax.axhline(y=0.02, color="0.8", linestyle='dashed')
                 ax.axhline(y=0.1, color="0.8", linestyle='dotted')
 
@@ -1107,8 +1105,8 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
 
     unique_id_list = weighted_mean_PPE_dictionary['branch_ids'].asstr()
     weights = weighted_mean_PPE_dictionary['branch_weights'][:]
-    threshold_vals = weighted_mean_PPE_dictionary["threshold_vals"][:]
-    threshold_vals = threshold_vals[1:]
+    thresholds = weighted_mean_PPE_dictionary["thresholds"][:]
+    thresholds = thresholds[1:]
     weight_order = np.argsort(weights)
     weight_colouring = True
 
@@ -1161,12 +1159,12 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 min_probs = min_probs[1:]
 
                 # Shade based on max-min
-                #ax.fill_between(threshold_vals, max_probs, min_probs, color='0.9')
+                #ax.fill_between(thresholds, max_probs, min_probs, color='0.9')
                 # Shade based on weighted errors
-                #ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
+                #ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
                 #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
                 # Shade based on weighted 2 sigma percentiles
-                ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][sigma_ix[0], 1:],
+                ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][sigma_ix[0], 1:],
                                 weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][sigma_ix[1], 1:], color='0.8')
 
             # plot all the branches as light grey lines
@@ -1175,12 +1173,12 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 for i, site in enumerate(sites):
                     site_exceedance_probs = weighted_mean_PPE_dictionary[site][f'branch_exceedance_probs_{exceed_type}'][1:, kk]
                     ax = plt.subplot(n_rows, n_cols, i + 1)
-                    #ax.plot(threshold_vals, site_exceedance_probs, color=[weights[weight_order[k]] / max_weight, 1-(weights[weight_order[k]] / max_weight), 0],
+                    #ax.plot(thresholds, site_exceedance_probs, color=[weights[weight_order[k]] / max_weight, 1-(weights[weight_order[k]] / max_weight), 0],
                     #        linewidth=0.1)
                     if weight_colouring:
-                        ax.plot(threshold_vals, site_exceedance_probs, color=colours[kk], linewidth=0.2, alpha=0.5)
+                        ax.plot(thresholds, site_exceedance_probs, color=colours[kk], linewidth=0.2, alpha=0.5)
                     else:
-                        ax.plot(threshold_vals, site_exceedance_probs, color='grey', linewidth=0.2, alpha=0.5)
+                        ax.plot(thresholds, site_exceedance_probs, color='grey', linewidth=0.2, alpha=0.5)
 
 
             # loop through sites and add the weighted mean lines
@@ -1193,23 +1191,23 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 line_color = get_probability_color(exceed_type)
                
                 # Unweighted 1 sigma lines
-                # ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_84_135_vals"], color=line_color, linewidth=0.75, linestyle='-.')
-                # ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_15_865_vals"], color=line_color, linewidth=0.75, linestyle='-.')
+                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_84_135_vals"], color=line_color, linewidth=0.75, linestyle='-.')
+                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_15_865_vals"], color=line_color, linewidth=0.75, linestyle='-.')
                 # Unweighted 2 sigma lines
-                # ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_97_725_vals"], color=line_color, linewidth=0.75, linestyle='--')
-                # ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_2_275_vals"], color=line_color, linewidth=0.75, linestyle='--')
+                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_97_725_vals"], color=line_color, linewidth=0.75, linestyle='--')
+                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_2_275_vals"], color=line_color, linewidth=0.75, linestyle='--')
 
                 # Weighted 1 sigma lines
-                # ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w84_135_vals"], color=line_color, linewidth=0.75, linestyle=':')
-                # ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w15_865_vals"], color=line_color, linewidth=0.75, linestyle=':')
+                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w84_135_vals"], color=line_color, linewidth=0.75, linestyle=':')
+                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w15_865_vals"], color=line_color, linewidth=0.75, linestyle=':')
                 # Weighted 2 sigma lines
-                ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][0,1:], color='black', linewidth=0.75, linestyle='-.')
-                ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][-1,1:], color='black', linewidth=0.75, linestyle='-.')
+                ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][0,1:], color='black', linewidth=0.75, linestyle='-.')
+                ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][-1,1:], color='black', linewidth=0.75, linestyle='-.')
 
-                ax.plot(threshold_vals, weighted_mean_exceedance_probs, color=line_color, linewidth=1.5)
+                ax.plot(thresholds, weighted_mean_exceedance_probs, color=line_color, linewidth=1.5)
 
                 # Uncertainty weighted mean
-                #ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"], color='black', linewidth=1)
+                #ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"], color='black', linewidth=1)
 
                 ax.axhline(y=0.02, color="g", linestyle='dashed')
                 ax.axhline(y=0.1, color="g", linestyle='dotted')
@@ -1248,19 +1246,19 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 ax = plt.subplot(n_rows, n_cols, i + 1)
                 for exceed_type in exceed_type_list:
                     # Shade based on max-min
-                    # ax.fill_between(threshold_vals, weighted_mean_max_probs, weighted_mean_min_probs, color=fill_color, alpha=0.2)
+                    # ax.fill_between(thresholds, weighted_mean_max_probs, weighted_mean_min_probs, color=fill_color, alpha=0.2)
                     # Shade based on weighted errors
-                    #ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
+                    #ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
                     #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
                     # Shade based on 2 sigma percentiles
-                    ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][0, 1:],
+                    ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][0, 1:],
                                     weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][-1, 1:], color='0.8')
 
                 # plot solid lines on top of the shaded regions
                 for exceed_type in exceed_type_list:
                     line_color = get_probability_color(exceed_type)
                     weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:]
-                    ax.plot(threshold_vals, weighted_mean_exceedance_probs, color=line_color, linewidth=2)
+                    ax.plot(thresholds, weighted_mean_exceedance_probs, color=line_color, linewidth=2)
 
                 # add 10% and 2% lines
                 ax.axhline(y=0.02, color="g", linestyle='dashed')
@@ -1335,19 +1333,19 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
                 # plots all three types of exceedance (total_abs, up, down) on the same plot
                 max_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_max_vals"]
                 min_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_min_vals"]
-                threshold_vals = weighted_mean_PPE_dictionary[site]["threshold_vals"]
+                thresholds = weighted_mean_PPE_dictionary[site]["thresholds"]
 
-                threshold_vals = threshold_vals[1:]
+                thresholds = thresholds[1:]
                 max_probs = max_probs[1:]
                 min_probs = min_probs[1:]
 
                 # Shade based on max-min
-                #ax.fill_between(threshold_vals, max_probs, min_probs, color='0.9', label="_nolegend_")
+                #ax.fill_between(thresholds, max_probs, min_probs, color='0.9', label="_nolegend_")
                 # Shade based on weighted errors
-                #ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
+                #ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
                 #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9', label="_nolegend_")
                 # Shade based on 2 sigma percentiles
-                ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w97_725_vals"][1:],
+                ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w97_725_vals"][1:],
                                 weighted_mean_PPE_dictionary[site][f"{exceed_type}_w2_275_vals"][1:], color='0.8', label="_nolegend_")
 
             # plot all the branches as light grey lines
@@ -1374,18 +1372,18 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
 
                 for i, site in enumerate(sites):
 
-                    threshold_vals = PPE_dictionary[unique_id]["cumu_PPE_dict"][site]["thresholds"]
+                    thresholds = PPE_dictionary[unique_id]["cumu_PPE_dict"][site]["thresholds"]
                     site_exceedance_probs = PPE_dictionary[unique_id]["cumu_PPE_dict"][site][f"exceedance_probs_{exceed_type}"]
 
                     # skip the 0 value in the list
-                    threshold_vals = threshold_vals[1:]
+                    thresholds = thresholds[1:]
                     site_exceedance_probs = site_exceedance_probs[1:]
 
                     # ax = plt.subplot(4, 3, i + 1)
                     ax = plt.subplot(n_rows, n_cols + 1, subplot_indices[i])
 
-                    #ax.plot(threshold_vals, site_exceedance_probs, color='0.7')
-                    ax.plot(threshold_vals, site_exceedance_probs, color=line_color, linewidth=linewidth)
+                    #ax.plot(thresholds, site_exceedance_probs, color='0.7')
+                    ax.plot(thresholds, site_exceedance_probs, color=line_color, linewidth=linewidth)
 
             # loop through sites and add the weighted mean lines
             for i, site in enumerate(sites):
@@ -1394,16 +1392,16 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
 
                 # plots all three types of exceedance (total_abs, up, down) on the same plot
                 weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"]
-                threshold_vals = weighted_mean_PPE_dictionary[site]["threshold_vals"]
+                thresholds = weighted_mean_PPE_dictionary[site]["thresholds"]
 
-                threshold_vals = threshold_vals[1:]
+                thresholds = thresholds[1:]
                 weighted_mean_exceedance_probs = weighted_mean_exceedance_probs[1:]
 
                 line_color = get_probability_color(exceed_type)
                 # Weighted 2 sigma lines
-                ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w97_725_vals"][1:], color='black', linewidth=0.75, linestyle='-.')
-                ax.plot(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w2_275_vals"][1:], color='black', linewidth=0.75, linestyle='-.')
-                ax.plot(threshold_vals, weighted_mean_exceedance_probs, color=line_color, linewidth=2)
+                ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w97_725_vals"][1:], color='black', linewidth=0.75, linestyle='-.')
+                ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w2_275_vals"][1:], color='black', linewidth=0.75, linestyle='-.')
+                ax.plot(thresholds, weighted_mean_exceedance_probs, color=line_color, linewidth=2)
 
                 ax.axhline(y=0.02, color="0.3", linestyle='dashed')
                 ax.axhline(y=0.1, color="0.3", linestyle='dotted')
@@ -1795,11 +1793,10 @@ def save_disp_prob_tifs(extension1, slip_taper, model_version_results_directory,
     if weighted:
         dict_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict_{extension1}{taper_extension}.pkl"
         outfile_directory = f"../{model_version_results_directory}/weighted_mean_tifs"
-        threshold_key = 'threshold_vals'
+        
     else:
         dict_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.pkl"
         outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
-        threshold_key = 'thresholds'
 
     with open(dict_file, "rb") as fid:
         PPE_dict = pkl.load(fid)
@@ -1850,8 +1847,8 @@ def save_disp_prob_tifs(extension1, slip_taper, model_version_results_directory,
         if thresholds is None:
             thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
 
-        if not all(np.isin(thresholds, PPE_dict[sites[0]][threshold_key])):
-            thresholds = thresholds[np.isin(thresholds, PPE_dict[sites[0]][threshold_key])]
+        if not all(np.isin(thresholds, PPE_dict[sites[0]]["thresholds"])):
+            thresholds = thresholds[np.isin(thresholds, PPE_dict[sites[0]]["thresholds"])]
         if len(thresholds) == 0:
             print('No requested thresholds were in the PPE dictionary. Change requested thresholds')
         else:
@@ -1923,11 +1920,10 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
     if weighted:
         h5_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict{extension1}{taper_extension}.h5"
         outfile_directory = f"../{model_version_results_directory}/weighted_mean_xarray"
-        threshold_key = 'threshold_vals'
+
     else:
         h5_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob{extension1}{taper_extension}.h5"
         outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
-        threshold_key = 'thresholds'
 
     PPEh5 = h5.File(h5_file, 'r')
 
@@ -1937,7 +1933,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         if meta in sites:
             sites.remove(meta)
     
-    threshold_vals = [round(val, 4) for val in PPEh5[threshold_key]]
+    thresholds = [round(val, 4) for val in PPEh5["thresholds"]]
 
     if not os.path.exists(f"{outfile_directory}"):
         os.mkdir(f"{outfile_directory}")
@@ -1980,9 +1976,9 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             if thresholds is None:
                 thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
 
-            if not all(np.isin(thresholds, np.round(PPEh5[threshold_key][:], 4))):
-                dropped_thresholds = thresholds[np.isin(thresholds, PPEh5[threshold_key][:], invert=True)]
-                thresholds = thresholds[np.isin(thresholds, PPEh5[threshold_key][:])]
+            if not all(np.isin(thresholds, np.round(PPEh5["thresholds"][:], 4))):
+                dropped_thresholds = thresholds[np.isin(thresholds, PPEh5["thresholds"][:], invert=True)]
+                thresholds = thresholds[np.isin(thresholds, PPEh5["thresholds"][:])]
                 if len(thresholds) == 0:
                     print('No requested thresholds were in the PPE dictionary. Change requested thresholds')
                     pass
@@ -1996,7 +1992,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                 printProgressBar(0, len(thresholds), prefix=f'\tProcessing 0.00 m', suffix=f'{exceed_type}', length=50)
                 for ii, threshold in enumerate(thresholds):
                     probs[:, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
-                                                                  threshold=threshold, threshold_vals=threshold_vals,
+                                                                  threshold=threshold, thresholds=thresholds,
                                                                   site_list=sites, weighted=weighted)
                     printProgressBar(ii + 1, len(thresholds), prefix=f'\tProcessing {threshold:.2f} m', suffix=f'{exceed_type}', length=50)
                 for jj in range(len(sites)):
@@ -2022,7 +2018,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                 printProgressBar(0, len(probabilities), prefix=f'\tProcessing 00 %', suffix=f'{exceed_type}', length=50)
                 for ii, probability in enumerate(probabilities):
                     disps[:, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
-                                                                 site_list=sites, probability=probability, threshold_vals=np.array(threshold_vals),
+                                                                 site_list=sites, probability=probability, thresholds=np.array(thresholds),
                                                                  weighted=weighted)
                     printProgressBar(ii + 1, len(probabilities), prefix=f'\tProcessing {int(100 * probability):0>2} %', suffix=f'{exceed_type}', length=50)
                     if exceed_type == 'down':
@@ -2060,21 +2056,20 @@ def save_disp_prob_geojson(extension1, slip_taper, model_version_results_directo
     if weighted:
         h5_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict{extension1}{taper_extension}.h5"
         outfile_directory = f"../{model_version_results_directory}/weighted_mean_xarray"
-        threshold_key = 'threshold_vals'
+        
     else:
         h5_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob{extension1}{taper_extension}.h5"
         outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
-        threshold_key = 'thresholds'
 
     PPEh5 = h5.File(h5_file)
 
     sites = [*PPEh5.keys()]
-    metadata_keys = ['branch_weights', 'thresholds', 'threshold_vals']
+    metadata_keys = ['branch_weights', 'branch_ids', 'thresholds', 'threshold_vals', 'sigma_lims']
     for meta in metadata_keys:
         if meta in sites:
             sites.remove(meta)
 
-    threshold_vals = [round(val, 4) for val in PPEh5[threshold_key]]
+    thresholds = [round(val, 4) for val in PPEh5["thresholds"]]
 
     if not os.path.exists(f"{outfile_directory}"):
         os.mkdir(f"{outfile_directory}")
@@ -2090,7 +2085,7 @@ def save_disp_prob_geojson(extension1, slip_taper, model_version_results_directo
         for jj, threshold in enumerate(thresholds):
             probs[:, jj, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
                                                               threshold=round(threshold, 4), site_list=sites, weighted=weighted,
-                                                              threshold_vals=threshold_vals)
+                                                              thresholds="thresholds")
     
     geojson = {
         "type": "FeatureCollection",
@@ -2127,7 +2122,7 @@ def save_disp_prob_geojson(extension1, slip_taper, model_version_results_directo
         for jj, probability in enumerate(probabilities):
                 disps[:, jj, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
                                                                  site_list=sites, probability=probability, weighted=weighted,
-                                                                 threshold_vals=threshold_vals)
+                                                                 thresholds="thresholds")
 
     geojson = {
         "type": "FeatureCollection",
