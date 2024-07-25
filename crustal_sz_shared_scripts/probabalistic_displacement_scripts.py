@@ -807,8 +807,9 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
     weighted_h5.create_dataset("threshold_vals", data=thresholds)
 
-    sigma_lims = [2.27, 15.865, 84.135, 97.725]
-    weighted_h5.create_dataset('sigma_lims', data=np.array(sigma_lims.sort()))
+    sigma_lims = [2.275, 15.865, 84.135, 97.725]
+    sigma_lims.sort()
+    weighted_h5.create_dataset('sigma_lims', data=sigma_lims)
 
     exceed_type_list = ["total_abs", "up", "down"]
     start = time()
@@ -855,7 +856,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
             site_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = pair_id_list
 
             # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
-            percentiles = percentile(site_probabilities_df, sigma_lims.sort(), axis=1, weights=weighted_h5['branch_weights'][:])
+            percentiles = percentile(site_probabilities_df, sigma_lims, axis=1, weights=weighted_h5['branch_weights'][:])
             site_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles)
 
         elapsed = time_elasped(time(), start, decimal=False)
@@ -1115,7 +1116,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
         if sigma == 2:
             sigma_ix = [ix for ix, sig in enumerate(sigma_lims) if sig in [2.275, 97.725]]
         elif sigma == 1:
-            sigma_ix = [ix for ix, sigma in enumerate(sigma_lims) if sigma in [15.865, 84.135]]
+            sigma_ix = [ix for ix, sig in enumerate(sigma_lims) if sig in [15.865, 84.135]]
         else:
             print("Can't find requested sigma values in weighted_mean_PPE. Defaulting to max and min")
             sigma_ix = [0, -1]
@@ -1927,10 +1928,10 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
         threshold_key = 'thresholds'
 
-    PPEh5 = h5.File(h5_file)
+    PPEh5 = h5.File(h5_file, 'r')
 
     sites = [*PPEh5.keys()]
-    metadata_keys = ['branch_weights', 'thresholds', 'threshold_vals']
+    metadata_keys = ['branch_weights', 'branch_ids', 'thresholds', 'threshold_vals', 'sigma_lims']
     for meta in metadata_keys:
         if meta in sites:
             sites.remove(meta)
