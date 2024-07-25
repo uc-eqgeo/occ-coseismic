@@ -61,9 +61,6 @@ unique_id_keyphrase_list = ["N165", "N279"]         # sz
 if calculate_fault_model_PPE:
     calculate_weighted_mean_PPE = True  # If recalculating PPEs, you need to recalculate the weighted mean PPEs
 
-if paired_crustal_sz and calculate_fault_model_PPE:
-    calculate_fault_model_PPE = True
-
 if testing:
     n_samples = 1e4   # Number of scenarios to run
     job_time = 1    # Amount of time to allocate per site in the cumu_PPE task array
@@ -80,6 +77,9 @@ if paired_crustal_sz and nesi_step == 'prep':
 ## Solving processing conflicts
 if calculate_fault_model_PPE:
     calculate_weighted_mean_PPE = True  # If recalculating PPEs, you need to recalculate the weighted mean PPEs
+
+if paired_crustal_sz and calculate_weighted_mean_PPE:
+    calculate_fault_model_PPE = True
 
 if nesi and calculate_weighted_mean_PPE and paired_crustal_sz:
     mem = 10
