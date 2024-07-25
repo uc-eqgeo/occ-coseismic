@@ -807,9 +807,13 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
     weighted_h5.create_dataset("threshold_vals", data=thresholds)
 
-    exceed_type_list = ["total_abs", "up", "down"]
+    sigma_lims = [2.27, 15.865, 84.135, 97.725]
+    weighted_h5.create_dataset('sigma_lims', data=np.array(sigma_lims.sort()))
 
-    for site in site_names:
+    exceed_type_list = ["total_abs", "up", "down"]
+    start = time()
+    printProgressBar(0, len(site_names), prefix=f'\tProcessing Site {site_names[0]}', suffix='Complete 00:00:00 (00:00s/site)', length=50)
+    for ix, site in enumerate(site_names):
         site_group = weighted_h5.create_group(site)
         site_group.create_dataset("site_coords", data=all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["site_coords"])
         site_df_abs = {}
@@ -850,14 +854,12 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
             site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy())
             site_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = pair_id_list
 
-            # Calculate errors based on 1 and 2 sigma percentiles of all of the branches for each threshold
-            sigma_lims = [2.27, 15.865, 84.135, 97.725]
-            #percentiles = np.percentile(site_probabilities_df, sigma_lims, axis=1)
-            #weighted_mean_site_probs_dictionary[site][f"{exceed_type}_percentile_error"] = percentiles
-
             # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
-            percentiles = percentile(site_probabilities_df, sigma_lims, axis=1, weights=weighted_h5['branch_weights'][:])
+            percentiles = percentile(site_probabilities_df, sigma_lims.sort(), axis=1, weights=weighted_h5['branch_weights'][:])
             site_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles)
+
+        elapsed = time_elasped(time(), start, decimal=False)
+        printProgressBar(ix + 1, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
 
     weighted_h5.close()
     
@@ -1087,7 +1089,7 @@ def plot_many_hazard_curves(file_suffix_list, slip_taper, gf_name, fault_type, m
 
 
 def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list,
-                                  model_version_title, out_directory, file_type_list, slip_taper, plot_order):
+                                  model_version_title, out_directory, file_type_list, slip_taper, plot_order, sigma=2):
     """
     Plots the weighted mean hazard curve for each site, for each exceedance type (total_abs, up, down)
     :param weighted_mean_PPE_dictionary: dictionary containing the weighted mean exceedance probabilities for each site.
@@ -1107,6 +1109,17 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
     threshold_vals = threshold_vals[1:]
     weight_order = np.argsort(weights)
     weight_colouring = True
+
+    if 'sigma_lims' in weighted_mean_PPE_dictionary.keys():
+        sigma_lims = weighted_mean_PPE_dictionary['sigma_lims'][:]
+        if sigma == 2:
+            sigma_ix = [ix for ix, sig in enumerate(sigma_lims) if sig in [2.275, 97.725]]
+        elif sigma == 1:
+            sigma_ix = [ix for ix, sigma in enumerate(sigma_lims) if sigma in [15.865, 84.135]]
+        else:
+            print("Can't find requested sigma values in weighted_mean_PPE. Defaulting to max and min")
+            sigma_ix = [0, -1]
+
     if weight_colouring:
         colouring = "_c"
         c_weight = weights / max(weights)
@@ -1151,8 +1164,8 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 #ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
                 #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
                 # Shade based on weighted 2 sigma percentiles
-                ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][0,1:],
-                                weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][-1,1:], color='0.8')
+                ax.fill_between(threshold_vals, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][sigma_ix[0], 1:],
+                                weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][sigma_ix[1], 1:], color='0.8')
 
             # plot all the branches as light grey lines
             # for each branch, plot the exceedance probabilities for each site
