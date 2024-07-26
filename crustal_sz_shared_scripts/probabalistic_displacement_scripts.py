@@ -22,7 +22,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
-from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE, prep_combine_branch_list, prep_SLURM_combine_submission
+from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE, \
+                         prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
 numba_flag = True
 try:
     from numba import njit
@@ -413,6 +414,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         print(f"Total Time: {time() - commence:.5f} s")
 
     if array_process:
+        os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}", exist_ok=True)
         try:
             with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5", "w") as site_PPEh5:
                 dict_to_hdf5(site_PPEh5, site_PPE_dict)
@@ -797,39 +799,120 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
             pair_weight = pair_weight * all_sz_branches_site_disp_dict[sz_unique_id]["branch_weight"]
         pair_weight_list.append(pair_weight)
 
-    # Create weighted h5 file with associated metadata
-    weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
-    if os.path.exists(weighted_h5_file):
-        os.remove(weighted_h5_file)
-    weighted_h5 = h5.File(weighted_h5_file, "w")
-    weighted_h5.create_dataset('branch_weights', data=pair_weight_list)
-    weighted_h5.create_dataset('branch_ids', data=pair_id_list)
 
+    # Create variables
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
-    weighted_h5.create_dataset("thresholds", data=thresholds)
-
     sigma_lims = [2.275, 15.865, 84.135, 97.725]
     sigma_lims.sort()
-    weighted_h5.create_dataset('sigma_lims', data=sigma_lims)
-
     exceed_type_list = ["total_abs", "up", "down"]
-    start = time()
-    printProgressBar(0, len(site_names), prefix=f'\tProcessing Site {site_names[0]}', suffix='Complete 00:00:00 (00:00s/site)', length=50)
-    for ix, site in enumerate(site_names):
-        site_group = weighted_h5.create_group(site)
-        site_group.create_dataset("site_coords", data=all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["site_coords"])
+
+    # Check if previous h5 exists. If it does, preserve it until new weighted mean file is complete
+    weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
+    preserve_previous_h5 = False
+    if os.path.exists(weighted_h5_file):
+        weighted_h5_file = weighted_h5_file.replace('.h5', '_processing.h5')
+        preserve_previous_h5 = True
+        if os.path.exists(weighted_h5_file):
+            os.remove(weighted_h5_file)
+
+    # Create weighted h5 file with associated metadata
+    weighted_h5 = h5.File(weighted_h5_file, "w")
+    
+    weighted_h5.create_dataset('branch_weights', data=pair_weight_list)
+    weighted_h5.create_dataset('branch_ids', data=pair_id_list)
+    weighted_h5.create_dataset("thresholds", data=thresholds)
+    weighted_h5.create_dataset('sigma_lims', data=sigma_lims)
+    
+    if not nesi:
+        start = time()
+        printProgressBar(0, len(site_names), prefix=f'\tProcessing Site {site_names[0]}', suffix='Complete 00:00:00 (00:00s/site)', length=50)
+        for ix, site in enumerate(site_names):
+            site_group = weighted_h5.create_group(site)
+            site_group.create_dataset("site_coords", data=all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["site_coords"])
+            create_site_weighted_mean(weighted_h5, site, n_samples, crustal_model_version_results_directory, sz_model_version_results_directory_list, gf_name, thresholds,
+                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list)
+            elapsed = time_elasped(time(), start, decimal=False)
+            printProgressBar(ix + 1, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
+        weighted_h5.close()
+    
+    else:
+        if nesi_step == 'prep':
+            weighted_h5.close()
+            os.makedirs(f"../{out_directory}/weighted_sites", exist_ok=True)
+            for ix, site in enumerate(site_names):
+                print(f'Preparing site {site} for NESI task array...', end ='\r')
+                site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
+                if os.path.exists(site_h5_file):
+                    os.remove(site_h5_file)
+                site_meta_dict = {'site_coords': all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["site_coords"],
+                                  'n_samples': n_samples,
+                                  'crustal_model_version_results_directory': crustal_model_version_results_directory,
+                                  'sz_model_version_results_directory_list': sz_model_version_results_directory_list,
+                                  'gf_name': gf_name,
+                                  'thresholds': thresholds,
+                                  'exceed_type_list': exceed_type_list,
+                                  'pair_id_list': pair_id_list,
+                                  'sigma_lims': sigma_lims,
+                                  'branch_weights': pair_weight_list}
+                with h5.File(site_h5_file, 'w') as site_h5:
+                    dict_to_hdf5(site_h5, site_meta_dict)
+            
+            site_file = f"../{out_directory}/weighted_sites/site_list.txt"
+            with open(site_file, "w") as f:
+                for site in site_names:
+                    f.write(f"../{out_directory}/weighted_sites/{site}.h5\n")
+    
+            time_per_site = 60
+            n_sites = len(site_names)
+            tasks_per_array = np.ceil(n_sites / n_array_tasks)
+            if tasks_per_array < min_tasks_per_array:
+                tasks_per_array = min_tasks_per_array
+            n_array_tasks = int(np.ceil(n_sites / tasks_per_array))
+            array_time = 60 + time_per_site * tasks_per_array
+            hours, rem = divmod(array_time, 3600)
+            mins = np.ceil(rem / 60)
+
+            slurm_file = prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_array_tasks, site_file,
+                                         hours=int(hours), mins=int(mins), mem=mem, cpus=cpus, account=account, job_time=time_per_site)
+
+            raise Exception(f"Now run\n\tsbatch {slurm_file}")
+        
+        elif nesi_step == 'combine':
+            start = time()
+            printProgressBar(0, len(site_names), prefix=f'\tAdding Site {site_names[0]}', suffix='Complete 00:00:00 (00:00s/site)', length=50)
+            for ix, site in enumerate(site_names):
+                site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
+                site_group = weighted_h5.create_group(site)
+                with h5.File(site_h5_file, 'r') as site_h5:
+                    site_group.create_dataset("site_coords", data=site_h5['site_coords'])
+                    for exceed_type in exceed_type_list:
+                        for dataset in ['weighted_exceedance_probs_*-*', '*-*_max_vals', '*-*_min_vals', 'branch_exceedance_probs_*-*']:
+                            site_group.create_dataset(dataset.replace('*-*', exceed_type), data=site_h5[dataset.replace('*-*', exceed_type)], compression=None)
+                elapsed = time_elasped(time(), start, decimal=False)
+                printProgressBar(ix + 1, len(site_names), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
+            weighted_h5.close()
+            shutil.rmtree(f"../{out_directory}/weighted_sites")
+
+
+    if preserve_previous_h5:
+        os.remove(weighted_h5_file.replace('_processing.h5', '.h5'))
+        os.rename(weighted_h5_file, weighted_h5_file.replace('_processing.h5', '.h5'))
+    
+    return
+
+def create_site_weighted_mean(site_group, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None):    
         site_df_abs = {}
         site_df_up = {}
         site_df_down = {}
-        for pair_id in weighted_h5['branch_ids'].asstr():
+        for pair_id in pair_id_list:
             cumulative_disp_scenarios = np.zeros(n_samples)
             for branch in pair_id.split('_-_'):
                 fault_type = branch.split('_')[-2]
                 branch_tag = branch.split('_')[-1]
                 if fault_type == 'c':
-                    fault_dir = crustal_model_version_results_directory
+                    fault_dir = crustal_directory
                 else:
-                    fault_dir = next((sz_dir for sz_dir in sz_model_version_results_directory_list if f'/{fault_type}_' in sz_dir))
+                    fault_dir = next((sz_dir for sz_dir in sz_directory_list if f'/{fault_type}_' in sz_dir))
                 NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
                 with h5.File(NSHM_file, 'r') as NSHM_h5:
                     NSHM_displacements = NSHM_h5[site]['scenario_displacements'][:]
@@ -846,27 +929,19 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
             # collapse each row into a weighted mean value
             branch_weighted_mean_probs = site_probabilities_df.apply(
-                lambda x: np.average(x, weights=weighted_h5['branch_weights'][:]), axis=1)
+                lambda x: np.average(x, weights=branch_weights), axis=1)
             site_max_probs = site_probabilities_df.max(axis=1)
             site_min_probs = site_probabilities_df.min(axis=1)
 
-            site_group.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs)
-            site_group.create_dataset(f"{exceed_type}_max_vals", data=site_max_probs)
-            site_group.create_dataset(f"{exceed_type}_min_vals", data=site_min_probs)
-            site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy())
+            site_group.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs, compression=compression)
+            site_group.create_dataset(f"{exceed_type}_max_vals", data=site_max_probs, compression=compression)
+            site_group.create_dataset(f"{exceed_type}_min_vals", data=site_min_probs, compression=compression)
+            site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy(), compression='gzip')
             site_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = pair_id_list
 
             # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
-            percentiles = percentile(site_probabilities_df, sigma_lims, axis=1, weights=weighted_h5['branch_weights'][:])
-            site_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles)
-
-        elapsed = time_elasped(time(), start, decimal=False)
-        printProgressBar(ix + 1, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
-
-    weighted_h5.close()
-    
-    return
-
+            percentiles = percentile(site_probabilities_df, sigma_lims, axis=1, weights=branch_weights)
+            site_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles, compression=compression)
 
 def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type, site_list, thresholds=None, weighted=False):
     """returns displacements at the X% probabilities of exceedance for each site

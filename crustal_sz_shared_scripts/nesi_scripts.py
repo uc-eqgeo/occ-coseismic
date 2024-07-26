@@ -220,6 +220,43 @@ def prep_SLURM_combine_submission(combine_dict_file, branch_combine_list, model_
         f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {tasks_per_array} --combine_dict_file {combine_dict_file} --branch_combine_list {branch_combine_list} --nesi_job combine_sites\n\n".encode())
 
 
+def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks, site_file,
+                                         hours: int = 0, mins: int = 3, mem: int = 45, cpus: int = 1, account: str = 'uc03610',
+                                         job_time = 0):
+    """
+    Prep the SLURM submission script to create a task array to calculate the weighted mean PPE for each site
+    """
+
+    slurm_file = f"../{out_directory}/weighted_sites_slurm_task_array.sl"
+
+    if os.path.exists(slurm_file):
+                os.remove(slurm_file)
+    
+
+    with open(slurm_file, "wb") as f:
+        f.write("#!/bin/bash -e\n".encode())
+        f.write(f"#SBATCH --job-name=occ-{os.path.basename(out_directory)}\n".encode())
+        f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS), {job_time} secs/job\n".encode())
+        f.write(f"#SBATCH --mem={mem}GB\n".encode())
+        f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
+        f.write(f"#SBATCH --account={account}\n".encode())
+        if mem > 25:
+            f.write("#SBATCH --partition=large\n".encode())
+        f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
+
+        f.write(f"#SBATCH -o logs/{os.path.basename(out_directory)}_%j_task%a.out\n".encode())
+        f.write(f"#SBATCH -e logs/{os.path.basename(out_directory)}_%j_task%a.err\n\n".encode())
+
+        f.write("# Activate the conda environment\n".encode())
+        f.write("mkdir -p logs\n".encode())
+        f.write("module purge  2>/dev/null\n".encode())
+        f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
+
+        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --nesi_job site_weights \n\n".encode())
+    print('')
+
+    return slurm_file
+
 def nesi_get_weighted_mean_PPE_dict(out_directory='', ppe_name='', outfile_extension='', slip_taper=False, sbatch=False,
                                     hours: int = 1, mins: int = 0, mem: int = 50, account='uc03610', cpus=1):
 
@@ -254,7 +291,7 @@ def nesi_get_weighted_mean_PPE_dict(out_directory='', ppe_name='', outfile_exten
 
 if __name__ == "__main__":
     # Import here to prevent circular imports
-    from probabalistic_displacement_scripts import get_cumu_PPE, get_weighted_mean_PPE_dict, get_all_branches_site_disp_dict
+    from probabalistic_displacement_scripts import get_cumu_PPE, get_weighted_mean_PPE_dict, get_all_branches_site_disp_dict, create_site_weighted_mean
 
     parser = argparse.ArgumentParser(description="Script to calculate cumulative exceedance probabilities for each site")
     parser.add_argument("--task_number", type=int, default=0, help="Task number for the SLURM array")
@@ -447,5 +484,48 @@ if __name__ == "__main__":
         nesiprint('Calculating weighted mean PPE dictionary...')
         get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=args.outDir, outfile_extension=args.outfile_extension, slip_taper=args.slip_taper)
 
+    
+    elif args.nesi_job == 'site_weights':
+        find_file_count = 0
+        attempt_limit = 10
+        while find_file_count < attempt_limit:
+            try:
+                with open(args.site_file, "r") as f:
+                    all_sites = f.read().splitlines()
+                find_file_count = attempt_limit + 1
+            except FileNotFoundError:
+                sleep(1 + np.random.rand())
+                find_file_count += 1
+                nesiprint(f"Attempt {find_file_count} to find {args.site_file}")
+        
+        if find_file_count == attempt_limit:
+            raise FileNotFoundError(f"File {args.site_file} not found")
+
+        if args.tasks_per_array == 0:
+            task_sites = all_sites
+        else:
+            task_sites = all_sites[args.task_number * args.tasks_per_array:(args.task_number + 1) * args.tasks_per_array]
+        if len(task_sites) == 0:
+            raise Exception(f"Task {args.task_number} has no sites to process")
+    
+        nesiprint(f"Finding weighted means for {len(task_sites)} sites...")
+        for site in task_sites:
+            site_name = os.path.basename(site).replace('.h5', '')
+            with h5.File(site, "a") as site_h5:
+                create_site_weighted_mean(site_h5, site_name, site_h5['n_samples'][()], 
+                                          site_h5['crustal_model_version_results_directory'][()].decode('utf-8'), 
+                                          [val.decode('utf-8') for val in site_h5['sz_model_version_results_directory_list'][()]], 
+                                          site_h5['gf_name'][()].decode('utf-8'), 
+                                          site_h5['thresholds'][:],
+                                          [val.decode('utf-8') for val in site_h5['exceed_type_list'][()]],
+                                          [val.decode('utf-8') for val in site_h5['pair_id_list'][()]], 
+                                          site_h5['sigma_lims'], 
+                                          site_h5['branch_weights'],
+                                          compression='gzip')
+            nesiprint(f"Site {site_name} complete")
+
+    
+    
+    
     else:
         raise Exception(f"Job {args.nesi_job} not recognised")
