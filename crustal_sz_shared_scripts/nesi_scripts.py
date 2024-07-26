@@ -63,7 +63,7 @@ def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, 
     # Append site information for this branch to the main list
     with open(site_file, "a") as f:
         for site in sites_of_interest:
-            f.write(f"{site.replace(' ','-/-')} {branchdir} {S}\n")
+            f.write(f"{str(site).replace(' ','-/-')} {branchdir} {S}\n")
 
 
 def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks,
@@ -236,7 +236,7 @@ def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks
     with open(slurm_file, "wb") as f:
         f.write("#!/bin/bash -e\n".encode())
         f.write(f"#SBATCH --job-name=occ-{os.path.basename(out_directory)}\n".encode())
-        f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS), {job_time} secs/job\n".encode())
+        f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS), {job_time} secs/site\n".encode())
         f.write(f"#SBATCH --mem={mem}GB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
@@ -518,7 +518,7 @@ if __name__ == "__main__":
                                           site_h5['gf_name'][()].decode('utf-8'), 
                                           site_h5['thresholds'][:],
                                           [val.decode('utf-8') for val in site_h5['exceed_type_list'][()]],
-                                          [val.decode('utf-8') for val in site_h5['pair_id_list'][()]], 
+                                          [val.decode('utf-8') for val in site_h5['branch_id_list'][()]], 
                                           site_h5['sigma_lims'], 
                                           site_h5['branch_weights'],
                                           compression='gzip')
