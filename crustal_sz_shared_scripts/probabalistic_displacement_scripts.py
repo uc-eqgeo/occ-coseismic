@@ -415,17 +415,11 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
     if array_process:
         os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}", exist_ok=True)
-        try:
-            with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5", "w") as site_PPEh5:
-                dict_to_hdf5(site_PPEh5, site_PPE_dict)
-        except:
-            print(f"Error writing ../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5")
-            if os.path.exists(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5"):
-                print(f"Deleting file, then trying again..")
-                os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5")
-            with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5", "w") as site_PPEh5:
-                dict_to_hdf5(site_PPEh5, site_PPE_dict)
-            print('If you see this, then deleting and remaking worked')
+        site_file = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5"
+        if os.path.exists(site_file):
+            os.remove(site_file)
+        with h5.File(site_file, "w") as site_PPEh5:
+            dict_to_hdf5(site_PPEh5, site_PPE_dict, compression='gzip')
     else:
         if extension1 != "" and scaling == "":
             with h5.File(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.h5", "w") as site_PPEh5:
@@ -437,7 +431,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             return site_PPE_dict
 
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension,
-                              nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
+                              nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
                               time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=3, load_random=False,
                               remake_PPE=True, sbatch=False):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
@@ -498,7 +492,6 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                     pkl.dump(branch_site_disp_dict, f)
 
         branch_cumu_PPE_dict_file = f"../{model_version_results_directory}/{extension1}/{branch_id}_cumu_PPE.h5"
-        #branch_cumu_PPE_dict_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.pkl"
         fault_model_allbranch_PPE_dict[branch_id] = branch_cumu_PPE_dict_file
         ### get exceedance probability dictionary
         if nesi:
@@ -531,17 +524,14 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                     print(f"\tFound Pre-Prepared Branch PPE:  {fault_model_allbranch_PPE_dict[branch_id]}. Delete manually to remake...")
                 else:
                     if sbatch:
-                        start = time()
                         print(f"\tPreparing NESI combination for {fault_model_allbranch_PPE_dict[branch_id]}....")
                         prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
                                             taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1])
-                        print(f"\tPrep Time: {time() - start:.2f} seconds")
                         continue
                     else:
                         print(f"\tCombining site dictionaries into {fault_model_allbranch_PPE_dict[branch_id]}....")
                         compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
                                             taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
-                    #shutil.rmtree(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}")
 
         else:
             if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_PPE:
@@ -610,7 +600,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
         return fault_model_allbranch_PPE_dict
 
-def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper, thresh_lims=[0, 3], thresh_step=0.01):
+def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper, thresh_lims=[0, 3], thresh_step=0.01, nesi=False, nesi_step='prep'):
     """takes all the branch PPEs and combines them based on the branch weights into a weighted mean PPE dictionary
 
     :param fault_model_PPE_dict: The dictionary has PPEs for each branch (or branch pairing).
@@ -680,7 +670,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             site_group.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs)
             site_group.create_dataset(f"{exceed_type}_max_vals", data=site_max_probs)
             site_group.create_dataset(f"{exceed_type}_min_vals", data=site_min_probs)
-            site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy())
+            site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy(), compression='gzip', compression_opts=6)
             site_group['branch_exceedance_probs_total_abs'].attrs['branch_ids'] = unique_id_list
 
             # Calculate errors based on 1 and 2 sigma percentiles of all of the branches for each threshold
@@ -727,7 +717,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
 def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight_dict_list,
                                     crustal_model_version_results_directory, sz_model_version_results_directory_list,
                                     paired_PPE_pickle_name, slip_taper, n_samples, out_directory, outfile_extension, sz_type_list,
-                                    nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= 'uc03610',
+                                    nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
                                     n_array_tasks=100, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=3, remake_PPE=True, load_random=False,
                                     sbatch=True, thresh_lims=[0, 3], thresh_step=0.01):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
@@ -936,7 +926,7 @@ def create_site_weighted_mean(site_group, site, n_samples, crustal_directory, sz
             site_group.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs, compression=compression)
             site_group.create_dataset(f"{exceed_type}_max_vals", data=site_max_probs, compression=compression)
             site_group.create_dataset(f"{exceed_type}_min_vals", data=site_min_probs, compression=compression)
-            site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy(), compression='gzip')
+            site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy(), compression='gzip', compression_opts=6)
             site_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = pair_id_list
 
             # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)

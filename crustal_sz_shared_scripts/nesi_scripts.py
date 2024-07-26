@@ -67,7 +67,7 @@ def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, 
 
 
 def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks,
-                          hours: int = 0, mins: int = 3, mem: int = 45, cpus: int = 1, account: str = 'uc03610',
+                          hours: int = 0, mins: int = 3, mem: int = 45, cpus: int = 1, account: str = '',
                           time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4, job_time = 0, NSHM_branch=True):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
@@ -123,7 +123,7 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
     For the sake of saving space, the individual site dictionaries are deleted after being combined into the branch dictionary.
     """
 
-    sites = branch_site_disp_dict.keys()
+    sites = [site for site in branch_site_disp_dict.keys()]
     branch_h5 = h5.File(branch_h5file, "w")
     if 'grid_meta' in sites:
         sites.remove('grid_meta')
@@ -192,7 +192,7 @@ def prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_d
 
 def prep_SLURM_combine_submission(combine_dict_file, branch_combine_list, model_version_results_directory, 
                                   tasks_per_array, n_tasks, hours: int = 0, mins: int = 3, mem: int = 10,
-                                  cpus: int = 1, account: str = 'uc03610'):
+                                  cpus: int = 1, account: str = ''):
 
 
     slurm_file = f"../{model_version_results_directory}/combine_sites.sl"
@@ -258,7 +258,7 @@ def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks
     return slurm_file
 
 def nesi_get_weighted_mean_PPE_dict(out_directory='', ppe_name='', outfile_extension='', slip_taper=False, sbatch=False,
-                                    hours: int = 1, mins: int = 0, mem: int = 50, account='uc03610', cpus=1):
+                                    hours: int = 1, mins: int = 0, mem: int = 50, account='', cpus=1):
 
     if outfile_extension != "":
         optional = outfile_extension

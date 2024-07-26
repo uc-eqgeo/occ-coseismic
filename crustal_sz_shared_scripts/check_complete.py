@@ -1,5 +1,9 @@
 import os
 
+"""
+Script to check the status of the .h5 files during the initial processing of site sumu .h5 files
+"""
+
 directory = 'sz_wellington_1km'
 directory = 'crustal_Model_CFM_wellington_1km'
 
@@ -29,4 +33,4 @@ with open(f'{site_dir}/missing_{site_file}', 'w') as f:
     for ix, site, branch_dir, scaling in missing_h5:
         f.write(f'{site} {branch_dir} {scaling} ../{branch_dir}/site_cumu_exceed{scaling}/{site}.h5\n')
 
-print(f'Missing {len(missing_h5)}/{len(all_sites)} .h5 files: {site_dir}/missing_h5.txt')
+print(f'Missing {len(missing_h5)}/{len(all_sites)} .h5 files: {site_dir}/missing_site_name_list.txt')
