@@ -6,6 +6,7 @@ except:
 finally:
     import pandas as pd
     import os
+    import h5py as h5
     from functools import reduce
     import numpy as np
     from numpy.lib.function_base import _check_interpolation_as_method, _quantile_is_valid, _QuantileMethods, \
@@ -29,6 +30,16 @@ def dict_to_hdf5(hdf5_group, dictionary, compression=None):
                 hdf5_group.create_dataset(key, data=value, compression=compression)
             else:
                 hdf5_group.create_dataset(key, data=value)
+
+
+def hdf5_to_dict(group):
+    result = {}
+    for key, item in group.items():
+        if isinstance(item, h5.Dataset):
+            result[key] = item[()]
+        elif isinstance(item, h5.Group):
+            result[key] = hdf5_to_dict(item)
+    return result
 
 
 def get_probability_color(exceed_type):
