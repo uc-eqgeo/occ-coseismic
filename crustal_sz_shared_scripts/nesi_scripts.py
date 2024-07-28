@@ -523,6 +523,7 @@ if __name__ == "__main__":
                                           site_h5['branch_weights'],
                                           compression='gzip')
             nesiprint(f"Site {site_name} complete")
+        print('All sites complete!')
 
     
     

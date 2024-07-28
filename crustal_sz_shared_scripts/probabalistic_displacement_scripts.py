@@ -930,6 +930,9 @@ def create_site_weighted_mean(site_group, site, n_samples, crustal_directory, sz
 
         site_df_dict = {"total_abs": site_df_abs, "up": site_df_up, "down": site_df_down}
         for exceed_type in exceed_type_list:
+            for dataset in ['weighted_exceedance_probs_*-*', '*-*_max_vals', '*-*_min_vals', 'branch_exceedance_probs_*-*']:
+                if dataset.replace('*-*', exceed_type) in site_group.keys():
+                    del site_group[dataset.replace('*-*', exceed_type)]
             site_probabilities_df = pd.DataFrame(site_df_dict[exceed_type])
 
             # collapse each row into a weighted mean value
