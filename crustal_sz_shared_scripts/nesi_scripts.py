@@ -158,8 +158,7 @@ def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, br
 
     branch_h5.close()
     if all_good:
-        print('Not deleting sites')
-        #shutil.rmtree(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
+        shutil.rmtree(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
     else:
         print(f"Error with {len(bad_sites)} sites: ../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}")
         print(f"Deleting {branch_h5file}")
