@@ -13,22 +13,22 @@ import h5py as h5
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_Model_CFM_2km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_national_2km"                    # must match suffix in the subduction directory with gfs
+crustal_model_version = "_Model_CFM_wellington_1km"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_wellington_1km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = True   # Prepares code for NESI runs
+nesi = False   # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
 
 
 # Processing Flags (True/False)
-paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+paired_crustal_sz = True      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
 remake_PPE = False              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
-calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
+calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
 save_arrays = True            # Do you want to save the displacement and probability arrays?
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
-make_hazcurves = True      # Do you want to make hazard curves?
+make_hazcurves = False      # Do you want to make hazard curves?
 plot_order_csv = "../wellington_10km_grid_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
 
@@ -183,25 +183,26 @@ for sheet in sheet_list:
                                                             sheet_name=sheet))
 
 # designate which branch weight dictionary to use based on the fault type
-fault_model_branch_weight_dict = {}
-for ii in range(len(fault_type)):
-    fault_model_branch_weight_dict = fault_model_branch_weight_dict | branch_weight_dict_list[ii]
+if not paired_crustal_sz:
+    fault_model_branch_weight_dict = {}
+    for ii in range(len(fault_type)):
+        fault_model_branch_weight_dict = fault_model_branch_weight_dict | branch_weight_dict_list[ii]
 
-NSHM_directory_list, file_suffix_list, n_branches = get_NSHM_directories(fault_type, crustal_model_version, sz_model_version, deformation_model='geologic and geodetic', time_independent=True,
-                         time_dependent=True, single_branch=False)
+    NSHM_directory_list, file_suffix_list, n_branches = get_NSHM_directories(fault_type, crustal_model_version, sz_model_version, deformation_model='geologic and geodetic', time_independent=True,
+                            time_dependent=True, single_branch=False)
 
-extension1_list = [gf_name + suffix for suffix in file_suffix_list]
-get_rupture_dict = False
+    extension1_list = [gf_name + suffix for suffix in file_suffix_list]
+    get_rupture_dict = False
 
-for ix, extension1 in enumerate(extension1_list):
-    ftype = [(jj, ftype) for jj, ftype in enumerate(fault_type) if '_' + ftype.replace('rustal', '') + '_' in extension1][0]
-    if not os.path.exists(f"../{model_version_results_directory[ftype[0]]}/{extension1}/all_rupture_disps_{extension1}{taper_extension}.pkl") or get_rupture_dict:
-        print(f"\nbranch {ix + 1} of {len(extension1_list)}")
-        get_rupture_disp_dict(NSHM_directory=NSHM_directory_list[ix], extension1=extension1_list[ix],
-                                slip_taper=slip_taper, fault_type=ftype[1], gf_name=gf_name,
-                                results_version_directory=model_version_results_directory[ftype[0]],
-                                crustal_directory=crustal_directory, sz_directory=sz_directory,
-                                model_version=model_version_list[ftype[0]], search_radius=9e5)
+    for ix, extension1 in enumerate(extension1_list):
+        ftype = [(jj, ftype) for jj, ftype in enumerate(fault_type) if '_' + ftype.replace('rustal', '') + '_' in extension1][0]
+        if not os.path.exists(f"../{model_version_results_directory[ftype[0]]}/{extension1}/all_rupture_disps_{extension1}{taper_extension}.pkl") or get_rupture_dict:
+            print(f"\nbranch {ix + 1} of {len(extension1_list)}")
+            get_rupture_disp_dict(NSHM_directory=NSHM_directory_list[ix], extension1=extension1_list[ix],
+                                    slip_taper=slip_taper, fault_type=ftype[1], gf_name=gf_name,
+                                    results_version_directory=model_version_results_directory[ftype[0]],
+                                    crustal_directory=crustal_directory, sz_directory=sz_directory,
+                                    model_version=model_version_list[ftype[0]], search_radius=9e5)
 
 ### make a dictionary of all the branch probabilities, oranized by site within each branch
 # option to skip this step if you've already run it once and saved to a pickle file
@@ -278,8 +279,8 @@ weighted_mean_PPE_dict = h5.File(weighted_mean_PPE_filepath, 'r')
 if save_arrays:
     print('Saving data arrays...')
     ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                        thresh_lims=[0, 3], thresh_step=0.01, output_thresh=True, probs_lims = [0.01, 0.20], probs_step=0.01,
-                        output_probs=True, weighted=True)
+                        thresh_lims=[0, 3], thresh_step=0.01, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.01,
+                        output_probs=False, weighted=True)
 
 if paired_crustal_sz:
     model_version_title = f"paired crustal{crustal_model_version} and "
