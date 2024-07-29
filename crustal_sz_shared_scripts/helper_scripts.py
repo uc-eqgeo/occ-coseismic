@@ -18,7 +18,7 @@ finally:
     import matplotlib.pyplot as plt
 
 
-def dict_to_hdf5(hdf5_group, dictionary, compression=None):
+def dict_to_hdf5(hdf5_group, dictionary, compression=None, compression_opts=None):
     for key, value in dictionary.items():
         if isinstance(value, dict):
             # Recursively create sub-groups
@@ -26,8 +26,8 @@ def dict_to_hdf5(hdf5_group, dictionary, compression=None):
             dict_to_hdf5(sub_group, value)
         else:
             # Create datasets for other data types
-            if compression:
-                hdf5_group.create_dataset(key, data=value, compression=compression)
+            if compression and not np.isscalar(value):
+                hdf5_group.create_dataset(key, data=value, compression=compression, compression_opts=compression_opts)
             else:
                 hdf5_group.create_dataset(key, data=value)
 

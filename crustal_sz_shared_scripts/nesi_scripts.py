@@ -34,7 +34,7 @@ def nesiprint(string):
     print(string)
 
 
-def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, extension1, S=""):
+def prep_nesi_site_list(model_version_results_directory, sites_of_interest, extension1, S=""):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
 
@@ -48,8 +48,6 @@ def prep_nesi_site_list(model_version_results_directory, branch_site_disp_dict, 
     CAVEATS/choices:
     - need to decide on number of 100-yr simulations to run (n_samples = 100000)
     """
-
-    sites_of_interest = list(branch_site_disp_dict.keys())
 
     branchdir = f"{model_version_results_directory}/{extension1}"
 
@@ -117,13 +115,12 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
         f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} --nesi_job site_PPE {NSHM}\n\n".encode())
 
 
-def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=None):
+def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=None):
     """
     Script to recompile all individual site PPE dictionaries into a single branch dictionary.
     For the sake of saving space, the individual site dictionaries are deleted after being combined into the branch dictionary.
     """
 
-    sites = [site for site in branch_site_disp_dict.keys()]
     branch_h5 = h5.File(branch_h5file, "w")
     if 'grid_meta' in sites:
         sites.remove('grid_meta')
@@ -145,7 +142,10 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
                 branch_h5.create_group(site_of_interest)
                 if all_good:
                     for key in site_h5[site_of_interest].keys():
-                        branch_h5[site_of_interest].create_dataset(key, data=site_h5[site_of_interest][key][()])
+                        if site_h5[site_of_interest][key][()].shape == ():   # Check for scalar datasets that cannot be compressed
+                            branch_h5[site_of_interest].create_dataset(key, data=site_h5[site_of_interest][key][()])
+                        else:
+                            branch_h5[site_of_interest].create_dataset(key, data=site_h5[site_of_interest][key][()], compression='gzip', compression_opts=5)
             printProgressBar(ix + 1, len(sites), prefix=f'\tAdded {ix + 1}/{len(sites)} Sites:', suffix=f'{time() - start:.2f} seconds {site_of_interest}{bad_flag}', length=50)
         except:
             bad_sites.append(site_of_interest)
@@ -158,7 +158,8 @@ def compile_site_cumu_PPE(branch_site_disp_dict, model_version_results_directory
 
     branch_h5.close()
     if all_good:
-        shutil.rmtree(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
+        print('Not deleting sites')
+        #shutil.rmtree(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
     else:
         print(f"Error with {len(bad_sites)} sites: ../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}")
         print(f"Deleting {branch_h5file}")
@@ -256,6 +257,7 @@ def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks
     print('')
 
     return slurm_file
+
 
 def nesi_get_weighted_mean_PPE_dict(out_directory='', ppe_name='', outfile_extension='', slip_taper=False, sbatch=False,
                                     hours: int = 1, mins: int = 0, mem: int = 50, account='', cpus=1):
@@ -471,7 +473,8 @@ if __name__ == "__main__":
                 with open(combine_dict[branch]['branch_site_disp_dict'], "rb") as f:
                     branch_site_disp_dict = pkl.load(f)
                 nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
-                compile_site_cumu_PPE(branch_site_disp_dict, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
+                site_list = [site for site in branch_site_disp_dict.keys()]
+                compile_site_cumu_PPE(site_list, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
                                     branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'])
         print('All branches combined!')
 
@@ -525,8 +528,5 @@ if __name__ == "__main__":
             nesiprint(f"Site {site_name} complete")
         print('All sites complete!')
 
-    
-    
-    
     else:
         raise Exception(f"Job {args.nesi_job} not recognised")
