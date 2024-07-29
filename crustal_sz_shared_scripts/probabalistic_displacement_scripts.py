@@ -144,11 +144,11 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
             write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5file=branch_site_disp_dict_file)
 
         with h5.File(branch_site_disp_dict_file, "a") as branch_h5:
-            if "scaled_rates" in branch_h5['site'].keys():
-                del branch_h5['site']['scaled_rates']
             for site in branch_h5.keys():
+                if "scaled_rates" in branch_h5[site].keys():
+                    del branch_h5['site']['scaled_rates']
                 # multiply each value in the rates array by the rate scaling factor
-                branch_h5['site'].create_dataset("scaled_rates", data=branch_h5[site]["rates"][:] * rate_scaling_factor)
+                branch_h5[site].create_dataset("scaled_rates", data=branch_h5[site]["rates"][:] * rate_scaling_factor)
 
         all_branches_site_disp_dict[branch_id] = {"site_disp_dict":branch_site_disp_dict_file,
                                                 "branch_weight":branch_weight_dict[branch_id][
