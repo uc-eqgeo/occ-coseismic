@@ -46,7 +46,7 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
         CAVEATS/choices:
         - a little clunky because most of the dictionary columns are repeated across all keys.
         """
-
+    print('Making', os.path.basename(site_disp_h5file))
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
@@ -140,19 +140,23 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
         rate_scaling_factor = branch_weight_dict[branch_id]["S"]
 
         branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.h5"
-        if not os.path.exists(branch_site_disp_dict_file):
+        if os.path.exists(branch_site_disp_dict_file):
+            try:  # check in case h5 is corrupted
+                branch_h5 = h5.File(branch_site_disp_dict_file, "a")
+                branch_h5.close()
+            except:
+                write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5file=branch_site_disp_dict_file)
+        else:
             write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5file=branch_site_disp_dict_file)
 
         with h5.File(branch_site_disp_dict_file, "a") as branch_h5:
             for site in branch_h5.keys():
-                if "scaled_rates" in branch_h5[site].keys():
-                    del branch_h5['site']['scaled_rates']
-                # multiply each value in the rates array by the rate scaling factor
-                branch_h5[site].create_dataset("scaled_rates", data=branch_h5[site]["rates"][:] * rate_scaling_factor)
+                if "scaled_rates" not in branch_h5[site].keys():
+                    # multiply each value in the rates array by the rate scaling factor
+                    branch_h5[site].create_dataset("scaled_rates", data=branch_h5[site]["rates"][:] * rate_scaling_factor)
 
         all_branches_site_disp_dict[branch_id] = {"site_disp_dict":branch_site_disp_dict_file,
-                                                "branch_weight":branch_weight_dict[branch_id][
-                                                    "total_weight_RN"]}
+                                                "branch_weight":branch_weight_dict[branch_id]["total_weight_RN"]}
 
     return all_branches_site_disp_dict
 
@@ -189,7 +193,7 @@ else:
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
 
-def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict_file, site_ids, n_samples,
+def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
                  extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling='', load_random=False,
                  thresh_lims=[0, 3], thresh_step=0.01, plot_maximum_displacement=False, array_process=False,
                  crustal_model_dir="", subduction_model_dirs="", NSHM_branch=True, pair_unique_id=None):
@@ -279,8 +283,11 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         begin = time()
         lap = time()
 
-        with h5.File(branch_site_disp_dict_file, "r") as branch_h5:
-            site_dict_i = hdf5_to_dict(branch_h5[site_of_interest])
+        if isinstance(branch_site_disp_dict, str):
+            with h5.File(branch_site_disp_dict, "r") as branch_h5:
+                site_dict_i = hdf5_to_dict(branch_h5[site_of_interest])
+        else:
+            site_dict_i = branch_site_disp_dict[site_of_interest]
 
         if not NSHM_branch:
             cumulative_disp_scenarios = np.zeros(n_samples)
@@ -460,6 +467,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
     branch_weight_list = []
     fault_model_allbranch_PPE_dict = {}
+    combine_branches = 0
     for counter, branch_id in enumerate(branch_weight_dict.keys()):
         print(f"calculating {branch_id} PPE\t({counter + 1} of {len(branch_weight_dict.keys())} branches)")
 
@@ -521,6 +529,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                         print(f"\tPreparing NESI combination for {fault_model_allbranch_PPE_dict[branch_id]}....")
                         prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
                                             taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1])
+                        combine_branches += 1
                         continue
                     else:
                         print(f"\tCombining site dictionaries into {fault_model_allbranch_PPE_dict[branch_id]}....")
@@ -531,7 +540,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_PPE:
                 print(f"\tFound Pre-Prepared Branch PPE:  {fault_model_allbranch_PPE_dict[branch_id]}")
             else:
-                branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict_file=branch_site_disp_dict_file,
+                branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict_file,
                                                     site_ids=site_list, slip_taper=slip_taper,
                                                     model_version_results_directory=model_version_results_directory,
                                                     time_interval=time_interval, n_samples=n_samples, extension1="")
@@ -561,8 +570,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
 
     elif nesi and nesi_step == 'combine' and sbatch:
-        n_branches = len(branch_weight_dict.keys())
-        tasks_per_array = np.ceil(n_branches / n_array_tasks)
+        tasks_per_array = np.ceil(combine_branches / n_array_tasks)
         min_branches_per_array = 1
         if tasks_per_array < min_branches_per_array:
             tasks_per_array = min_branches_per_array
@@ -570,7 +578,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         array_time = 60 + time_per_site * n_sites * tasks_per_array
         hours, secs = divmod(array_time, 3600)
         mins = np.ceil(secs / 60)
-        n_tasks = int(np.ceil(n_branches / tasks_per_array))
+        n_tasks = int(np.ceil(combine_branches / tasks_per_array))
         print('\nCreating SLURM submission script....')
         combine_dict_file = f"../{model_version_results_directory}/combine_site_meta.pkl"
         branch_combine_list_file = f"../{model_version_results_directory}/branch_combine_list.txt"
@@ -759,6 +767,9 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     all_crustal_branches_site_disp_dict = get_all_branches_site_disp_dict(crustal_branch_weight_dict, gf_name, slip_taper,
                                                                             crustal_model_version_results_directory)
     
+    with h5.File(all_crustal_branches_site_disp_dict[list(crustal_branch_weight_dict.keys())[0]]["site_disp_dict"]) as crust_h5:
+        site_names = [site for site in crust_h5.keys()]
+
     # make a dictionary of displacements at each site from all the crustal earthquake scenarios
     all_sz_branches_site_disp_dict = {}
     crustal_sz_branch_pairs = list(crustal_branch_weight_dict.keys())
@@ -789,7 +800,6 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         pair_id_list.append(pair_unique_id)
         pair_cumu_PPE_dict_file = f"../{out_directory}/{pair_unique_id}/{pair_unique_id}_cumu_PPE.h5"
         paired_crustal_sz_PPE_dict[pair_unique_id] = pair_cumu_PPE_dict_file
-        site_names = list(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"].keys())
 
         pair_weight = all_crustal_branches_site_disp_dict[crustal_unique_id]["branch_weight"]
         
@@ -826,8 +836,9 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         printProgressBar(0, len(site_names), prefix=f'\tProcessing Site {site_names[0]}', suffix='Complete 00:00:00 (00:00s/site)', length=50)
         for ix, site in enumerate(site_names):
             site_group = weighted_h5.create_group(site)
-            site_group.create_dataset("site_coords", data=all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["site_coords"])
-            create_site_weighted_mean(weighted_h5, site, n_samples, crustal_model_version_results_directory, sz_model_version_results_directory_list, gf_name, thresholds,
+            with h5.File(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"], 'r') as branch_site_h5:
+                site_group.create_dataset("site_coords", data=branch_site_h5[site]["site_coords"])
+            create_site_weighted_mean(site_group, site, n_samples, crustal_model_version_results_directory, sz_model_version_results_directory_list, gf_name, thresholds,
                                       exceed_type_list, pair_id_list, sigma_lims, pair_weight_list)
             elapsed = time_elasped(time(), start, decimal=False)
             printProgressBar(ix + 1, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
@@ -842,16 +853,17 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
                 if os.path.exists(site_h5_file):
                     os.remove(site_h5_file)
-                site_meta_dict = {'site_coords': all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"][site]["site_coords"],
-                                  'n_samples': n_samples,
-                                  'crustal_model_version_results_directory': crustal_model_version_results_directory,
-                                  'sz_model_version_results_directory_list': sz_model_version_results_directory_list,
-                                  'gf_name': gf_name,
-                                  'thresholds': thresholds,
-                                  'exceed_type_list': exceed_type_list,
-                                  'branch_id_list': pair_id_list,
-                                  'sigma_lims': sigma_lims,
-                                  'branch_weights': pair_weight_list}
+                with h5.File(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"], 'r') as branch_site_h5:
+                    site_meta_dict = {'site_coords': branch_site_h5[site]["site_coords"][:],
+                                    'n_samples': n_samples,
+                                    'crustal_model_version_results_directory': crustal_model_version_results_directory,
+                                    'sz_model_version_results_directory_list': sz_model_version_results_directory_list,
+                                    'gf_name': gf_name,
+                                    'thresholds': thresholds,
+                                    'exceed_type_list': exceed_type_list,
+                                    'branch_id_list': pair_id_list,
+                                    'sigma_lims': sigma_lims,
+                                    'branch_weights': pair_weight_list}
                 with h5.File(site_h5_file, 'w') as site_h5:
                     dict_to_hdf5(site_h5, site_meta_dict)
             
@@ -899,7 +911,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     
     return
 
-def create_site_weighted_mean(site_group, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None):    
+def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None):    
         site_df_abs = {}
         site_df_up = {}
         site_df_down = {}
@@ -924,9 +936,9 @@ def create_site_weighted_mean(site_group, site, n_samples, crustal_directory, sz
 
         site_df_dict = {"total_abs": site_df_abs, "up": site_df_up, "down": site_df_down}
         for exceed_type in exceed_type_list:
-            for dataset in ['weighted_exceedance_probs_*-*', '*-*_max_vals', '*-*_min_vals', 'branch_exceedance_probs_*-*']:
-                if dataset.replace('*-*', exceed_type) in site_group.keys():
-                    del site_group[dataset.replace('*-*', exceed_type)]
+            for dataset in ['weighted_exceedance_probs_*-*', '*-*_max_vals', '*-*_min_vals', 'branch_exceedance_probs_*-*', '*-*_weighted_percentile_error']:
+                if dataset.replace('*-*', exceed_type) in site_h5.keys():
+                    del site_h5[dataset.replace('*-*', exceed_type)]
             site_probabilities_df = pd.DataFrame(site_df_dict[exceed_type])
 
             # collapse each row into a weighted mean value
@@ -935,15 +947,15 @@ def create_site_weighted_mean(site_group, site, n_samples, crustal_directory, sz
             site_max_probs = site_probabilities_df.max(axis=1)
             site_min_probs = site_probabilities_df.min(axis=1)
 
-            site_group.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs, compression=compression)
-            site_group.create_dataset(f"{exceed_type}_max_vals", data=site_max_probs, compression=compression)
-            site_group.create_dataset(f"{exceed_type}_min_vals", data=site_min_probs, compression=compression)
-            site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy(), compression='gzip', compression_opts=6)
-            site_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = pair_id_list
+            site_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs, compression=compression)
+            site_h5.create_dataset(f"{exceed_type}_max_vals", data=site_max_probs, compression=compression)
+            site_h5.create_dataset(f"{exceed_type}_min_vals", data=site_min_probs, compression=compression)
+            site_h5.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy(), compression='gzip', compression_opts=6)
+            site_h5[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = pair_id_list
 
             # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
             percentiles = percentile(site_probabilities_df, sigma_lims, axis=1, weights=branch_weights)
-            site_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles, compression=compression)
+            site_h5.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles, compression=compression)
 
 def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type, site_list, weighted=False):
     """returns displacements at the X% probabilities of exceedance for each site
@@ -2204,8 +2216,7 @@ def save_disp_prob_geojson(extension1, slip_taper, model_version_results_directo
     for ii, exceed_type in enumerate(exceed_type_list):
         for jj, probability in enumerate(probabilities):
                 disps[:, jj, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
-                                                                 site_list=sites, probability=probability, weighted=weighted,
-                                                                 thresholds=thresholds)
+                                                                 site_list=sites, probability=probability, weighted=weighted)
 
     geojson = {
         "type": "FeatureCollection",
