@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import h5py as h5
 from time import time, sleep
+from helper_scripts import hdf5_to_dict
 
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
     """
@@ -104,8 +105,8 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
             f.write("#SBATCH --partition=large\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
-        f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_%j_task%a.out\n".encode())
-        f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_%j_task%a.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_sites_%j_task%a.out\n".encode())
+        f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_sites_%j_task%a.err\n\n".encode())
 
         f.write("# Activate the conda environment\n".encode())
         f.write("mkdir -p logs\n".encode())
@@ -244,8 +245,8 @@ def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks
             f.write("#SBATCH --partition=large\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
-        f.write(f"#SBATCH -o logs/{os.path.basename(out_directory)}_%j_task%a.out\n".encode())
-        f.write(f"#SBATCH -e logs/{os.path.basename(out_directory)}_%j_task%a.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/{os.path.basename(out_directory)}_site_weights_%j_task%a.out\n".encode())
+        f.write(f"#SBATCH -e logs/{os.path.basename(out_directory)}_site_weights_%j_task%a.err\n\n".encode())
 
         f.write("# Activate the conda environment\n".encode())
         f.write("mkdir -p logs\n".encode())
@@ -368,14 +369,17 @@ if __name__ == "__main__":
 
             extension1 = os.path.basename(branch_results_directory)
             if args.NSHM_branch:
-                with open(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}{scaling}.pkl", "rb") as fid:
-                    branch_disp_dict = pkl.load(fid)
-                    branch_unique_ids = 'nan'
-                    crustal_model_dir = ''
-                    subduction_model_dir = ''
+                branch_disp_dict = f"../{branch_results_directory}/branch_site_disp_dict_{extension1}{scaling}.h5"
+                with h5.File(branch_disp_dict, "r") as branch_h5:
+                    if isinstance([key for key in branch_h5.keys()][0], int):
+                        if '_' not in sites_of_interest[0]:
+                            sites_of_interest = [int(site) for site in sites_of_interest]
+                branch_unique_ids = 'nan'
+                crustal_model_dir = ''
+                subduction_model_dir = ''
             else:
-                with open(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}{scaling}.pkl", "rb") as fid:
-                    pair_site_disp_dict = pkl.load(fid)
+                with h5.File(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}{scaling}.h5", "r") as branch_h5:
+                    pair_site_disp_dict = hdf5_to_dict(branch_h5)
 
                 out_directory = pair_site_disp_dict[[key for key in pair_site_disp_dict.keys()][0]]['out_directory']
                 crustal_model_dir = pair_site_disp_dict[[key for key in pair_site_disp_dict.keys()][0]]['crustal_directory']
@@ -415,9 +419,9 @@ if __name__ == "__main__":
                     
                     branch_disp_dict[site] = {"disps": pair_site_disps, "scaled_rates": pair_scaled_rates, "site_coords": site_coords}
 
-            if isinstance([key for key in branch_disp_dict.keys()][0], int):
-                if '_' not in sites_of_interest[0]:
-                    sites_of_interest = [int(site) for site in sites_of_interest]
+                if isinstance([key for key in branch_disp_dict.keys()][0], int):
+                    if '_' not in sites_of_interest[0]:
+                        sites_of_interest = [int(site) for site in sites_of_interest]
 
             if scaling == "":
                 nesiprint(f"{args.task_number}: Running {len(sites_of_interest)} sites in branch {extension1}...")
@@ -469,10 +473,9 @@ if __name__ == "__main__":
             if os.path.exists(combine_dict[branch]['branch_h5file']):
                 nesiprint(f"Found Pre-Prepared Branch PPE:  {combine_dict[branch]['branch_h5file']}. Delete manually to remake...")
             else:
-                with open(combine_dict[branch]['branch_site_disp_dict'], "rb") as f:
-                    branch_site_disp_dict = pkl.load(f)
+                with h5.File(combine_dict[branch]['branch_site_disp_dict'], "r") as branch_h5:
+                    site_list = [key for key in branch_h5.keys()]
                 nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
-                site_list = [site for site in branch_site_disp_dict.keys()]
                 compile_site_cumu_PPE(site_list, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
                                     branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'])
         print('All branches combined!')
@@ -486,6 +489,9 @@ if __name__ == "__main__":
         nesiprint('Calculating weighted mean PPE dictionary...')
         get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=args.outDir, outfile_extension=args.outfile_extension, slip_taper=args.slip_taper)
 
+
+    
+   
     
     elif args.nesi_job == 'site_weights':
         find_file_count = 0
@@ -524,6 +530,7 @@ if __name__ == "__main__":
                                           site_h5['sigma_lims'], 
                                           site_h5['branch_weights'],
                                           compression='gzip')
+                print(site_h5.keys())
             nesiprint(f"Site {site_name} complete")
         print('All sites complete!')
 
