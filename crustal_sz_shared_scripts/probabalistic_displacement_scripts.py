@@ -872,18 +872,17 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 for site in site_names:
                     f.write(f"../{out_directory}/weighted_sites/{site}.h5\n")
     
-            time_per_site = 60
             n_sites = len(site_names)
             tasks_per_array = np.ceil(n_sites / n_array_tasks)
             if tasks_per_array < min_tasks_per_array:
                 tasks_per_array = min_tasks_per_array
             n_array_tasks = int(np.ceil(n_sites / tasks_per_array))
-            array_time = 60 + time_per_site * tasks_per_array
+            array_time = 60 + job_time * tasks_per_array
             hours, rem = divmod(array_time, 3600)
             mins = np.ceil(rem / 60)
 
             slurm_file = prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_array_tasks, site_file,
-                                         hours=int(hours), mins=int(mins), mem=mem, cpus=cpus, account=account, job_time=time_per_site)
+                                         hours=int(hours), mins=int(mins), mem=mem, cpus=cpus, account=account, job_time=job_time)
 
             raise Exception(f"Now run\n\tsbatch {slurm_file}")
         
