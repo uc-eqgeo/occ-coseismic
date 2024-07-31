@@ -28,8 +28,26 @@ B. subduction zone file prep. The results are put in a new folder in the subduct
    3. `subduction_discretize/discretized_gfs_sites.py` Calculates greens functions at specific coordinates
 
 calculate scenario displacements and probabilities
-6. `crustal_sz_shared_scripts/run_displacements_and_probabilities.py` Calculates displacements for each scenario and writes 
-   pickle to results directory. Can run multiple branches at the same time IF they are the same fault type and 
-   Greeen's function type (e.g., sites, grid)
-   
+6. `crustal_sz_shared_scripts/run_aggregate_weighted_branches.py` Calculates the displacements for each branch of the 
+   NSHM decision tree. Once this has been done for each branch, it can then combine branches (either all the crustal
+   faults, all the subduction interface (Hik or Puy), or all crustal and either/or hik/puy, or all crustal, hik, and py).
+   Designed to be run either locally or on NESI as task arrays.
+   Preparing single branches:
+   If running locally (nesi = False):
+   a) calculate_fault_model_PPE = True (Will create scenarios for each branch individually)
+   If running with nesi task arrays
+   a1) nesi = True, nesi_step = prep, calculate_fault_model_PPE = True (Will calculate scenarios at each site for each branch individually)
+   a2) nesi = True, nesi_step = combine, calculate_fault_model_PPE = True (Will combine all site scenarios into a single branch h5 file)
+   a3) nesi = False, calculate_fault_model_PPE = True (Create all_branch_PPE_dict (needed for weighted))
+
+   Creating weighted means
+   If running locally
+   b1) calculate_weighted_mean_PPE = True, paired_crustal_sz = False (Will create combined weighted scenarios for single fault type)
+   b2) calculate_weighted_mean_PPE = True, paired_crustal_sz = True (Will create combined weighted scenarios for crustal + sub fault types)
+
+   If running with nesi task arrays
+   b1a) nesi = True, nesi_step = prep, calculate_weighted_mean_PPE = True, paired_crustal_sz = False (Create weighted means at for each site for one fault type)
+   b1b) nesi = True, nesi_step = combine, calculate_weighted_mean_PPE = True, paired_crustal_sz = False (Combine all site weighted means into one fault type dictionary)
+   b2a) nesi = True, nesi_step = prep, calculate_fault_model_PPE = True, paired_crustal_sz = True (Create weighted means at for each site for for crustal + sub fault types)
+   b2a) nesi = True, nesi_step = combine, calculate_fault_model_PPE = True, paired_crustal_sz = True (Combine all site weighted means into one fault type dictionary)
 
