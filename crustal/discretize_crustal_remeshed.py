@@ -368,7 +368,7 @@ for i in range(len(mesh_list)):
                 polygon_fault_ids.append(trace.FaultID)
 
                 # set the triangles and rake for each fault ID
-                discretised_dict[trace.FaultID] = {"triangles": triangles, "rake": rake}
+                discretised_dict[trace.FaultID] = {"triangles": triangles, "rake": rake, "triangle_indices": triangles_locs}
         else:
             print('\t{} not found in rake file. Skipping...'.format(target_NSHM_fault_names[i]))
 
