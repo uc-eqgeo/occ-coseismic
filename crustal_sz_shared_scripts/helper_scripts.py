@@ -6,6 +6,7 @@ except:
 finally:
     import pandas as pd
     import os
+    import h5py as h5
     from functools import reduce
     import numpy as np
     from numpy.lib.function_base import _check_interpolation_as_method, _quantile_is_valid, _QuantileMethods, \
@@ -17,7 +18,7 @@ finally:
     import matplotlib.pyplot as plt
 
 
-def dict_to_hdf5(hdf5_group, dictionary, compression=None):
+def dict_to_hdf5(hdf5_group, dictionary, compression=None, compression_opts=None):
     for key, value in dictionary.items():
         if isinstance(value, dict):
             # Recursively create sub-groups
@@ -25,10 +26,20 @@ def dict_to_hdf5(hdf5_group, dictionary, compression=None):
             dict_to_hdf5(sub_group, value)
         else:
             # Create datasets for other data types
-            if compression:
-                hdf5_group.create_dataset(key, data=value, compression=compression)
+            if compression and not np.isscalar(value):
+                hdf5_group.create_dataset(key, data=value, compression=compression, compression_opts=compression_opts)
             else:
                 hdf5_group.create_dataset(key, data=value)
+
+
+def hdf5_to_dict(group):
+    result = {}
+    for key, item in group.items():
+        if isinstance(item, h5.Dataset):
+            result[key] = item[()]
+        elif isinstance(item, h5.Group):
+            result[key] = hdf5_to_dict(item)
+    return result
 
 
 def get_probability_color(exceed_type):
@@ -600,63 +611,35 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
             model_version = crustal_model_extension
             if time_independent and not single_branch:
                 if "geologic" in deformation_model:
-                    file_suffix_list_i = ["_c_MDA2", "_c_MDEz", "_c_MDE1", "_c_MDA3", "_c_MDA4", "_c_MDA5", "_c_MDEw",
-                                        "_c_MDEx", "_c_MDEy"]
+                    file_suffix_list_i = ["_c_MDA2", "_c_MDEz", "_c_MDE1"]
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA2",
                                             "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE1",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA3",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA4",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA5",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEw",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEx",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEy",
+                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE1"
                                             ]
                     file_suffix_list.extend(file_suffix_list_i)
                     NSHM_directory_list.extend(NSHM_directory_list_i)
                     fault_branches += len(file_suffix_list_i)
                 if "geodetic" in deformation_model:
-                    file_suffix_list_i = ["_c_MDE2", "_c_MDE3", "_c_MDE4", "_c_MDE5", "_c_MDIw", "_c_MDIx", "_c_MDIz",
-                                        "_c_MDIy", "_c_MDI0"]
+                    file_suffix_list_i = ["_c_MDE2", "_c_MDE5", "_c_MDI0"]
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE2",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE3",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE4",
                                             "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE5",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDIw",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDIx",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDIz",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDIy",
                                             "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDI0"]
                     file_suffix_list.extend(file_suffix_list_i)
                     NSHM_directory_list.extend(NSHM_directory_list_i)
                     fault_branches += len(file_suffix_list_i)
             if time_dependent and not single_branch:
                 if "geologic" in deformation_model:
-                    file_suffix_list_i = ["_c_NjE5", "_c_MjIw", "_c_MjIx", "_c_NjIy", "_c_NjIz", "_c_NjI0", "_c_NjI1",
-                                        "_c_NjI2", "_c_NjI3"]
+                    file_suffix_list_i = ["_c_NjE5", "_c_NjI2", "_c_NjI3"]
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjE5",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjIw",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjIx",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjIy",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjIz",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI0",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI1",
                                             "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI2",
                                             "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI3"]
                     file_suffix_list.extend(file_suffix_list_i)
                     NSHM_directory_list.extend(NSHM_directory_list_i)
                     fault_branches += len(file_suffix_list_i)
                 if "geodetic" in deformation_model:
-                    file_suffix_list_i = ["_c_NjI5", "_c_NjMw", "_c_NjMx", "_c_NjMy", "_c_NjMz", "_c_NjM0", "_c_NjM1",
-                                        "_c_NjM2", "_c_NjM3"]
+                    file_suffix_list_i = ["_c_NjI5", "_c_NjMy", "_c_NjM3"]
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI5",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjMw",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjMx",
                                             "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjMy",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjMz",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjM0",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjM1",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjM2",
                                             "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjM3"]
                     file_suffix_list.extend(file_suffix_list_i)
                     NSHM_directory_list.extend(NSHM_directory_list_i)

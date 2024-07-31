@@ -7,13 +7,13 @@ import pickle as pkl
 import os
 
 #### USER INPUT #####
-version_extension  = "_SI_10km"
+version_extension  = "_national_10km"
 
 #this can be any working branch, should be the same for all.
 NSHM_directory = "NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2"
 
 # Define whch subduction zone (hikkerk / puysegur)
-sz_zone = 'puysegur'
+sz_zone = 'hikkerk'
 
 if not sz_zone in ['hikkerk', 'puysegur']:
     print("Please define a valid subduction zone (hikkerk / puysegur).")
@@ -270,7 +270,7 @@ for index in traces.index:
     triangle_polygons = [Polygon(triangle) for triangle in triangles]
     dissolved_triangle_polygons = gpd.GeoSeries(triangle_polygons).unary_union
     discretized_polygons.append(dissolved_triangle_polygons)
-    discretised_dict[index] = {"triangles": triangles, "rake": mesh_rake[triangles_locs]}
+    discretised_dict[index] = {"triangles": triangles, "rake": mesh_rake[triangles_locs], "triangle_indices": triangles_locs}  
 
 
 # Create a geodataframe and geospon file from the polygons
