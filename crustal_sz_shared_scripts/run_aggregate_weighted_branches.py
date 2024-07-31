@@ -3,32 +3,31 @@ import pandas as pd
 import numpy as np
 from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, \
     make_sz_crustal_paired_PPE_dict, make_fault_model_PPE_dict, get_weighted_mean_PPE_dict, \
-    plot_weighted_mean_haz_curves_colorful, save_disp_prob_tifs, save_disp_prob_xarrays
+    save_disp_prob_xarrays
 from helper_scripts import get_NSHM_directories, get_rupture_disp_dict
 import pickle as pkl
-from nesi_scripts import nesi_get_weighted_mean_PPE_dict
 import h5py as h5
 
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_Model_CFM_JDE_sites_test"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_JDE_sites_test"                    # must match suffix in the subduction directory with gfs
+fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+crustal_model_version = "_Model_CFM_50km"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_national_50km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
 
 
 # Processing Flags (True/False)
-paired_crustal_sz = True      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = False              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
-save_arrays = False          # Do you want to save the displacement and probability arrays?
+save_arrays = True          # Do you want to save the displacement and probability arrays?
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
-make_hazcurves = False     # Do you want to make hazard curves?
+make_hazcurves = True     # Do you want to make hazard curves?
 plot_order_csv = "../wellington_10km_grid_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
 
@@ -39,7 +38,7 @@ n_cpus = 1
 
 # Nesi Parameters
 prep_sbatch = True   # Prep jobs for sbatch
-nesi_step = 'combine'  # 'prep' or 'combine'
+nesi_step = 'prep'  # 'prep' or 'combine'
 n_array_tasks = 100    # Number of array tasks
 min_tasks_per_array = 250   # Minimum number of sites per array
 min_branches_per_array = 1  # Minimum number of branches per array
@@ -53,9 +52,6 @@ figure_file_type_list = ["png", "pdf"]             # file types for figures
 figure_file_type_list = ["png"]
 
 ## Set parameters based on user inputs
-if calculate_fault_model_PPE:
-    calculate_weighted_mean_PPE = True  # If recalculating PPEs, you need to recalculate the weighted mean PPEs
-
 if testing:
     n_samples = 1e4   # Number of scenarios to run
     job_time = 1    # Amount of time to allocate per site in the cumu_PPE task array
@@ -72,15 +68,20 @@ if paired_crustal_sz and nesi_step == 'prep':
 if fault_type == 'crustal':
     n_array_tasks = 250
 
+if fault_type == 'all':
+    job_time = 120
+    mem = 3
+    min_tasks_per_array = 5
+
 ## Solving processing conflicts
-if calculate_fault_model_PPE:
+if calculate_fault_model_PPE and not nesi:
     calculate_weighted_mean_PPE = True  # If recalculating PPEs, you need to recalculate the weighted mean PPEs
 
 if paired_crustal_sz and calculate_weighted_mean_PPE:
     calculate_fault_model_PPE = True
 
 if nesi and calculate_weighted_mean_PPE and paired_crustal_sz:
-    mem = 10
+    mem = 5
 
 if not default_plot_order and not os.path.exists(plot_order_csv):
     raise Exception("Manual plot order selected but no plot order csv found. Please create a csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId)")
@@ -269,7 +270,7 @@ if not paired_crustal_sz and calculate_weighted_mean_PPE or not os.path.exists(w
                                                             out_directory=out_version_results_directory,
                                                             outfile_extension=outfile_extension, slip_taper=slip_taper,
                                                             nesi=nesi, nesi_step=nesi_step, account=account,
-                                                            min_tasks_per_array=10, n_array_tasks=n_array_tasks, mem=10, cpus=n_cpus, job_time=60)
+                                                            min_tasks_per_array=10, n_array_tasks=n_array_tasks, mem=mem, cpus=n_cpus, job_time=job_time)
 
 # open the saved weighted mean PPE dictionary
 print('Loading pre-prepared weighted mean PPE dictionary...')
@@ -279,7 +280,7 @@ weighted_mean_PPE_dict = h5.File(weighted_mean_PPE_filepath, 'r')
 if save_arrays:
     print('Saving data arrays...')
     ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                        thresh_lims=[0, 3], thresh_step=0.01, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.01,
+                        thresh_lims=[0, 3], thresh_step=0.1, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.02,
                         output_probs=False, weighted=True)
 
 if paired_crustal_sz:
