@@ -280,7 +280,7 @@ weighted_mean_PPE_dict = h5.File(weighted_mean_PPE_filepath, 'r')
 if save_arrays:
     print('Saving data arrays...')
     ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                        thresh_lims=[0, 3], thresh_step=0.1, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.02,
+                        thresh_lims=[0, 3], thresh_step=0.01, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.01,
                         output_probs=False, weighted=True)
 
 if paired_crustal_sz:
