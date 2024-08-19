@@ -13,7 +13,7 @@ version_extension  = "_national_10km"
 NSHM_directory = "NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2"
 
 # Define whch subduction zone (hikkerk / puysegur)
-sz_zone = 'hikkerk'
+sz_zone = 'puysegur'
 
 if not sz_zone in ['hikkerk', 'puysegur']:
     print("Please define a valid subduction zone (hikkerk / puysegur).")
