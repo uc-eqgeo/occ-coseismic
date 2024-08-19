@@ -2,9 +2,9 @@
 
 # -- Project information
 
-project = 'occ-coseismic'
-copyright = '2024, McGrath, Delano, Howell et al.'
-author = 'Jack McGrath, Jaime Delano, Andy Howell, et al.'
+project = 'Lumache'
+copyright = '2021, Graziella'
+author = 'Graziella'
 
 release = '0.1'
 version = '0.1.0'
