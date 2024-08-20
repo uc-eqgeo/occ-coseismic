@@ -10,6 +10,7 @@ crustal/out_file*/
 # __pycache__ and vscode directories
 */__pycache__/
 ./.vscode/
+__pycache__/
 
 # Other files
 FaultSections.qgz
@@ -23,6 +24,7 @@ for_jaime.zip
 .vscode/launch.json
 *qmd
 
-./docs/_build/
-./docs/_static/
-./docs/_templates/
+docs/_build/
+docs/_static/
+docs/_templates/
+docs/save

@@ -1,5 +1,5 @@
 .. occ-coseismic documentation master file, created by
-   sphinx-quickstart on Tue Aug 20 12:24:39 2024.
+   sphinx-quickstart on Tue Aug 20 13:25:16 2024.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
