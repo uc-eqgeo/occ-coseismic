@@ -22,3 +22,7 @@ FaultSectionsTesting.qgz
 for_jaime.zip
 .vscode/launch.json
 *qmd
+
+./docs/_build/
+./docs/_static/
+./docs/_templates/
