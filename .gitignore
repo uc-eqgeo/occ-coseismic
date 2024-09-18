@@ -5,7 +5,9 @@ data/
 results/
 subduction/out_files*
 subduction/displacements/
+subduction/discretised*
 crustal/out_file*/
+crustal/discretised*
 
 # __pycache__ and vscode directories
 */__pycache__/
@@ -24,3 +26,4 @@ for_jaime.zip
 *qmd
 docs/
 *png
+*.geojson

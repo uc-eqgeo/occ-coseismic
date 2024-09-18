@@ -6,19 +6,20 @@ import cutde.halfspace as HS
 from shapely.geometry import MultiPoint, LineString, Point
 import os
 from time import time
+import shutil
 
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_southland_10km"
+version_extension = "_fq_OCC_NorthIsland"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
-# Define whch subduction zone (hikkerk / puysegur)
-sz_zone = 'puysegur'
+# Define whch subduction zone ([_fq_]hikkerk / puysegur)
+sz_zone = '_fq_hikkerk'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-csvfile = 'southland_10km_grid_points.csv'
+csvfile = 'NZ_VLM_final_May24_NorthIsland_points.csv'
 try:
     site_list_csv = os.path.join('/mnt/', 'c', 'Users', 'jmc753', 'Work', 'occ-coseismic', csvfile)
     sites_df = pd.read_csv(site_list_csv)
@@ -27,7 +28,7 @@ except FileNotFoundError:
     sites_df = pd.read_csv(site_list_csv)
 
 site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
-site_name_list = [site for site in sites_df['siteId']]
+site_name_list = [str(site) for site in sites_df['siteId']]
 
 #############################################
 x_data = site_coords[:, 0]
@@ -39,19 +40,21 @@ if steeper_dip and gentler_dip:
     exit()
 elif steeper_dip:
     version_extension += "_steeperdip"
+    sz_zone += "_steeperdip"
 elif gentler_dip:
     version_extension += "_gentlerdip"
+    sz_zone += "_gentlerdip"
 
-if sz_zone == 'hikkerk':
+if 'hikkerk' in sz_zone:
     prefix = 'sz'
-elif sz_zone == 'puysegur':
+elif 'puysegur' in sz_zone:
     prefix = 'py'
 else:
     print("Please define a valid subduction zone (hikkerk / puysegur).")
     exit()
 
 # Load files
-with open(f"out_files{version_extension}/{prefix}_discretised_dict.pkl",
+with open(f"discretised{sz_zone}/{prefix}_discretised_dict.pkl",
           "rb") as f:
     discretised_dict = pkl.load(f)
 
@@ -80,10 +83,15 @@ for fault_id in discretised_dict.keys():
 
     gf_dict[fault_id] = disp_dict
     if fault_id % 1 == 0:
-        print(f'discretized dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)')
-
+        print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)', end='\r')
+print('')
+if not os.path.exists(f"out_files{version_extension}"):
+    os.makedirs(f"out_files{version_extension}")
 with open(f"out_files{version_extension}/{prefix}_gf_dict_{gf_type}.pkl", "wb") as f:
     pkl.dump(gf_dict, f)
 
 gdf = gpd.GeoDataFrame(sites_df, geometry=gpd.points_from_xy(sites_df.Lon, sites_df.Lat), crs='EPSG:2193')
 gdf.to_file(f"out_files{version_extension}/{prefix}_site_locations.geojson", driver="GeoJSON")
+
+for file in ["_discretised_polygons", "_all_rectangle_outlines", "_all_rectangle_centroids"]:
+    shutil.copy(f"discretised{sz_zone}/{prefix}{file}.geojson", f"out_files{version_extension}/{prefix}{file}.geojson")

@@ -14,13 +14,14 @@ import platform
 
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
-mesh_version = "_Model_CFM_50km"
+discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
+mesh_version = "_national_2km"
 #out_extension = f"_{mesh_version}_v1"
 
 steeper_dip, gentler_dip = False, False
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'national_50km_grid_points.csv')
+site_list_csv = os.path.join('..', 'national_2km_grid_points.csv')
 sites_df = pd.read_csv(site_list_csv)
 
 site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
@@ -38,8 +39,10 @@ elif steeper_dip == True and gentler_dip == True:
     exit()
 
 # load files
-with open(f"out_files{mesh_version}/crustal_discretized_dict.pkl", "rb") as f:
+with open(f"discretised{discretise_version}/crustal_discretised_dict.pkl", "rb") as f:
     discretised_dict = pkl.load(f)
+
+os.makedirs(f"out_files{mesh_version}", exist_ok=True)
 
 # make geojson of site locations
 site_df = gpd.GeoDataFrame({"site_name": site_name_list, "x": site_coords[:, 0], "y": site_coords[:, 1]})

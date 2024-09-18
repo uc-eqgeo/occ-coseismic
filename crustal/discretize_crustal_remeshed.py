@@ -8,12 +8,12 @@ from crustal_helper_scripts import read_rake_csv, rake_from_traces, read_combina
 import glob
 import os
 
-# This script discretizes the fault meshes into patches based on the "sheet in the wind" NSHM faults.
+# This script discretises the fault meshes into patches based on the "sheet in the wind" NSHM faults.
 # only run once per fault geometry (can reuse for any branch) because all the faults are the same
 
-# outputs (to out_files{Model_extension} directory)
-#   crustal_discretized_dict.pkl,
-#   crustal_discretized_polygons.geojson,
+# outputs (to discretised{Model_extension} directory)
+#   crustal_discretised_dict.pkl,
+#   crustal_discretised_polygons.geojson,
 #   all_rectangle_outlines.geojson,
 #   named_rectangle_centroids.geojson,
 #   named_rectangle_polygons.geojson
@@ -22,9 +22,8 @@ import os
 # Doesn't really matter which inversion solution because all the NSHM fault files are the same.
 NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"
 # provide model extension to match the mesh directory and name output directory
-model_extension = "_Model_CFM_50km"
+discretised_extension = "_CFM"
 
-mesh_directory = f"../data/wellington_alt_geom/meshes{model_extension}/STL_remeshed"
 mesh_directory = f"../data/mesh2500"
 # this must be the same length as the number of meshes and have some value that matches all the target fault sections
 # will need to come up with a better way to do this in the future when more faults/meshes are used
@@ -35,17 +34,17 @@ target_NSHM_fault_names = ["Aotea|Evans Bay", "Dry River|Huangarua", "Fisherman"
 ########
 
 #### Inputs 2
-target_traces = gpd.read_file(f"out_files{model_extension}/name_filtered_fault_sections.geojson" "").to_crs(
+target_traces = gpd.read_file(f"discretised{discretised_extension}/name_filtered_fault_sections.geojson" "").to_crs(
     epsg=2193)
 all_traces = gpd.read_file(f"../data/crustal_solutions/{NSHM_directory}/ruptures/fault_sections.geojson").to_crs(epsg=2193)
 
 # read in rake data
 rake_dict = read_rake_csv("../data/wellington_alt_geom/alt_geom_rakes.csv")
-if model_extension == "_Model2" or model_extension == "_Model_testing":
+if discretised_extension == "_Model2" or discretised_extension == "_Model_testing":
     rake_col = "model2_rake"
-elif model_extension == "_Model1":
+elif discretised_extension == "_Model1":
     rake_col = "model1_rake"
-elif model_extension == "_CFM":
+elif discretised_extension == "_ModelCFM":
     rake_col = "cfm_rake"
 else:
     rake_dict = rake_from_traces(target_traces)
@@ -163,7 +162,7 @@ for i, trace in all_traces.iterrows():
 ####
 all_rectangle_outline_gs = gpd.GeoSeries(all_rectangle_polygons, crs=2193)
 all_rectangle_outline_gdf = gpd.GeoDataFrame(df_all_rectangle, geometry=all_rectangle_outline_gs.geometry, crs=2193)
-all_rectangle_outline_gdf.to_file(f"out_files{model_extension}/all_rectangle_outlines.geojson",
+all_rectangle_outline_gdf.to_file(f"discretised{discretised_extension}/all_rectangle_outlines.geojson",
                                   driver="GeoJSON")
 
 # Turn name-filtered section traces into rectangular patches using the metadata in the GeoJSON file
@@ -250,17 +249,17 @@ named_rectangle_centroids_gs = gpd.GeoSeries([Point(centroid) for centroid in na
 named_rectangle_centroids_gdf = gpd.GeoDataFrame(
     df_named_rectangle_centroid, geometry=named_rectangle_centroids_gs.geometry, crs=2193)
 named_rectangle_centroids_gdf.to_file(
-    f"out_files{model_extension}/named_rectangle_centroids.geojson", driver="GeoJSON")
+    f"discretised{discretised_extension}/named_rectangle_centroids.geojson", driver="GeoJSON")
 
 # Remove all spaces from fault names (Life's just easier that way)
 named_rectangle_centroids_gdf['fault_name'] = named_rectangle_centroids_gdf['fault_name'].str.replace(' ', '')
 named_rectangle_outline_gs = gpd.GeoSeries(named_rectangle_polygons, crs=2193)
 named_rectangle_outline_gdf = gpd.GeoDataFrame(df_named_rectangle, geometry=named_rectangle_outline_gs.geometry, crs=2193)
 named_rectangle_outline_gdf.to_file(
-    f"out_files{model_extension}/named_rectangle_polygons.geojson", driver="GeoJSON")
+    f"discretised{discretised_extension}/named_rectangle_polygons.geojson", driver="GeoJSON")
 
 #### mesh stuff
-# make output geodata frame to add all discretized patch/fault info to
+# make output geodata frame to add all discretised patch/fault info to
 out_gdf = gpd.GeoDataFrame({"rake": [], "geometry": [], "fault_name": [], "fault_id": []})
 
 # set up dictionaries. Key will be the fault id
@@ -278,7 +277,7 @@ for i in range(len(mesh_list)):
     mesh_name = mesh_name_list[i]
 
     if np.sum(named_rectangle_centroids_gdf['mesh_name'].str.contains(target_NSHM_fault_names[i], case=False)):
-        print(f"making discretized mesh for {mesh_name} ({target_NSHM_fault_names[i]})")
+        print(f"making discretised mesh for {mesh_name} ({target_NSHM_fault_names[i]})")
         used_mesh.append(target_NSHM_fault_names[i])
     else:
         continue
@@ -337,11 +336,11 @@ for i in range(len(mesh_list)):
     # Create fault polygons from triangles
     mesh_polygons = []
 
-    # for adding to discretized polygon geojson attributes
+    # for adding to discretised polygon geojson attributes
     polygon_rakes = []
     polygon_fault_ids = []
 
-    # make discretized patches (patch of triangles)
+    # make discretised patches (patch of triangles)
     for j, trace in target_traces.iterrows():
         # get the triangles that are closest to the trace of interest (i.e., index of closest rectangle matches fault
         # index)
@@ -377,7 +376,7 @@ for i in range(len(mesh_list)):
     polygon_fault_ids = np.array(polygon_fault_ids)
     mesh_name_array = np.full(polygon_fault_ids.shape, mesh_name)
 
-    # Create a geodataframe from the discretized polygons
+    # Create a geodataframe from the discretised polygons
     gdf = gpd.GeoDataFrame({"rake": polygon_rakes, "geometry": mesh_polygons, "fault_name": mesh_name_array, "fault_id":
                             polygon_fault_ids})
 
@@ -390,9 +389,9 @@ if len(missing_meshes) > 0:
         print('Expected {} .stl file not found in meshdir. Faults not created'.format(missing))
 
 # make pickle with triangle vertices
-pkl.dump(discretised_dict, open(f"out_files{model_extension}/crustal_discretized_dict.pkl", "wb"))
+pkl.dump(discretised_dict, open(f"discretised{discretised_extension}/crustal_discretised_dict.pkl", "wb"))
 
-# write discretized polygons to geojson
+# write discretised polygons to geojson
 out_gdf.crs = target_traces.crs
-out_gdf.to_file(f"out_files{model_extension}/crustal_discretized_polygons.geojson",
+out_gdf.to_file(f"discretised{discretised_extension}/crustal_discretised_polygons.geojson",
                 driver="GeoJSON")
