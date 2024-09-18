@@ -11,25 +11,25 @@ import h5py as h5
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_Model_CFM_50km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_national_50km"                    # must match suffix in the subduction directory with gfs
+fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+crustal_model_version = "_Model_CFM_wellington_1km"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_wellington_1km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
-testing = False   # Impacts number of samples runs, job time etc
-
+testing = True   # Impacts number of samples runs, job time etc
+fakequakes = True   # Use fakequakes for the subduction zone
 
 # Processing Flags (True/False)
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
-remake_PPE = False              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
+remake_PPE = True              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
-save_arrays = True          # Do you want to save the displacement and probability arrays?
+save_arrays = False          # Do you want to save the displacement and probability arrays?
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
-make_hazcurves = True     # Do you want to make hazard curves?
+make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../wellington_10km_grid_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
-use_saved_dictionary = True   # Use a saved dictionary if it exists
+use_saved_dictionary = False   # Use a saved dictionary if it exists
 
 # Processing Parameters
 time_interval = 100     # Time span of hazard forecast (yrs)
@@ -73,6 +73,7 @@ if fault_type == 'all':
     mem = 3
     min_tasks_per_array = 5
 
+n_samples, job_time, mem, n_array_tasks, min_tasks_per_array = int(n_samples), int(job_time), int(mem), int(n_array_tasks), int(min_tasks_per_array)
 ## Solving processing conflicts
 if calculate_fault_model_PPE and not nesi:
     calculate_weighted_mean_PPE = True  # If recalculating PPEs, you need to recalculate the weighted mean PPEs
@@ -82,6 +83,9 @@ if paired_crustal_sz and calculate_weighted_mean_PPE:
 
 if nesi and calculate_weighted_mean_PPE and paired_crustal_sz:
     mem = 5
+
+if not nesi and fakequakes:
+    load_random = True
 
 if not default_plot_order and not os.path.exists(plot_order_csv):
     raise Exception("Manual plot order selected but no plot order csv found. Please create a csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId)")
@@ -145,6 +149,9 @@ def make_branch_weight_dict(branch_weight_file_path, sheet_name):
 ###############################
 
 gf_name = "sites"
+if fakequakes and sz_model_version[-3:] != "_fq":
+    sz_model_version = "_fq" + sz_model_version
+
 if not paired_crustal_sz:
     if fault_type[0] == "crustal":
         model_version_list = [crustal_model_version]
@@ -165,10 +172,13 @@ for ix, model in enumerate(fault_type):
     model_version_results_directory.append(f"{results_directory}/{model}{model_version_list[ix]}")
 
 # get branch weights from the saved Excel spreadsheet
-branch_weight_file_path = f"../data/branch_weight_data.xlsx"
+branch_weight_file_path = os.path.relpath(os.path.join(os.path.dirname(__file__), f"../data/branch_weight_data.xlsx"))
 crustal_sheet_name = "crustal_weights_4_2"
 sz_sheet_name = "sz_weights_4_0"
 py_sheet_name = "py_weights_4_0"
+if fakequakes:
+    sz_sheet_name += "_fq"
+    py_sheet_name += "_fq"
 
 sheet_list = []
 if 'crustal' in fault_type:
@@ -190,7 +200,7 @@ if not paired_crustal_sz:
         fault_model_branch_weight_dict = fault_model_branch_weight_dict | branch_weight_dict_list[ii]
 
     NSHM_directory_list, file_suffix_list, n_branches = get_NSHM_directories(fault_type, crustal_model_version, sz_model_version, deformation_model='geologic and geodetic', time_independent=True,
-                            time_dependent=True, single_branch=False)
+                            time_dependent=True, single_branch=False, fakequakes=fakequakes)
 
     extension1_list = [gf_name + suffix for suffix in file_suffix_list]
     get_rupture_dict = False
@@ -203,7 +213,8 @@ if not paired_crustal_sz:
                                     slip_taper=slip_taper, fault_type=ftype[1], gf_name=gf_name,
                                     results_version_directory=model_version_results_directory[ftype[0]],
                                     crustal_directory=crustal_directory, sz_directory=sz_directory,
-                                    model_version=model_version_list[ftype[0]], search_radius=9e5)
+                                    model_version=model_version_list[ftype[0]], search_radius=9e5,
+                                    fakequakes=fakequakes)
 
 ### make a dictionary of all the branch probabilities, oranized by site within each branch
 # option to skip this step if you've already run it once and saved to a pickle file
@@ -269,19 +280,15 @@ if not paired_crustal_sz and calculate_weighted_mean_PPE or not os.path.exists(w
     weighted_mean_PPE_filepath = get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict,
                                                             out_directory=out_version_results_directory,
                                                             outfile_extension=outfile_extension, slip_taper=slip_taper,
-                                                            nesi=nesi, nesi_step=nesi_step, account=account,
+                                                            nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples,
                                                             min_tasks_per_array=10, n_array_tasks=n_array_tasks, mem=mem, cpus=n_cpus, job_time=job_time)
-
-# open the saved weighted mean PPE dictionary
-print('Loading pre-prepared weighted mean PPE dictionary...')
-weighted_mean_PPE_dict = h5.File(weighted_mean_PPE_filepath, 'r')
 
 # plot hazard curves and save to file
 if save_arrays:
     print('Saving data arrays...')
     ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                        thresh_lims=[0, 3], thresh_step=0.01, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.01,
-                        output_probs=False, weighted=True)
+                        thresh_lims=[0, 1], thresh_step=0.1, output_thresh=True, probs_lims = [0.00, 0.10], probs_step=0.01,
+                        output_probs=True, weighted=True)
 
 if paired_crustal_sz:
     model_version_title = f"paired crustal{crustal_model_version} and "
@@ -292,18 +299,18 @@ else:
     model_version_title = f"{fault_type[0]}{model_version_list[0]}"
 
 if default_plot_order:
+    weighted_mean_PPE_dict = h5.File(weighted_mean_PPE_filepath, 'r')
     plot_order = [key for key in weighted_mean_PPE_dict.keys() if key not in ["branch_weights", "branch_ids", "thresholds", "sigma_lims", "threshold_vals"]]
+    weighted_mean_PPE_dict.close()
 else:
     print('Using custom plot order from', plot_order_csv)
     plot_order = pd.read_csv(plot_order_csv)
     plot_order = list(plot_order['siteId'])
 
 if make_hazcurves:
-    print(f"\nOutput Directory: {out_version_results_directory}/weighted_mean_figures...")
-
-if make_hazcurves:
     print(f"\nMaking hazard curves...")
+    print(f"Output Directory: {out_version_results_directory}/weighted_mean_figures...")
     plot_weighted_mean_haz_curves(
-        weighted_mean_PPE_dictionary=weighted_mean_PPE_dict,
+        weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
         model_version_title=model_version_title, exceed_type_list=["up", "down", "total_abs"],
         out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)

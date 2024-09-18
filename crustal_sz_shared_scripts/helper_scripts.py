@@ -16,7 +16,7 @@ finally:
     import pickle as pkl
     from scipy.interpolate import griddata
     import matplotlib.pyplot as plt
-
+    from time import time
 
 def dict_to_hdf5(hdf5_group, dictionary, compression=None, compression_opts=None):
     for key, value in dictionary.items():
@@ -128,9 +128,25 @@ def read_average_slip(csv_file: str):
     return slip_dic
 
 
+def read_fakequakes_slip_rates(NSHM_directory):
+    proc_dir = os.path.relpath(os.path.dirname(__file__))
+    csv_file = os.path.join(proc_dir, f"../data/{NSHM_directory}/ruptures/average_slips.csv")
+    df = pd.read_csv(csv_file, index_col=0)
+    patches = list(df.columns)
+    patches.remove('Average Slip (m)')
+    rupture_slip_dict = {}
+    for _, row in df.iterrows():
+        rupture_slip_dict[row.name] = row[patches].values.reshape(-1, 1)
+
+    all_ruptures = read_rupture_csv(os.path.join(proc_dir, f"../data/{NSHM_directory}/ruptures/indices.csv"))
+    rates_df = pd.read_csv(os.path.join(proc_dir, f"../data/{NSHM_directory}/solution/rates.csv"))
+
+    return rupture_slip_dict, rates_df, all_ruptures
+
+
 def make_total_slip_dictionary(gf_dict_pkl):
     """ calculates total greens function displacement using strike slip gf, dip slip gf, and rake value
-    need to run the and crustal_discretized_gfs script first"""
+    need to run the and crustal_discretised_gfs script first"""
 
     with open(gf_dict_pkl, "rb") as fid:
         gf_dict = pkl.load(fid)
@@ -283,12 +299,12 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
                                      target_rupture_ids}
 
     # find faults patches that are within search radius
-    filtered_fault_ids = []
-    for i in range(len(fault_rectangle_centroids_gdf.centroid)):
-        centroid = fault_rectangle_centroids_gdf.centroid[i]
-        if centroid.distance(location) < search_radius:
-            #filtered_fault_ids.append(patch_centroids_gdf.index[i])
-            filtered_fault_ids.append(int(fault_rectangle_centroids_gdf.fault_id[i]))
+    filtered_fault_ids = list(np.nonzero(fault_rectangle_centroids_gdf.distance(location) < search_radius)[0])
+    # for i in range(len(fault_rectangle_centroids_gdf.centroid)):
+    #     centroid = fault_rectangle_centroids_gdf.centroid[i]
+    #     if centroid.distance(location) < search_radius:
+    #         #filtered_fault_ids.append(patch_centroids_gdf.index[i])
+    #         filtered_fault_ids.append(int(fault_rectangle_centroids_gdf.fault_id[i]))
 
 
     # this can probably be simplified
@@ -296,35 +312,40 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
     filtered_scenarios = []
     for rupture_index in target_rupture_ids:
         # uses scenarios that include any patch within that search radius
-        if any(fault_id in filtered_fault_ids for fault_id in trimmed_rupture_patch_indices[rupture_index]):
+        if np.isin(trimmed_rupture_patch_indices[rupture_index], filtered_fault_ids).any():
             filtered_scenarios.append(rupture_index)
 
-    print(f"location filtered scenarios: {len(filtered_scenarios)}")
     return filtered_scenarios
 
 
 
-def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectangle_outlines_gdf, rupture_id,
-                             ruptured_fault_ids, slip_taper, rupture_slip_dict, gf_total_slip_dict):
+def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectangle_outlines_gdf, rupture_id,
+                             ruptured_fault_ids, slip_taper, rupture_slip_dict, gf_total_slip_dict, fakequakes=False):
     """ calculates displacements for given rupture scenario at a single site
     not yet sure if I should set it up to allow more than one site at a time
 
     CAVETS/choices:
-    - tapered slip assigns one slip value to each discretized polygon (e.g., one fault id). the slip
+    - tapered slip assigns one slip value to each discretised polygon (e.g., one fault id). the slip
     values are tapered according to total rupture length of all rectangles.
-    - this version changes all very small dispalcements to zero, or if no meshes are used, returns zero displacement
+    - this version changes all very small displacements to zero, or if no meshes are used, returns zero displacement
     """
 
     # find which patches have a mesh and which don't, to use greens functions later just with meshed patches
     ruptured_fault_ids_with_mesh = np.intersect1d(ruptured_fault_ids, list(gf_total_slip_dict.keys()))
 
-    # calculate slip on each discretized polygon
+    # calculate slip on each discretised polygon
     if slip_taper is False:
         # calculate displacements by multiplying scenario slip by scenario greens function
         # scenario gf sums displacements from all ruptured
-        gfs_i = np.sum([gf_total_slip_dict[j]["combined_gf"] for j in ruptured_fault_ids_with_mesh], axis=0)
-        disps_scenario = rupture_slip_dict[rupture_id] * gfs_i
-        polygon_slips = rupture_slip_dict[rupture_id] * np.ones(len(ruptured_fault_ids_with_mesh))
+        if fakequakes:
+            gf_array = np.array([gf_total_slip_dict[j]["combined_gf"] for j in ruptured_fault_ids_with_mesh])
+            disps_scenario = (rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh].reshape(-1,1) * gf_array).sum(axis=0)
+            polygon_slips = rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh]
+
+        else:
+            gfs_i = np.sum([gf_total_slip_dict[j]["combined_gf"] for j in ruptured_fault_ids_with_mesh], axis=0)
+            disps_scenario = rupture_slip_dict[rupture_id] * gfs_i
+            polygon_slips = rupture_slip_dict[rupture_id] * np.ones(len(ruptured_fault_ids_with_mesh))
 
         # storing zeros is more efficient than nearly zeros. Makes v small displacements = 0
         if len(ruptured_fault_ids_with_mesh) != 0:
@@ -333,8 +354,8 @@ def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectang
             disps_scenario = None
 
     elif slip_taper is True:
-        # get centroid coords of faults discretized polygons with a mesh
-        ruptured_polygon_centroid_points = ruptured_discretized_polygons_gdf.centroid
+        # get centroid coords of faults discretised polygons with a mesh
+        ruptured_polygon_centroid_points = ruptured_discretised_polygons_gdf.centroid
         ruptured_polygon_centroids_x = [point.x for point in ruptured_polygon_centroid_points]
         ruptured_polygon_centroids_y = [point.y for point in ruptured_polygon_centroid_points]
         ruptured_polygon_centroid_coords = np.array([ruptured_polygon_centroids_x, ruptured_polygon_centroids_y]).T
@@ -372,14 +393,14 @@ def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectang
             tapered_slip_multipliers.append(tapered_slip_multiplier)
             tapered_slip_values.append(max_slip * tapered_slip_multiplier)
 
-        # interpolate slip at each discretized polygon (i.e., patch) centroid and corresponding displacement
+        # interpolate slip at each discretised polygon (i.e., patch) centroid and corresponding displacement
         polygon_slips = griddata(along_rupture_line_xy, tapered_slip_values, ruptured_polygon_centroid_coords,
                                method="nearest")
 
         # calculate displacements by multiplying the polygon green's function by slip on each fault
         # this will be a list of lists
         disps_i_list = []
-        for i, fault_id in enumerate(ruptured_discretized_polygons_gdf.fault_id):
+        for i, fault_id in enumerate(ruptured_discretised_polygons_gdf.fault_id):
             disp_i = gf_total_slip_dict[fault_id]["combined_gf"] * polygon_slips[i]
             disps_i_list.append(disp_i)
         #sum displacements from each patch
@@ -394,7 +415,7 @@ def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectang
 
 def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf_name, model_version,
                           results_version_directory, crustal_directory="crustal_files", sz_directory="subduction_files",
-                          location=[1749150, 5428092], search_radius=2.5e5):
+                          location=[1749150, 5428092], search_radius=2.5e5, fakequakes=False):
     """
     inputs: uses extension naming scheme to load NSHM rate/slip data and fault geometry, state slip taper
 
@@ -412,27 +433,30 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
 
     # load saved data
     print(f"\nloading data for {extension1}")
+    procdir = os.path.relpath(os.path.dirname(__file__)) + '/..'
 
-    rupture_slip_dict = read_average_slip(f"../data/{NSHM_directory}/ruptures/average_slips.csv")
-    rates_df = pd.read_csv(f"../data/{NSHM_directory}/solution/rates.csv")
+    if fakequakes:
+        rupture_slip_dict, rates_df, all_ruptures = read_fakequakes_slip_rates(NSHM_directory)
+    else:
+        rupture_slip_dict = read_average_slip(f"{procdir}/data/{NSHM_directory}/ruptures/average_slips.csv")
+        rates_df = pd.read_csv(f"{procdir}/data/{NSHM_directory}/solution/rates.csv")
+        # this line takes ages, only do it once
+        all_ruptures = read_rupture_csv(f"{procdir}/data/{NSHM_directory}/ruptures/indices.csv")
 
     if fault_type == "crustal":
-        discretized_polygons_gdf = gpd.read_file(f"../"
+        discretised_polygons_gdf = gpd.read_file(f"{procdir}/"
                                                  f"{crustal_directory}/out_files"
-                                                 f"{model_version}/crustal_discretized_polygons.geojson")
-        gf_dict_pkl = f"../{crustal_directory}/out_files{model_version}/crustal_gf_dict_{gf_name}.pkl"
-        rectangle_outlines_gdf = gpd.read_file(f"../{crustal_directory}/out_files"
+                                                 f"{model_version}/crustal_discretised_polygons.geojson")
+        gf_dict_pkl = f"{procdir}/{crustal_directory}/out_files{model_version}/crustal_gf_dict_{gf_name}.pkl"
+        rectangle_outlines_gdf = gpd.read_file(f"{procdir}/{crustal_directory}/out_files"
                                                f"{model_version}/all_rectangle_outlines.geojson")
     elif fault_type == "sz" or fault_type == "py":
-        discretized_polygons_gdf = gpd.read_file(f"../{sz_directory}/out_files{model_version}/{fault_type}_discretized_polygons.geojson")
-        gf_dict_pkl = f"../{sz_directory}/out_files{model_version}/{fault_type}_gf_dict_{gf_name}.pkl"
-        rectangle_outlines_gdf = gpd.read_file(f"../{sz_directory}/out_files{model_version}/{fault_type}_all_rectangle_outlines.geojson")
-
-    # this line takes ages, only do it once
-    all_ruptures = read_rupture_csv(f"../data/{NSHM_directory}/ruptures/indices.csv")
+        discretised_polygons_gdf = gpd.read_file(f"{procdir}/{sz_directory}/out_files{model_version}/{fault_type}_discretised_polygons.geojson")
+        gf_dict_pkl = f"{procdir}/{sz_directory}/out_files{model_version}/{fault_type}_gf_dict_{gf_name}.pkl"
+        rectangle_outlines_gdf = gpd.read_file(f"{procdir}/{sz_directory}/out_files{model_version}/{fault_type}_all_rectangle_outlines.geojson")
 
     # for some reason it defaults values to string. Convert to integer.
-    discretized_polygons_gdf['fault_id'] = discretized_polygons_gdf['fault_id'].astype('int64')
+    discretised_polygons_gdf['fault_id'] = discretised_polygons_gdf['fault_id'].astype('int64')
     rectangle_outlines_gdf['fault_id'] = rectangle_outlines_gdf['fault_id'].astype('int64')
 
     # filter ruptures by annual rate and location
@@ -452,22 +476,22 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
 
     # calculate displacements at all the sites by rupture. Output dictionary keys are by rupture ID.
     disp_dictionary = {}
-    print(f"calculating displacements for {extension1}")
-    for rupture_id in filtered_ruptures_location:
+    for ix, rupture_id in enumerate(filtered_ruptures_location):
+        print(f"calculating displacements for {extension1} ({ix}/{len(filtered_ruptures_location)})", end="\r")
         ruptured_fault_ids = all_ruptures[rupture_id]
-        ruptured_discretized_polygons_gdf = discretized_polygons_gdf[
-            discretized_polygons_gdf.fault_id.isin(ruptured_fault_ids)]
-        ruptured_discretized_polygons_gdf = gpd.GeoDataFrame(ruptured_discretized_polygons_gdf, geometry='geometry')
+        ruptured_discretised_polygons_gdf = discretised_polygons_gdf[
+            discretised_polygons_gdf.fault_id.isin(ruptured_fault_ids)]
+        ruptured_discretised_polygons_gdf = gpd.GeoDataFrame(ruptured_discretised_polygons_gdf, geometry='geometry')
         ruptured_rectangle_outlines_gdf = rectangle_outlines_gdf[
             rectangle_outlines_gdf.fault_id.isin(ruptured_fault_ids)]
 
         #calculate displacements, output is a list of displacements for each site
         disps_scenario, patch_slips = \
-            calculate_vertical_disps(ruptured_discretized_polygons_gdf=ruptured_discretized_polygons_gdf,
+            calculate_vertical_disps(ruptured_discretised_polygons_gdf=ruptured_discretised_polygons_gdf,
                                      ruptured_rectangle_outlines_gdf=ruptured_rectangle_outlines_gdf,
                                      rupture_id=rupture_id, ruptured_fault_ids=ruptured_fault_ids,
                                      slip_taper=slip_taper, rupture_slip_dict=rupture_slip_dict,
-                                     gf_total_slip_dict=gf_total_slip_dict)
+                                     gf_total_slip_dict=gf_total_slip_dict, fakequakes=fakequakes)
 
         # extract annual rate and save data to dictionary. Key is the rupture ID. Ignores scenarios with zero
         # displacement at all sites. Sites can be a grid cell or a specific (named) site.
@@ -481,7 +505,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
             disp_dictionary[rupture_id] = rupture_disp_dict
 
     # print statement about how many scenarios have displacement > 0 at each site
-    print(f"scenarios with displacement > 0: {len(disp_dictionary)}")
+    print(f"\nscenarios with displacement > 0: {len(disp_dictionary)}")
 
     if slip_taper is True:
         extension3 = "_tapered"
@@ -504,7 +528,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
 
 def get_figure_bounds(polygon_gdf="", extent=""):
     """sets figure bounds based on key words
-    polygon_gdf: either discretized polygon gdf (for displacement figure) or ruptured rectangles gdf (slip figure)
+    polygon_gdf: either discretised polygon gdf (for displacement figure) or ruptured rectangles gdf (slip figure)
     extent: can specify the extent of figure for interest area """
 
     if extent == "North Island":    # bounds of whole north island
@@ -540,7 +564,7 @@ def get_figure_bounds(polygon_gdf="", extent=""):
         xmin_tick, xmax_tick = round(plot_xmin + buffer, -4), plot_xmax
         ymin_tick, ymax_tick = round(plot_ymin + buffer, -4), plot_ymax
         tick_separation = round((plot_ymax - plot_ymin) / 3, -4)
-    else:   # bounds of all polyons with a 100 km buffer (intented for discretized polygons, displacement plot)
+    else:   # bounds of all polyons with a 100 km buffer (intented for discretised polygons, displacement plot)
         plot_xmin, plot_ymin, plot_xmax, plot_ymax = polygon_gdf.total_bounds
         xmin_tick, xmax_tick = round(plot_xmin, -5) - 100000, round(plot_xmax, -5) + 100000
         ymin_tick, ymax_tick = round(plot_ymin, -5) - 100000, round(plot_ymax, -5) + 100000
@@ -600,7 +624,7 @@ def maximum_displacement_plot(site_ids, branch_site_disp_dict, model_dir, branch
     plt.close(fig)
 
 def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_version, deformation_model='geologic and geodetic', time_independent=True,
-                         time_dependent=True, single_branch=False):
+                         time_dependent=True, single_branch=False, fakequakes=False):
     # Set up which branches you want to calculate displacements and probabilities for
     file_suffix_list = []
     NSHM_directory_list = []
@@ -653,22 +677,30 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
                 NSHM_directory_list.extend(NSHM_directory_list_i)
 
         elif fault_type == "sz":
-            model_version = sz_model_version
-            slip_taper = False
-            if not single_branch:
-                file_suffix_list_i = ["_sz_NJk2", "_sz_NTE2", "_sz_NzE0"]
-                NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2",
-                                        "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzEx",
-                                        "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
-
+            if fakequakes:
+                file_suffix_list_i = ["_sz_fq_1"]
+                NSHM_directory_list_i = ["sz_solutions/FakeQuakes_sz_n5000_S10_N1_GR100_b1-1_N21-5_nIt500000_narchi10"]
                 file_suffix_list.extend(file_suffix_list_i)
                 NSHM_directory_list.extend(NSHM_directory_list_i)
                 fault_branches += len(file_suffix_list_i) * 3  # For scaling
-            if single_branch:
-                file_suffix_list_i = ["_sz_NzE0"]  # "_sz_NzE0" Highest weighted Branch
-                NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
-                file_suffix_list.extend(file_suffix_list_i)
-                NSHM_directory_list.extend(NSHM_directory_list_i)
+
+            else:
+                model_version = sz_model_version
+                slip_taper = False
+                if not single_branch:
+                    file_suffix_list_i = ["_sz_NJk2", "_sz_NTE2", "_sz_NzE0"]
+                    NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2",
+                                            "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzEx",
+                                            "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
+
+                    file_suffix_list.extend(file_suffix_list_i)
+                    NSHM_directory_list.extend(NSHM_directory_list_i)
+                    fault_branches += len(file_suffix_list_i) * 3  # For scaling
+                if single_branch:
+                    file_suffix_list_i = ["_sz_NzE0"]  # "_sz_NzE0" Highest weighted Branch
+                    NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
+                    file_suffix_list.extend(file_suffix_list_i)
+                    NSHM_directory_list.extend(NSHM_directory_list_i)
         elif fault_type == "py":
             model_version = sz_model_version
             slip_taper = False
