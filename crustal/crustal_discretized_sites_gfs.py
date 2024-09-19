@@ -15,17 +15,17 @@ import shutil
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_national_2km"
+mesh_version = "_national_OCC"
 #out_extension = f"_{mesh_version}_v1"
 
 steeper_dip, gentler_dip = False, False
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'national_2km_grid_points.csv')
+site_list_csv = os.path.join('..', 'NZ_VLM_final_May24_points.csv')
 sites_df = pd.read_csv(site_list_csv)
 
 site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
-site_name_list = [site for site in sites_df['siteId']]
+site_name_list = [str(site) for site in sites_df['siteId']]
 #########################
 gf_type = "sites"
 
