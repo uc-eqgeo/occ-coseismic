@@ -135,10 +135,10 @@ def read_fakequakes_slip_rates(NSHM_directory):
     patches = list(df.columns)
     patches.remove('Average Slip (m)')
     rupture_slip_dict = {}
-    print('Writing rupture slip dictionary (this may take a while)...')
-    for _, row in df.iterrows():
+    for ix, row in df.iterrows():
+        print(f"Writing rupture slip dictionary... {ix}/{len(df)}", end="\r")
         rupture_slip_dict[row.name] = row[patches].values.reshape(-1, 1)
-
+    print("")
     all_ruptures = read_rupture_csv(os.path.join(proc_dir, f"../data/{NSHM_directory}/ruptures/indices.csv"))
     rates_df = pd.read_csv(os.path.join(proc_dir, f"../data/{NSHM_directory}/solution/rates.csv"))
 

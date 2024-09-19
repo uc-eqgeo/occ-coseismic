@@ -37,7 +37,7 @@ elif gentler_dip:
     sz_zone += "_gentlerdip"
 
 # De-blobify outputs
-deblobify = True
+deblobify = False
 #######################
 def cross_3d(a, b):
     """
@@ -151,8 +151,7 @@ for i, trace in traces.iterrows():
     all_rectangle_polygons.append(rectangle_polygon)
 
 # make directory for outputs
-if not os.path.exists(f"discretised_{sz_zone}"):
-    os.mkdir(f"discretised_{sz_zone}")
+os.mkdir(f"discretised_{sz_zone}")
 
 
 # write rectangle centroid and rectangle polygons to geojson

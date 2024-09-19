@@ -11,21 +11,21 @@ import h5py as h5
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_national_2km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_national_2km"                    # must match suffix in the subduction directory with gfs
+fault_type = "crustal"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+crustal_model_version = "_national_OCC"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = ["_national_OCC, _SouthIsland_OCC"]       # must match suffix in the subduction directory with gfs - either all the same dirname, or all names must be given
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = True   # Prepares code for NESI runs
-testing = False   # Impacts number of samples runs, job time etc
-fakequakes = True   # Use fakequakes for the subduction zone (applied only to hikkerk)
+nesi = False   # Prepares code for NESI runs
+testing = True   # Impacts number of samples runs, job time etc
+fakequakes = False   # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
-remake_PPE = True              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
+remake_PPE = False             # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
-save_arrays = False          # Do you want to save the displacement and probability arrays?
+save_arrays = True         # Do you want to save the displacement and probability arrays?
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../wellington_10km_grid_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
@@ -72,6 +72,9 @@ if fault_type == 'all':
     job_time = 120
     mem = 3
     min_tasks_per_array = 5
+
+if isinstance(sz_model_version, str):
+    sz_model_version = [sz_model_version]
 
 n_samples, job_time, mem, n_array_tasks, min_tasks_per_array = int(n_samples), int(job_time), int(mem), int(n_array_tasks), int(min_tasks_per_array)
 ## Solving processing conflicts
@@ -157,12 +160,19 @@ if not paired_crustal_sz:
     if fault_type[0] == "crustal":
         model_version_list = [crustal_model_version]
     else:
+        if len(sz_model_version) > 1:
+            raise Exception("Only one subduction model version can be used with a single fault model")
         if fakequakes and sz_model_version[:3] != "_fq":
-            sz_model_version = "_fq" + sz_model_version
-        model_version_list = [sz_model_version]
+            sz_model_version = "_fq" + sz_model_version[0]
+        model_version_list = sz_model_version
         slip_taper = False    
 else:
-    model_version_list = [crustal_model_version] + [sz_model_version] * len(fault_type[1:])
+    if len(sz_model_version) == 1:
+        model_version_list = [crustal_model_version] + [sz_model_version] * len(fault_type[1:])
+    elif len(sz_model_version) == len(fault_type[1:]):
+        model_version_list = [crustal_model_version] + sz_model_version
+    else:
+        raise Exception("Length of sz_model_version must be 1 or equal to the number of subduction fault types")
     if fakequakes:
         sz_ix = 1 + fault_type[1:].index('sz')
         model_version_list[sz_ix] = "_fq" + model_version_list[sz_ix]
