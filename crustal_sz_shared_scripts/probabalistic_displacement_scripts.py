@@ -793,6 +793,10 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         all_single_sz_branches_site_disp_dict = get_all_branches_site_disp_dict(sz_branch_weight_dict, gf_name, slip_taper,
                                                                                 sz_model_version_results_directory_list[ix])
 
+        with h5.File(all_single_sz_branches_site_disp_dict[list(sz_branch_weight_dict.keys())[0]]["site_disp_dict"]) as sz_h5:
+            site_names = list(set(site_names + [site for site in sz_h5.keys()]))
+            site_names.sort()
+
         all_sz_branches_site_disp_dict = all_sz_branches_site_disp_dict | all_single_sz_branches_site_disp_dict
 
         # make all the combinations of crustal and subduction zone branch pairs
