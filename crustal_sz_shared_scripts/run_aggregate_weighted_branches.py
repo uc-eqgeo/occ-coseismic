@@ -11,9 +11,10 @@ import h5py as h5
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "crustal"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_national_OCC"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = ["_national_OCC, _SouthIsland_OCC"]       # must match suffix in the subduction directory with gfs - either all the same dirname, or all names must be given
+sz_model_version = ["_national_OCC", "_national_OCC"]       # must match suffix in the subduction directory with gfs - either all the same dirname, or all names must be given
+sz_list_order = ["sz", "py"]
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
 testing = True   # Impacts number of samples runs, job time etc
@@ -161,10 +162,11 @@ if not paired_crustal_sz:
         model_version_list = [crustal_model_version]
     else:
         if len(sz_model_version) > 1:
-            raise Exception("Only one subduction model version can be used with a single fault model")
-        if fakequakes and sz_model_version[:3] != "_fq":
-            sz_model_version = "_fq" + sz_model_version[0]
-        model_version_list = sz_model_version
+            sz_ix = sz_list_order.index(fault_type[0])
+            sz_model_version = [sz_model_version[sz_ix]]
+        if fakequakes and sz_model_version[0][:3] != "_fq":
+            sz_model_version = ["_fq" + sz_model_version[0]]
+        model_version_list = [sz_model_version[0]]
         slip_taper = False    
 else:
     if len(sz_model_version) == 1:
@@ -174,7 +176,7 @@ else:
     else:
         raise Exception("Length of sz_model_version must be 1 or equal to the number of subduction fault types")
     if fakequakes:
-        sz_ix = 1 + fault_type[1:].index('sz')
+        sz_ix = 1 +  sz_list_order.index('sz')
         model_version_list[sz_ix] = "_fq" + model_version_list[sz_ix]
 
 if slip_taper:
