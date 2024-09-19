@@ -12,12 +12,12 @@ import h5py as h5
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_Model_CFM_wellington_1km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_fq_national_2km"                    # must match suffix in the subduction directory with gfs
+crustal_model_version = "_national_2km"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = "_national_2km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = True   # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
-fakequakes = True   # Use fakequakes for the subduction zone
+fakequakes = True   # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
@@ -84,6 +84,9 @@ if paired_crustal_sz and calculate_weighted_mean_PPE:
 if nesi and calculate_weighted_mean_PPE and paired_crustal_sz:
     mem = 5
 
+if fakequakes and all([fault_type != 'all', fault_type != 'sz']):
+    raise Exception('Fakequakes selected but fault type must be all or sz')
+
 if not nesi and fakequakes:
     load_random = True
 
@@ -149,17 +152,20 @@ def make_branch_weight_dict(branch_weight_file_path, sheet_name):
 ###############################
 
 gf_name = "sites"
-if fakequakes and sz_model_version[:3] != "_fq":
-    sz_model_version = "_fq" + sz_model_version
 
 if not paired_crustal_sz:
     if fault_type[0] == "crustal":
         model_version_list = [crustal_model_version]
     else:
+        if fakequakes and sz_model_version[:3] != "_fq":
+            sz_model_version = "_fq" + sz_model_version
         model_version_list = [sz_model_version]
         slip_taper = False    
 else:
     model_version_list = [crustal_model_version] + [sz_model_version] * len(fault_type[1:])
+    if fakequakes:
+        sz_ix = 1 + fault_type[1:].index('sz')
+        model_version_list[sz_ix] = "_fq" + model_version_list[sz_ix]
 
 if slip_taper:
     taper_extension = "_tapered"

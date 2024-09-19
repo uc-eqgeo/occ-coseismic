@@ -69,30 +69,34 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
     # and this is easier to understand I think.
     disps_by_scenario = []
     annual_rates_by_scenario = []
-    for rupture_id in rupture_disp_dictionary.keys():
+    for ix, rupture_id in enumerate(rupture_disp_dictionary.keys()):
+        print(f"\tPreparing disps by scenario... {ix}\{len(rupture_disp_dictionary.keys())}", end='\r')
         disps = rupture_disp_dictionary[rupture_id]["v_disps_m"]
         disps_by_scenario.append(disps)
         annual_rate = rupture_disp_dictionary[rupture_id]["annual_rate"]
         annual_rates_by_scenario.append(annual_rate)
+    print('')
     # list of lists. each item is a site location that contains displacements from each scenario (disp list length =
     # number of rupture scenarios)
     disps_by_location = []
     annual_rates_by_location = []
     for site_num in range(len(site_names)):
+        print(f"\tPreparing disps by location... {site_num}\{len(site_names)}", end='\r')
         site_disp = [scenario[site_num] for scenario in disps_by_scenario]
         disps_by_location.append(site_disp)
         annual_rates_by_location.append(annual_rates_by_scenario)
-
+    print('')
     # make dictionary of displacements and other data. key is the site name.
     if os.path.exists(site_disp_h5file):
         os.remove(site_disp_h5file)
     with h5.File(site_disp_h5file, "w") as site_disp_PPEh5:
         for i, site in enumerate(site_names):
+            print(f"\tWriting sites to {site_disp_h5file}... {i}\{len(site_names)}", end='\r')
             site_group = site_disp_PPEh5.create_group(site)
             site_group.create_dataset("disps", data=disps_by_location[i])
             site_group.create_dataset("rates", data=annual_rates_by_location[i])
             site_group.create_dataset("site_coords", data=site_coords[i])
-   
+    print('')
     return 
 
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
