@@ -946,8 +946,9 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                     fault_dir = next((sz_dir for sz_dir in sz_directory_list if f'/{fault_type}_' in sz_dir))
                 NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
                 with h5.File(NSHM_file, 'r') as NSHM_h5:
-                    NSHM_displacements = NSHM_h5[site]['scenario_displacements'][:]
-                cumulative_disp_scenarios += NSHM_displacements.reshape(-1)
+                    if site in NSHM_h5.keys():
+                        NSHM_displacements = NSHM_h5[site]['scenario_displacements'][:]
+                        cumulative_disp_scenarios += NSHM_displacements.reshape(-1)
 
             n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios.reshape(1, -1))
             site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)
