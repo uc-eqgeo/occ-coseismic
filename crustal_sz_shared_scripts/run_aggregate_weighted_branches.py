@@ -13,10 +13,10 @@ import h5py as h5
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_Model_CFM_wellington_1km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_wellington_1km"                    # must match suffix in the subduction directory with gfs
+sz_model_version = "_fq_national_2km"                    # must match suffix in the subduction directory with gfs
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = False   # Prepares code for NESI runs
-testing = True   # Impacts number of samples runs, job time etc
+nesi = True   # Prepares code for NESI runs
+testing = False   # Impacts number of samples runs, job time etc
 fakequakes = True   # Use fakequakes for the subduction zone
 
 # Processing Flags (True/False)
@@ -149,7 +149,7 @@ def make_branch_weight_dict(branch_weight_file_path, sheet_name):
 ###############################
 
 gf_name = "sites"
-if fakequakes and sz_model_version[-3:] != "_fq":
+if fakequakes and sz_model_version[:3] != "_fq":
     sz_model_version = "_fq" + sz_model_version
 
 if not paired_crustal_sz:

@@ -135,6 +135,7 @@ def read_fakequakes_slip_rates(NSHM_directory):
     patches = list(df.columns)
     patches.remove('Average Slip (m)')
     rupture_slip_dict = {}
+    print('Writing rupture slip dictionary (this may take a while)...')
     for _, row in df.iterrows():
         rupture_slip_dict[row.name] = row[patches].values.reshape(-1, 1)
 

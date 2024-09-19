@@ -11,15 +11,15 @@ import shutil
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_fq_OCC_NorthIsland"
+version_extension = "_fq_national_2km"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
 # Define whch subduction zone ([_fq_]hikkerk / puysegur)
-sz_zone = '_fq_hikkerk'
+sz_zone = '_puysegur'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-csvfile = 'NZ_VLM_final_May24_NorthIsland_points.csv'
+csvfile = 'national_2km_grid_points.csv'
 try:
     site_list_csv = os.path.join('/mnt/', 'c', 'Users', 'jmc753', 'Work', 'occ-coseismic', csvfile)
     sites_df = pd.read_csv(site_list_csv)
@@ -85,8 +85,8 @@ for fault_id in discretised_dict.keys():
     if fault_id % 1 == 0:
         print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)', end='\r')
 print('')
-if not os.path.exists(f"out_files{version_extension}"):
-    os.makedirs(f"out_files{version_extension}")
+
+os.makedirs(f"out_files{version_extension}", exist_ok=True)
 with open(f"out_files{version_extension}/{prefix}_gf_dict_{gf_type}.pkl", "wb") as f:
     pkl.dump(gf_dict, f)
 

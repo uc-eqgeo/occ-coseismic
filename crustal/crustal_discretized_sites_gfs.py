@@ -54,7 +54,6 @@ site_gdf.to_file(f"out_files{mesh_version}/site_points.geojson", driver="GeoJSON
 
 gf_dict_sites = {}
 for fault_id in discretised_dict.keys():
-    print(f"Making gf for fault {fault_id}/{len(discretised_dict.keys())}", end="\r")
     triangles = discretised_dict[fault_id]["triangles"]
     rake = discretised_dict[fault_id]["rake"]
 
@@ -78,11 +77,12 @@ for fault_id in discretised_dict.keys():
                  "site_coords": site_coords, "x_data": site_coords[:, 0], "y_data": site_coords[:, 1]}
 
     gf_dict_sites[fault_id] = disp_dict
+    print(f'discretised fault {fault_id} of {len(discretised_dict.keys())} ({triangles.shape[0]} triangles per patch)', end='\r')
 
 with open(f"out_files{mesh_version}/crustal_gf_dict_{gf_type}.pkl", "wb") as f:
     pkl.dump(gf_dict_sites, f)
 
-for file in ["_discretised_polygons", "_all_rectangle_outlines", "_all_rectangle_centroids"]:
-    shutil.copy(f"discretised{discretise_version}/crustal_{file}.geojson", f"out_files{mesh_version}/crustal_{file}.geojson")
+for file in ["crustal_discretised_polygons", "all_rectangle_outlines", "named_rectangle_centroids"]:
+    shutil.copy(f"discretised{discretise_version}/{file}.geojson", f"out_files{mesh_version}/{file}.geojson")
     
 print(f"\nout_files{mesh_version} Complete!")
