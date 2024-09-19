@@ -58,7 +58,7 @@ def read_combination_csv(csv_file: str, saveSpaces: bool = False):
 
 def make_total_slip_dictionary(gf_dict_pkl):
     """ calculates total greens function displacement using strike slip gf, dip slip gf, and rake value
-    need to run the and crustal_discretized_gfs script first"""
+    need to run the and crustal_discretised_gfs script first"""
 
     with open(gf_dict_pkl, "rb") as fid:
         gf_dict = pkl.load(fid)
@@ -209,13 +209,13 @@ def get_rect_geojson(NSHM_directory, target_rupture_ids, extension1, extension2,
     print("Rupture patches written to geojson")
 
 
-def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectangle_outlines_gdf, rupture_id,
+def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectangle_outlines_gdf, rupture_id,
                              ruptured_fault_ids, slip_taper, rupture_slip_dict, gf_total_slip_dict):
     """ calcualtes displacements for given rupture scenario at a single site
     not yet sure if I should set it up to allow more than one site at a time
 
     CAVETS/choices:
-    - tapered slip assigns one slip value to each discretized polygon (e.g., one fault id). the slip
+    - tapered slip assigns one slip value to each discretised polygon (e.g., one fault id). the slip
     values are tapered according to total rupture length of all rectangles.
     - this version changes all very small dispalcements to zero, or if no meshes are used, returns zero displacement
     """
@@ -223,7 +223,7 @@ def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectang
     # find which patches have a mesh and which don't, to use greens functions later just with meshed patches
     ruptured_fault_ids_with_mesh = np.intersect1d(ruptured_fault_ids, list(gf_total_slip_dict.keys()))
 
-    # calculate slip on each discretized polygon
+    # calculate slip on each discretised polygon
     if slip_taper is False:
         # calculate displacements by multiplying scenario slip by scenario greens function
         # scenario gf sums displacements from all ruptured
@@ -238,8 +238,8 @@ def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectang
             disps_scenario = None
 
     elif slip_taper is True:
-        # get centroid coords of faults discretized polygons with a mesh
-        ruptured_polygon_centroid_points = ruptured_discretized_polygons_gdf.centroid
+        # get centroid coords of faults discretised polygons with a mesh
+        ruptured_polygon_centroid_points = ruptured_discretised_polygons_gdf.centroid
         ruptured_polygon_centroids_x = [point.x for point in ruptured_polygon_centroid_points]
         ruptured_polygon_centroids_y = [point.y for point in ruptured_polygon_centroid_points]
         ruptured_polygon_centroid_coords = np.array([ruptured_polygon_centroids_x, ruptured_polygon_centroids_y]).T
@@ -277,14 +277,14 @@ def calculate_vertical_disps(ruptured_discretized_polygons_gdf, ruptured_rectang
             tapered_slip_multipliers.append(tapered_slip_multiplier)
             tapered_slip_values.append(max_slip * tapered_slip_multiplier)
 
-        # interpolate slip at each discretized polygon (i.e., patch) centroid and corresponding displacement
+        # interpolate slip at each discretised polygon (i.e., patch) centroid and corresponding displacement
         polygon_slips = griddata(along_rupture_line_xy, tapered_slip_values, ruptured_polygon_centroid_coords,
                                  method="nearest")
 
         # calculate displacements by multiplying the polygon green's function by slip on each fault
         # this will be a list of lists
         disps_i_list = []
-        for i, fault_id in enumerate(ruptured_discretized_polygons_gdf.fault_id):
+        for i, fault_id in enumerate(ruptured_discretised_polygons_gdf.fault_id):
             disp_i = gf_total_slip_dict[fault_id]["combined_gf"] * polygon_slips[i]
             disps_i_list.append(disp_i)
         # sum displacements from each patch
@@ -317,8 +317,8 @@ def get_rupture_disp_dict(NSHM_directory, extension1, extension2, slip_taper):
     print(f"loading data for {extension1}{extension2}")
     rupture_slip_dict = read_average_slip(f"../data/{NSHM_directory}/ruptures/average_slips.csv")
     rates_df = pd.read_csv(f"../data/{NSHM_directory}/solution/rates.csv")
-    discretized_polygons_gdf = gpd.read_file(f"out_files/{extension1}{extension2}/"
-                                             f"crustal_discretized_polygons_{extension1}{extension2}.geojson")
+    discretised_polygons_gdf = gpd.read_file(f"out_files/{extension1}{extension2}/"
+                                             f"crustal_discretised_polygons_{extension1}{extension2}.geojson")
     gf_dict_pkl = f"out_files/{extension1}{extension2}/crustal_gf_dict_{extension1}{extension2}.pkl"
 
     # this line takes ages, only do it once
@@ -327,7 +327,7 @@ def get_rupture_disp_dict(NSHM_directory, extension1, extension2, slip_taper):
     rectangle_outlines_gdf = gpd.read_file(f"out_files/{extension1}{extension2}/all_rectangle_outlines"
                                            f"_{extension1}{extension2}.geojson")
     # for some reason it defaults values to string. Convert to integer.
-    discretized_polygons_gdf['fault_id'] = discretized_polygons_gdf['fault_id'].astype('int64')
+    discretised_polygons_gdf['fault_id'] = discretised_polygons_gdf['fault_id'].astype('int64')
     rectangle_outlines_gdf['fault_id'] = rectangle_outlines_gdf['fault_id'].astype('int64')
 
     # filter ruptures by annual rate and location
@@ -350,15 +350,15 @@ def get_rupture_disp_dict(NSHM_directory, extension1, extension2, slip_taper):
     print(f"calculating displacements for {extension1}")
     for rupture_id in filtered_ruptures_location:
         ruptured_fault_ids = all_ruptures[rupture_id]
-        ruptured_discretized_polygons_gdf = discretized_polygons_gdf[
-            discretized_polygons_gdf.fault_id.isin(ruptured_fault_ids)]
-        ruptured_discretized_polygons_gdf = gpd.GeoDataFrame(ruptured_discretized_polygons_gdf, geometry='geometry')
+        ruptured_discretised_polygons_gdf = discretised_polygons_gdf[
+            discretised_polygons_gdf.fault_id.isin(ruptured_fault_ids)]
+        ruptured_discretised_polygons_gdf = gpd.GeoDataFrame(ruptured_discretised_polygons_gdf, geometry='geometry')
         ruptured_rectangle_outlines_gdf = rectangle_outlines_gdf[
             rectangle_outlines_gdf.fault_id.isin(ruptured_fault_ids)]
 
         # calculate displacements, output is a list of displacements for each site
         disps_scenario, patch_slips = \
-            calculate_vertical_disps(ruptured_discretized_polygons_gdf=ruptured_discretized_polygons_gdf,
+            calculate_vertical_disps(ruptured_discretised_polygons_gdf=ruptured_discretised_polygons_gdf,
                                      ruptured_rectangle_outlines_gdf=ruptured_rectangle_outlines_gdf,
                                      rupture_id=rupture_id, ruptured_fault_ids=ruptured_fault_ids,
                                      slip_taper=slip_taper, rupture_slip_dict=rupture_slip_dict,
@@ -393,7 +393,7 @@ def get_rupture_disp_dict(NSHM_directory, extension1, extension2, slip_taper):
 
 def get_figure_bounds(polygon_gdf, extent=""):
     """sets figure bounds based on key words
-    polygon_gdf: either discretized polygon gdf (for displacement figure) or ruptured rectangles gdf (slip figure)
+    polygon_gdf: either discretised polygon gdf (for displacement figure) or ruptured rectangles gdf (slip figure)
     extent: can specify the extent of figure for interest area """
 
     if extent == "North Island":    # bounds of whole north island
@@ -416,7 +416,7 @@ def get_figure_bounds(polygon_gdf, extent=""):
         xmin_tick, xmax_tick = round(plot_xmin + buffer, -4), plot_xmax
         ymin_tick, ymax_tick = round(plot_ymin + buffer, -4), plot_ymax
         tick_separation = round((plot_ymax - plot_ymin) / 3, -4)
-    else:   # bounds of all polyons with a 100 km buffer (intented for discretized polygons, displacement plot)
+    else:   # bounds of all polyons with a 100 km buffer (intented for discretised polygons, displacement plot)
         plot_xmin, plot_ymin, plot_xmax, plot_ymax = polygon_gdf.total_bounds
         xmin_tick, xmax_tick = round(plot_xmin, -5) - 100000, round(plot_xmax, -5) + 100000
         ymin_tick, ymax_tick = round(plot_ymin, -5) - 100000, round(plot_ymax, -5) + 100000

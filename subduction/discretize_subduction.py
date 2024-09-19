@@ -7,13 +7,11 @@ import pickle as pkl
 import os
 
 #### USER INPUT #####
-version_extension  = "_national_10km"
-
 #this can be any working branch, should be the same for all.
 NSHM_directory = "NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2"
 
 # Define whch subduction zone (hikkerk / puysegur)
-sz_zone = 'puysegur'
+sz_zone = 'hikkerk'
 
 if not sz_zone in ['hikkerk', 'puysegur']:
     print("Please define a valid subduction zone (hikkerk / puysegur).")
@@ -34,9 +32,9 @@ if steeper_dip and gentler_dip:
     print("Dip modifications are wrong. Only one statement can be True at once. Try again.")
     exit()
 elif steeper_dip:
-    version_extension += "_steeperdip"
+    sz_zone += "_steeperdip"
 elif gentler_dip:
-    version_extension += "_gentlerdip"
+    sz_zone += "_gentlerdip"
 
 # De-blobify outputs
 deblobify = True
@@ -153,8 +151,8 @@ for i, trace in traces.iterrows():
     all_rectangle_polygons.append(rectangle_polygon)
 
 # make directory for outputs
-if not os.path.exists(f"out_files{version_extension}"):
-    os.mkdir(f"out_files{version_extension}")
+if not os.path.exists(f"discretised_{sz_zone}"):
+    os.mkdir(f"discretised_{sz_zone}")
 
 
 # write rectangle centroid and rectangle polygons to geojson
@@ -162,11 +160,11 @@ all_rectangle_centroids = np.array(all_rectangle_centroids)
 all_rectangle_centroids_gs = gpd.GeoSeries([Point(centroid) for centroid in all_rectangle_centroids], crs=2193)
 all_rectangle_centroids_gdf = gpd.GeoDataFrame(df_rectangle_centroid, geometry=all_rectangle_centroids_gs.geometry, crs=2193)
 all_rectangle_centroids_gdf.to_file(
-    f"out_files{version_extension}/{prefix}_all_rectangle_centroids.geojson", driver="GeoJSON")
+    f"discretised_{sz_zone}/{prefix}_all_rectangle_centroids.geojson", driver="GeoJSON")
 
 all_rectangle_outline_gs = gpd.GeoSeries(all_rectangle_polygons, crs=2193)
 all_rectangle_outline_gdf = gpd.GeoDataFrame(df1, geometry=all_rectangle_outline_gs.geometry, crs=2193)
-all_rectangle_outline_gdf.to_file(f"out_files{version_extension}/{prefix}_all_rectangle_outlines.geojson", driver="GeoJSON")
+all_rectangle_outline_gdf.to_file(f"discretised_{sz_zone}/{prefix}_all_rectangle_outlines.geojson", driver="GeoJSON")
 
 #####
 # read in triangle mesh and add the patch centroids as points
@@ -260,7 +258,7 @@ elif deblobify:
 closest_rectangles = np.array(closest_rectangles)
 
 # Create polygons from triangles
-discretized_polygons = []
+discretised_polygons = []
 discretised_dict = {}
 for index in traces.index:
     triangles_locs = np.where(closest_rectangles == index)[0]
@@ -269,13 +267,13 @@ for index in traces.index:
     # make dictionary of triangles that go with each polygon
     triangle_polygons = [Polygon(triangle) for triangle in triangles]
     dissolved_triangle_polygons = gpd.GeoSeries(triangle_polygons).unary_union
-    discretized_polygons.append(dissolved_triangle_polygons)
+    discretised_polygons.append(dissolved_triangle_polygons)
     discretised_dict[index] = {"triangles": triangles, "rake": mesh_rake[triangles_locs], "triangle_indices": triangles_locs}  
 
 
 # Create a geodataframe and geospon file from the polygons
-gdf = gpd.GeoDataFrame({"rake": rectangle_rake, "geometry": discretized_polygons, "fault_id": traces.index})
+gdf = gpd.GeoDataFrame({"rake": rectangle_rake, "geometry": discretised_polygons, "fault_id": traces.index})
 gdf.crs = traces.crs
-gdf.to_file(f"out_files{version_extension}/{prefix}_discretized_polygons.geojson", driver="GeoJSON")
+gdf.to_file(f"discretised_{sz_zone}/{prefix}_discretised_polygons.geojson", driver="GeoJSON")
 
-pkl.dump(discretised_dict, open(f"out_files{version_extension}/{prefix}_discretised_dict.pkl", "wb"))
+pkl.dump(discretised_dict, open(f"discretised_{sz_zone}/{prefix}_discretised_dict.pkl", "wb"))

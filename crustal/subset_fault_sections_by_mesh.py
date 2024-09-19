@@ -7,13 +7,13 @@ from itertools import product
 # This script extracts the fault sections from the NSHM within a defined region of interest.
 # Specific faults can also be included or excluded based on their name.
 # Outputs a geojson with filtered traces.
-# Do this prior to discretize_crustal, because there's no point trying to discretize patches when we don't have a mesh
+# Do this prior to discretise_crustal, because there's no point trying to discretise patches when we don't have a mesh
 # Only have to do once no matter the NSHM branch since the faults don't change
 
 #######INPUTS
 # find only the rupture scenarios that use faults we have meshes for
 NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"  # geologic, mid B and N, C 4.2
-model_extension = "_Model_CFM_50km"         # "_Model1" or "_Model2" or "_CFM"
+model_extension = "_CFM"         # "_Model1" or "_Model2" or "_CFM"
 
 # Define region of interest
 minLon, maxLon, minLat, maxLat = 160.5, 179.0, -48.0, -34.0
@@ -126,7 +126,7 @@ filtered_trace_ids = [fault_id for fault_id in filtered_trace_ids if fault_id no
 filtered_traces_gdf = traces[traces.FaultID.isin(filtered_trace_ids)]
 
 # make directory for outputs if it doesn't already exist
-if not os.path.exists(f"out_files{model_extension}"):
-    os.mkdir(f"out_files{model_extension}")
+if not os.path.exists(f"discretised{model_extension}"):
+    os.mkdir(f"discretised{model_extension}")
 
-filtered_traces_gdf.to_file(f"out_files{model_extension}/name_filtered_fault_sections.geojson", driver="GeoJSON")
+filtered_traces_gdf.to_file(f"discretised{model_extension}/name_filtered_fault_sections.geojson", driver="GeoJSON")

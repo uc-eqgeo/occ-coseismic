@@ -5,7 +5,9 @@ data/
 results/
 subduction/out_files*
 subduction/displacements/
+subduction/discretised*
 crustal/out_file*/
+crustal/discretised*
 
 # __pycache__ and vscode directories
 */__pycache__/
@@ -22,3 +24,6 @@ FaultSectionsTesting.qgz
 for_jaime.zip
 .vscode/launch.json
 *qmd
+docs/
+*png
+*.geojson

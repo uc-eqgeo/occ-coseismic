@@ -10,7 +10,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 
-searise_csv = 'national_50km_grid.csv'
+searise_csv = 'NZ_VLM_final_May24_NorthIsland.csv'
 
 data = pd.read_csv(searise_csv)
 
@@ -29,6 +29,8 @@ else:  # For QGIS point exports
     coord_name = True
     sort_values = True
 
+data.geometry = data.geometry.to_crs('EPSG:2193')  # Convert to NZTM
+
 data['Lon'] = data.geometry.x
 data['Lat'] = data.geometry.y
 
@@ -39,7 +41,7 @@ data['Height'] = 0
 if sort_values:
     data = data.sort_values(by=['Lat', 'Lon']).reset_index(drop=True)  # Sort based on Latitude, then longitude
     if coord_name:
-        data['siteId'] = [f"{round(data.loc[ix, 'Lon']/1e3)}_{round(data.loc[ix, 'Lat']/1e3)}" for ix in range(data.shape[0])]  # Set siteId to be based on NZTM location
+        data['siteId'] = [f"{round(data.loc[ix, 'Lon'])}_{round(data.loc[ix, 'Lat'])}" for ix in range(data.shape[0])]  # Set siteId to be based on NZTM location
     else:
         data['siteId'] = np.array(data.index) # Reset siteIds
 
