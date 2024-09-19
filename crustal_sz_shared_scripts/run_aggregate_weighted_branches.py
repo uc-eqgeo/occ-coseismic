@@ -11,19 +11,19 @@ import h5py as h5
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_national_OCC"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = ["_national_OCC", "_national_OCC"]       # must match suffix in the subduction directory with gfs - either all the same dirname, or all names must be given
+fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+crustal_model_version = "_national_OCCbad"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = ["_national_OCC", "_SouthIsland_OCC"]       # must match suffix in the subduction directory with gfs - either all the same dirname, or all names must be given
 sz_list_order = ["sz", "py"]
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
 testing = True   # Impacts number of samples runs, job time etc
-fakequakes = False   # Use fakequakes for the subduction zone (applied only to hikkerk)
+fakequakes = True   # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
-calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
+calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
 remake_PPE = False             # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
 save_arrays = True         # Do you want to save the displacement and probability arrays?
@@ -171,8 +171,10 @@ if not paired_crustal_sz:
 else:
     if len(sz_model_version) == 1:
         model_version_list = [crustal_model_version] + [sz_model_version] * len(fault_type[1:])
-    elif len(sz_model_version) == len(fault_type[1:]):
-        model_version_list = [crustal_model_version] + sz_model_version
+    elif len(sz_model_version) == len(sz_list_order):
+        model_version_list = [crustal_model_version]
+        for ftype in fault_type[1:]:
+            model_version_list += [sz_model_version[sz_list_order.index(ftype)]]
     else:
         raise Exception("Length of sz_model_version must be 1 or equal to the number of subduction fault types")
     if fakequakes:
@@ -262,7 +264,7 @@ if paired_crustal_sz:
     out_version_results_directory = f"{results_directory}/paired_c{crustal_model_version}"
     pickle_prefix = ''
     for sub in fault_type[1:]:
-        out_version_results_directory += f"_{sub}{sz_model_version}"
+        out_version_results_directory += f"_{sub}{sz_model_version[sz_list_order.index(sub)]}"
         pickle_prefix += f"{sub}_"
     if not os.path.exists(f"../{out_version_results_directory}"):
         os.mkdir(f"../{out_version_results_directory}")
