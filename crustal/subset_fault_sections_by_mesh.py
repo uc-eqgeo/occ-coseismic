@@ -13,7 +13,7 @@ from itertools import product
 #######INPUTS
 # find only the rupture scenarios that use faults we have meshes for
 NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"  # geologic, mid B and N, C 4.2
-model_extension = "_CFM"         # "_Model1" or "_Model2" or "_CFM"
+model_extension = "_CFM_test"         # "_Model1" or "_Model2" or "_CFM"
 
 # Define region of interest
 minLon, maxLon, minLat, maxLat = 160.5, 179.0, -48.0, -34.0
@@ -42,6 +42,7 @@ exclude_fault_names = [fault for fault in exclude_fault_names if fault not in ta
 traces = gpd.read_file(f"../data/crustal_solutions/{NSHM_directory}/ruptures/fault_sections.geojson").to_crs(epsg=2193)
 
 # Read in combination file
+# Combination file aims to identify which faults, which are seperate in the NSHM, have been combined into a single mesh .stl file
 combine_meshes = True
 if combine_meshes:
     comb_dict = read_combination_csv('../data/NZ_CFM_v1_0_rs1km_modified_connected_edited_OCC.csv', saveSpaces=True)
@@ -51,30 +52,30 @@ if combine_meshes:
         for comp in comp_list:
             component_dict[comp] = comb
 
-    # Check if any target / exclude faults are faults in combined meshes of a different name, and include the other faults
+    # Check if any target faults are faults in combined meshes of a different name, and include the other faults
     for target, key in product(target_fault_names, component_dict.keys()):
         if target in key:
             target_fault_names += comb_dict[component_dict[key]]
 
-    # Check if any target / exclude faults are combined meshes, and thus include the component faults
+    # Check if any target faults are combined meshes, and thus include the component faults
     for target, key in product(target_fault_names, comb_dict.keys()):
         if target in key:
             target_fault_names += comb_dict[key]
 
-    target_fault_names = list(set([fault.rstrip(' 0123456789') for fault in target_fault_names]))
+    target_fault_names = list(set([fault.rstrip(' 0123456789') for fault in target_fault_names]))   # remove numbers from mesh name
     target_fault_names.sort()
 
-    # Check if any target / exclude faults are faults in combined meshes of a different name, and include the other faults
+    # Check if any exclude faults are faults in combined meshes of a different name, and include the other faults
     for target, key in product(exclude_fault_names, component_dict.keys()):
         if target in key:
             exclude_fault_names += comb_dict[component_dict[key]]
 
-    # Check if any target / exclude faults are combined meshes, and thus include the component faults
+    # Check if any exclude faults are combined meshes, and thus include the component faults
     for target, key in product(exclude_fault_names, comb_dict.keys()):
         if target in key:
             exclude_fault_names += comb_dict[key]
 
-    exclude_fault_names = list(set([fault.rstrip(' 0123456789') for fault in exclude_fault_names]))
+    exclude_fault_names = list(set([fault.rstrip(' 0123456789') for fault in exclude_fault_names]))   # remove numbers from mesh name
     exclude_fault_names.sort()
 
 # Add mesh file name to traces gdf

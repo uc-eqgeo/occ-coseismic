@@ -1,5 +1,10 @@
 # Data directories
-data/
+data/*solutions/
+data/mesh2500/
+data/wellington*/
+data/nz_bathy*
+data/coastline/
+sites/
 
 # Output directories
 results/
@@ -14,12 +19,8 @@ crustal/discretised*
 ./.vscode/
 
 # Other files
-FaultSections.qgz
 mesh_corrections.csv
-hik_kerk3k_neighbours.txt
 array_operations.py
-QGIS/
-*.csv
 FaultSectionsTesting.qgz
 for_jaime.zip
 .vscode/launch.json
@@ -27,5 +28,4 @@ for_jaime.zip
 docs/
 *png
 *.geojson
-results.qgz
-sites.qgz
+*.qgz

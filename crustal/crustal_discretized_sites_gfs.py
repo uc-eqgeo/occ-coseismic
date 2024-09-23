@@ -21,7 +21,7 @@ mesh_version = "_national_OCC"
 steeper_dip, gentler_dip = False, False
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'NZ_VLM_final_May24_points.csv')
+site_list_csv = os.path.join('..', 'sites', 'NZ_VLM_final_May24_points.csv')
 sites_df = pd.read_csv(site_list_csv)
 
 site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])

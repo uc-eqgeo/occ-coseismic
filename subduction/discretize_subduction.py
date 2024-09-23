@@ -71,7 +71,7 @@ def check_triangle_normal(triangle_vertices):
 if "hikkerk" in sz_zone:
     traces = gpd.read_file(f"../data/sz_solutions/{NSHM_directory}/ruptures/fault_sections.geojson").to_crs(epsg=2193)
 else:
-    traces = gpd.read_file(f"../data/sz_solutions/puysegur_fault_sections.geojson").to_crs(epsg=2193)
+    traces = gpd.read_file(f"../data/puysegur_fault_sections.geojson").to_crs(epsg=2193)
 
 # get rectangle centroid and polygon vertices based on NSHM fault data
 all_rectangle_centroids = []

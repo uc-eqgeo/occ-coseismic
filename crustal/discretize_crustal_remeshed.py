@@ -1,3 +1,4 @@
+# %%
 import geopandas as gpd
 import pandas as pd
 import numpy as np
@@ -22,7 +23,7 @@ import os
 # Doesn't really matter which inversion solution because all the NSHM fault files are the same.
 NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"
 # provide model extension to match the mesh directory and name output directory
-discretised_extension = "_CFM"
+discretised_extension = "_CFM_test"
 
 mesh_directory = f"../data/mesh2500"
 # this must be the same length as the number of meshes and have some value that matches all the target fault sections
@@ -62,7 +63,7 @@ target_NSHM_fault_names = []
 for mesh in stl_list:
     mesh_list.append(meshio.read(mesh))
     mesh_name = os.path.basename(mesh).split(".")[0].replace('remeshed', 'mesh')
-    mesh_name_list.append(mesh_name)  # remove numbers from mesh name
+    mesh_name_list.append(mesh_name)
     target_NSHM_fault_names.append(mesh_name.split('_')[0].replace('-combined', 'combined'))
 
 # Read in combination file
@@ -158,7 +159,7 @@ for i, trace in all_traces.iterrows():
 
     # Append the patch and polygon to lists
     all_rectangle_polygons.append(rectangle_polygon)
-
+# %%
 ####
 all_rectangle_outline_gs = gpd.GeoSeries(all_rectangle_polygons, crs=2193)
 all_rectangle_outline_gdf = gpd.GeoDataFrame(df_all_rectangle, geometry=all_rectangle_outline_gs.geometry, crs=2193)
@@ -388,10 +389,10 @@ if len(missing_meshes) > 0:
     for missing in missing_meshes:
         print('Expected {} .stl file not found in meshdir. Faults not created'.format(missing))
 
-# make pickle with triangle vertices
-pkl.dump(discretised_dict, open(f"discretised{discretised_extension}/crustal_discretised_dict.pkl", "wb"))
-
 # write discretised polygons to geojson
 out_gdf.crs = target_traces.crs
 out_gdf.to_file(f"discretised{discretised_extension}/crustal_discretised_polygons.geojson",
                 driver="GeoJSON")
+
+# make pickle with triangle vertices
+pkl.dump(discretised_dict, open(f"discretised{discretised_extension}/crustal_discretised_dict.pkl", "wb"))

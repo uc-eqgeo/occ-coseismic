@@ -12,7 +12,7 @@ from shapely import LineString, Polygon
 import math
 
 
-GNS_file = '../data/sz_solutions/GNS SR2022-31 ESup_DFM_4_Puysegur-0p7.csv'
+GNS_file = '../data/GNS SR2022-31 ESup_DFM_4_Puysegur-0p7.csv'
 
 in_cols = ['FaultID', 'FaultName', 'SlipRate', 'DipDeg', 'UpDepth', 'LowDepth', 'Lon1', 'Lat1', 'Depth1', 'Lon2', 'Lat2', 'Depth2']
 
@@ -26,4 +26,4 @@ traces = [LineString([p1, p2]) for p1, p2 in zip(gdf2['geometry'], gdf1['geometr
 gdf = gdf1.drop(columns=['Lon1', 'Lat1', 'Depth1', 'Lon2', 'Lat2', 'Depth2', 'geometry'])
 gdf = gpd.GeoDataFrame(gdf, geometry=traces)
 
-gdf.to_file('../data/sz_solutions/puysegur_fault_sections.geojson', driver="GeoJSON")
+gdf.to_file('../data/puysegur_fault_sections.geojson', driver="GeoJSON")
