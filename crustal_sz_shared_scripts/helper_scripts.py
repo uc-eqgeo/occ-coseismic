@@ -689,7 +689,7 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
                 model_version = sz_model_version
                 slip_taper = False
                 if not single_branch:
-                    file_suffix_list_i = ["_sz_NJk2", "_sz_NTE2", "_sz_NzE0"]
+                    file_suffix_list_i = ["_sz_NJk2", "_sz_NzEx", "_sz_NzE0"]
                     NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2",
                                             "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzEx",
                                             "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]

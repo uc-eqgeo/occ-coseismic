@@ -11,14 +11,14 @@ import h5py as h5
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_national_OCCbad"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = ["_national_OCC", "_SouthIsland_OCC"]       # must match suffix in the subduction directory with gfs - either all the same dirname, or all names must be given
+fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+crustal_model_version = "_national_OCC"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = ["_national_2km"]       # must match suffix in the subduction directory with gfs - either all the same dirname, or all names must be given
 sz_list_order = ["sz", "py"]
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
 testing = True   # Impacts number of samples runs, job time etc
-fakequakes = True   # Use fakequakes for the subduction zone (applied only to hikkerk)
+fakequakes = False   # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
@@ -140,7 +140,7 @@ def make_branch_weight_dict(branch_weight_file_path, sheet_name):
         S_string = str(S_val).replace('.', '')
         def_model  = branch_weights["def_model"][row]
         time_dependence = branch_weights["time_dependence"][row]
-        file_suffix = branch_weights["solution_file_suffix"][row]
+        file_suffix = branch_weights["PCDHM_file_suffix"][row]
         total_weight_RN = branch_weights["total_weight_RN"][row]
 
         # make a unique ID for each branch.

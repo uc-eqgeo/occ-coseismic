@@ -11,13 +11,13 @@ import os
 NSHM_directory = "NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2"
 
 # Define whch subduction zone (hikkerk / puysegur)
-sz_zone = 'hikkerk'
+sz_zone = '_hikkerk'
 
 if not sz_zone in ['hikkerk', 'puysegur']:
     print("Please define a valid subduction zone (hikkerk / puysegur).")
     exit()
 
-if sz_zone == 'hikkerk':
+if "hikkerk" in sz_zone:
     neighbours_file = '../data/hik_kerk3k_neighbours.txt'
     prefix = 'sz'
 else:
@@ -38,6 +38,9 @@ elif gentler_dip:
 
 # De-blobify outputs
 deblobify = False
+
+if deblobify:
+    sz_zone += "_deblobify"
 #######################
 def cross_3d(a, b):
     """
@@ -65,7 +68,7 @@ def check_triangle_normal(triangle_vertices):
 ####################
 
 # Read in the geojson file from the NSHM inversion solution
-if sz_zone == 'hikkerk':
+if "hikkerk" in sz_zone:
     traces = gpd.read_file(f"../data/sz_solutions/{NSHM_directory}/ruptures/fault_sections.geojson").to_crs(epsg=2193)
 else:
     traces = gpd.read_file(f"../data/sz_solutions/puysegur_fault_sections.geojson").to_crs(epsg=2193)
@@ -151,7 +154,7 @@ for i, trace in traces.iterrows():
     all_rectangle_polygons.append(rectangle_polygon)
 
 # make directory for outputs
-os.mkdir(f"discretised_{sz_zone}")
+os.makedirs(f"discretised_{sz_zone}", exist_ok=True)
 
 
 # write rectangle centroid and rectangle polygons to geojson
@@ -167,7 +170,7 @@ all_rectangle_outline_gdf.to_file(f"discretised_{sz_zone}/{prefix}_all_rectangle
 
 #####
 # read in triangle mesh and add the patch centroids as points
-if sz_zone == 'hikkerk':
+if "hikkerk" in sz_zone:
     mesh = meshio.read(f"../data/hik_kerk3k_with_rake.vtk")
 else:
     mesh = meshio.read(f"../data/puysegur.vtk")
@@ -229,7 +232,7 @@ for ix, triangle_centroid in enumerate(triangle_centroids):
         closest_rectangles.append(-1)
 
 # Manually correct some triangles
-if os.path.exists('../data/mesh_corrections.csv') and sz_zone == 'hikkerk':
+if os.path.exists('../data/mesh_corrections.csv') and "hikkerk" in sz_zone:
     print('Manually correcting some triangles')
     with open('../data/mesh_corrections.csv', 'r') as f:
         corrections = [[int(val) for val in line.strip().split(',')] for line in f.readlines()]
@@ -238,7 +241,7 @@ if os.path.exists('../data/mesh_corrections.csv') and sz_zone == 'hikkerk':
         closest_rectangles[tri] = closest_rectangle
 
 # Prevent isolated triangles
-if os.path.exists('../data/hik_kerk3k_neighbours.txt') and sz_zone == 'hikkerk':
+if os.path.exists('../data/hik_kerk3k_neighbours.txt') and "hikkerk" in sz_zone:
     print('Removing isolated triangles')
     with open('../data/hik_kerk3k_neighbours.txt', 'r') as f:
         neighbours = [[int(tri) for tri in line.strip().split()] for line in f.readlines()]
