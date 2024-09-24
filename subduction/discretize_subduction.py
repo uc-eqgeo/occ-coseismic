@@ -240,20 +240,91 @@ if os.path.exists('../data/mesh_corrections.csv') and "hikkerk" in sz_zone:
     for tri, closest_rectangle in corrections:
         closest_rectangles[tri] = closest_rectangle
 
-# Prevent isolated triangles
-if os.path.exists('../data/hik_kerk3k_neighbours.txt') and "hikkerk" in sz_zone:
+# # Prevent isolated triangles
+if os.path.exists('../data/hik_kerk3k_with_rake_neighbours.txt') and sz_zone == 'hikkerk':
     print('Removing isolated triangles')
-    with open('../data/hik_kerk3k_neighbours.txt', 'r') as f:
+    with open('../data/hik_kerk3k_with_rake_neighbours.txt', 'r') as f:
         neighbours = [[int(tri) for tri in line.strip().split()] for line in f.readlines()]
 
-    for tri in range(len(closest_rectangles)):
-        rect = closest_rectangles[tri]
-        if rect != -1:
-            if len(neighbours[tri]) == 3:
-                neigh = [closest_rectangles[neigh] for neigh in neighbours[tri] if closest_rectangles[neigh] != -1]
-                if sum([ix != rect for ix in neigh]) >= 2 and len(neigh) == 3:
-                    rects, count = np.unique(neigh, return_counts=True)
-                    closest_rectangles[tri] = rects[np.argmax(count)]
+    clear_isolated = True
+    clear_run = 0
+
+    while clear_isolated:
+        # Count isolated
+        n_isolated = 0
+        for tri in range(len(closest_rectangles)):
+            rect = closest_rectangles[tri]
+            if rect != -1:
+                if len(neighbours[tri]) == 3:
+                    neigh = [closest_rectangles[neigh] for neigh in neighbours[tri] if closest_rectangles[neigh] != -1]
+                    if sum([ix != rect for ix in neigh]) == 3:
+                        n_isolated += 1
+
+        # First search for triangles entirely isolated by 1 patch - replace with that patch
+        isolated_triangles = []
+        for tri in range(len(closest_rectangles)):
+            rect = closest_rectangles[tri]
+            if rect != -1:
+                if len(neighbours[tri]) == 3:
+                    neigh = [closest_rectangles[neigh] for neigh in neighbours[tri] if closest_rectangles[neigh] != -1]
+                    if sum([ix != rect for ix in neigh]) == 3 and np.unique(neigh).shape[0] == 1:
+                        isolated_triangles.append(tri)
+        for tri in isolated_triangles:
+            rect = closest_rectangles[tri]
+            neigh = [closest_rectangles[neigh] for neigh in neighbours[tri] if closest_rectangles[neigh] != -1]
+            closest_rectangles[tri] = neigh[0]
+        
+        # Second search for triangles entirely isolated by 2 patches - replace most patch on 2 sides
+        isolated_triangles = []
+        for tri in range(len(closest_rectangles)):
+            rect = closest_rectangles[tri]
+            if rect != -1:
+                if len(neighbours[tri]) == 3:
+                    neigh = [closest_rectangles[neigh] for neigh in neighbours[tri] if closest_rectangles[neigh] != -1]
+                    if sum([ix != rect for ix in neigh]) == 3 and np.unique(neigh).shape[0] == 2:
+                        isolated_triangles.append(tri)
+        for tri in isolated_triangles:
+            rect = closest_rectangles[tri]
+            neigh = [closest_rectangles[neigh] for neigh in neighbours[tri] if closest_rectangles[neigh] != -1]
+            closest_rectangles[tri] = np.median(neigh).astype(int)
+        
+        # Third search for triangles isolated by 3 patches - reassign to second nearest patch
+        isolated_triangles = []
+        for tri in range(len(closest_rectangles)):
+            rect = closest_rectangles[tri]
+            if rect != -1:
+                if len(neighbours[tri]) == 3:
+                    neigh = [closest_rectangles[neigh] for neigh in neighbours[tri] if closest_rectangles[neigh] != -1]
+                    if sum([ix != rect for ix in neigh]) == 3 and np.unique(neigh).shape[0] == 3:
+                        isolated_triangles.append(tri)
+        for tri in isolated_triangles:
+            distances = np.linalg.norm(all_rectangle_centroids - triangle_centroids[tri], axis=1)
+            nearest_ix = np.where(distances < 2.2e4)[0]
+            nearest = nearest_ix[np.argsort(distances[nearest_ix])]
+            if len(nearest) > 1:
+                closest_rectangles[tri] = nearest[1]
+            else:
+                closest_rectangles[tri] = nearest[0]
+
+        # Check outcome
+        isolated_triangles = []
+        for tri in range(len(closest_rectangles)):
+            rect = closest_rectangles[tri]
+            if rect != -1:
+                if len(neighbours[tri]) == 3:
+                    neigh = [closest_rectangles[neigh] for neigh in neighbours[tri] if closest_rectangles[neigh] != -1]
+                    if sum([ix != rect for ix in neigh]) == 3:
+                        isolated_triangles.append(tri)
+
+        clear_run += 1
+        if len(isolated_triangles) == 0:
+            clear_isolated = False
+            print(f'No isolated triangles found after {clear_run} runs')
+        elif clear_run > 3:
+            clear_isolated = False
+            print(f'Failed to remove all isolated triangles after {clear_run} runs limit: {len(isolated_triangles)} remain')
+        else:
+            print(f'Run {clear_run}: Reduced isolated triangles from {n_isolated} to {len(isolated_triangles)}')
 elif deblobify:
     print('No neighbour file found - final output may include isolated triangles')
 
