@@ -79,11 +79,14 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
     # list of lists. each item is a site location that contains displacements from each scenario (disp list length =
     # number of rupture scenarios)
     disps_by_location = []
+    scenarios_with_disps = []
     #annual_rates_by_location = []
     for site_num in range(len(site_names)):
         print(f"\tPreparing disps by location... {site_num}\{len(site_names)}", end='\r')
-        site_disp = [scenario[site_num] for scenario in disps_by_scenario]
-        disps_by_location.append(site_disp)
+        site_disp = np.array([scenario[site_num] for scenario in disps_by_scenario])
+        disp_ix = [ix for ix, disp in enumerate(site_disp) if disp != 0]
+        disps_by_location.append(site_disp[disp_ix].tolist())
+        scenarios_with_disps.append(disp_ix)
         # annual_rates_by_location.append(annual_rates_by_scenario)
     print('')
     # make dictionary of displacements and other data. key is the site name.
@@ -95,6 +98,7 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
             print(f"\tWriting sites to {site_disp_h5file}... {i}\{len(site_names)}", end='\r')
             site_group = site_disp_PPEh5.create_group(site)
             site_group.create_dataset("disps", data=disps_by_location[i])
+            site_group.create_dataset("disps_ix", data=scenarios_with_disps[i])
             site_group.create_dataset("site_coords", data=site_coords[i])
     print('')
     return 
@@ -340,13 +344,11 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             # Drop ruptures that don't cause slip at this site
             drop_noslip = True
             if drop_noslip:
-                no_slip = [ix for ix, slip in enumerate(site_dict_i["disps"]) if slip == 0]
-                slip = [ix for ix, slip in enumerate(site_dict_i["disps"]) if slip != 0]
-                disps = [slip for ix, slip in enumerate(site_dict_i["disps"]) if ix not in no_slip]
-                scaled_rates = [rate for ix, rate in enumerate(scaled_rates) if ix not in no_slip]
-            else:
                 disps = site_dict_i['disps']
-                slip = np.arange(len(site_dict_i['disps']))
+                scaled_rates = scaled_rates[site_dict_i["disps_ix"]]
+            else:
+                disps = np.zeros_like(scaled_rates)
+                disps[site_dict_i["disps_ix"]] = site_dict_i['disps']
 
             # average number of events per time interval (effectively R*T from Ned's guide)
             lambdas = investigation_time * np.array(scaled_rates)
@@ -358,7 +360,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 disp_uncertainty = np.roll(all_uncertainty, (sample_shift, rupture_shift))[:, :lambdas.size]
                 # Leave scenarios alone - no point rolling sample order, and can't shift sideways as can't appy one rupture's distribution
                 # to another
-                scenarios = all_scenarios[:, slip]
+                scenarios = all_scenarios[:, site_dict_i["disps_ix"]]
                 if benchmarking:
                     print(f"Time taken to prep random samples: {time() - begin:.5f} s")
                     lap = time()
@@ -560,7 +562,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                                                     site_ids=site_list, slip_taper=slip_taper, load_random=load_random,
                                                     model_version_results_directory=model_version_results_directory,
                                                     time_interval=time_interval, n_samples=n_samples, extension1="",
-                                                    thresh_lims=[0, 3], thresh_step=0.01)
+                                                    thresh_lims=thresh_lims, thresh_step=thresh_step)
                 with h5.File(fault_model_allbranch_PPE_dict[branch_id], "w") as branch_PPEh5:
                     dict_to_hdf5(branch_PPEh5, branch_cumu_PPE_dict)
 
@@ -583,7 +585,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         n_tasks = int(np.ceil(n_jobs / tasks_per_array))
         print('\nCreating SLURM submission script....')
         prep_SLURM_submission(model_version_results_directory, int(tasks_per_array), int(n_tasks), hours=int(hours), mins=int(mins), job_time=job_time, mem=mem, cpus=cpus,
-                              account=account, time_interval=time_interval, n_samples=n_samples, sd=sd, thresh_lims=[0, 3], thresh_step=0.01)
+                              account=account, time_interval=time_interval, n_samples=n_samples, sd=sd, thresh_lims=thresh_lims, thresh_step=thresh_step)
         raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
 
     elif nesi and nesi_step == 'combine' and sbatch:
