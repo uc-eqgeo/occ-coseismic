@@ -11,35 +11,36 @@ import h5py as h5
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "crustal"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_national_2km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = "_national_2km"                    # must match suffix in the subduction directory with gfs
+sz_model_version = ["_national_2km", "_SouthIsland_2km"]       # must match suffix in the subduction directory with gfs - either all the same dirname, or all names must be given
+sz_list_order = ["sz", "py"]
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = True   # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
-fakequakes = True   # Use fakequakes for the subduction zone (applied only to hikkerk)
+fakequakes = False   # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
-remake_PPE = True              # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
+remake_PPE = True             # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
-save_arrays = False          # Do you want to save the displacement and probability arrays?
+save_arrays = True         # Do you want to save the displacement and probability arrays?
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../wellington_10km_grid_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
-use_saved_dictionary = False   # Use a saved dictionary if it exists
+use_saved_dictionary = True   # Use a saved dictionary if it exists
 
 # Processing Parameters
 time_interval = 100     # Time span of hazard forecast (yrs)
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
-n_cpus = 1
+n_cpus = 10
 
 # Nesi Parameters
 prep_sbatch = True   # Prep jobs for sbatch
 nesi_step = 'prep'  # 'prep' or 'combine'
-n_array_tasks = 100    # Number of array tasks
+n_array_tasks = 250    # Number of array tasks
 min_tasks_per_array = 250   # Minimum number of sites per array
 min_branches_per_array = 1  # Minimum number of branches per array
 account = 'uc03610' # NESI account to use
@@ -62,16 +63,21 @@ else:
     mem = 3    # Memory allocation for cumu_PPE task array
 
 if paired_crustal_sz and nesi_step == 'prep':
-    n_array_tasks = 250
-    job_time = 5
+    if n_array_tasks < 500:
+        n_array_tasks = 500
+    if job_time < 5:
+        job_time = 5
 
-if fault_type == 'crustal':
-    n_array_tasks = 250
+if fault_type == 'crustal' and n_array_tasks < 500:
+    n_array_tasks = 500
 
 if fault_type == 'all':
     job_time = 120
     mem = 3
     min_tasks_per_array = 5
+
+if isinstance(sz_model_version, str):
+    sz_model_version = [sz_model_version]
 
 n_samples, job_time, mem, n_array_tasks, min_tasks_per_array = int(n_samples), int(job_time), int(mem), int(n_array_tasks), int(min_tasks_per_array)
 ## Solving processing conflicts
@@ -136,7 +142,7 @@ def make_branch_weight_dict(branch_weight_file_path, sheet_name):
         S_string = str(S_val).replace('.', '')
         def_model  = branch_weights["def_model"][row]
         time_dependence = branch_weights["time_dependence"][row]
-        file_suffix = branch_weights["solution_file_suffix"][row]
+        file_suffix = branch_weights["PCDHM_file_suffix"][row]
         total_weight_RN = branch_weights["total_weight_RN"][row]
 
         # make a unique ID for each branch.
@@ -157,14 +163,24 @@ if not paired_crustal_sz:
     if fault_type[0] == "crustal":
         model_version_list = [crustal_model_version]
     else:
-        if fakequakes and sz_model_version[:3] != "_fq":
-            sz_model_version = "_fq" + sz_model_version
-        model_version_list = [sz_model_version]
+        if len(sz_model_version) > 1:
+            sz_ix = sz_list_order.index(fault_type[0])
+            sz_model_version = [sz_model_version[sz_ix]]
+        if fakequakes and sz_model_version[0][:3] != "_fq":
+            sz_model_version = ["_fq" + sz_model_version[0]]
+        model_version_list = [sz_model_version[0]]
         slip_taper = False    
 else:
-    model_version_list = [crustal_model_version] + [sz_model_version] * len(fault_type[1:])
+    if len(sz_model_version) == 1:
+        model_version_list = [crustal_model_version] + [sz_model_version] * len(fault_type[1:])
+    elif len(sz_model_version) == len(sz_list_order):
+        model_version_list = [crustal_model_version]
+        for ftype in fault_type[1:]:
+            model_version_list += [sz_model_version[sz_list_order.index(ftype)]]
+    else:
+        raise Exception("Length of sz_model_version must be 1 or equal to the number of subduction fault types")
     if fakequakes:
-        sz_ix = 1 + fault_type[1:].index('sz')
+        sz_ix = 1 +  sz_list_order.index('sz')
         model_version_list[sz_ix] = "_fq" + model_version_list[sz_ix]
 
 if slip_taper:
@@ -250,7 +266,7 @@ if paired_crustal_sz:
     out_version_results_directory = f"{results_directory}/paired_c{crustal_model_version}"
     pickle_prefix = ''
     for sub in fault_type[1:]:
-        out_version_results_directory += f"_{sub}{sz_model_version}"
+        out_version_results_directory += f"_{sub}{sz_model_version[sz_list_order.index(sub)]}"
         pickle_prefix += f"{sub}_"
     if not os.path.exists(f"../{out_version_results_directory}"):
         os.mkdir(f"../{out_version_results_directory}")
@@ -293,7 +309,7 @@ if not paired_crustal_sz and calculate_weighted_mean_PPE or not os.path.exists(w
 if save_arrays:
     print('Saving data arrays...')
     ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                        thresh_lims=[0, 1], thresh_step=0.1, output_thresh=True, probs_lims = [0.00, 0.10], probs_step=0.01,
+                        thresh_lims=[0, 3], thresh_step=0.05, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.01,
                         output_probs=True, weighted=True)
 
 if paired_crustal_sz:

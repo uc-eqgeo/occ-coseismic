@@ -1,0 +1,16 @@
+Y indicates a component fault that does has it's pwn stl, and is therefore included
+X indicates a component fault that doesn't have it's own stl, so can't be included
+
+Expected Hohonucombined .stl file not found in meshdir. Hohonu X	Hohonu North X	Hohonu South Y  NB: Hohonu and Hohonu North listed as 0 slip in CFM
+
+Expected Matatacombined .stl file not found in meshdir. Matata Y	North Rotoma X  NB: North Rotoma Slip rate (1.7) too low for a mesh to be made in TVZ
+
+Expected Moonshine-OtakiForkscombined .stl file not found in meshdir. Moonshine	Y Otaki Forks 1 Y	Otaki Forks 2 Y  NB: Removed from combined list
+
+Expected Pukeroro2-UrutiEast-PorWest1combined .stl file not found in meshdir. Pukeroro 2 X	Uruti East - PorWest 1 Y  NB: Pukeroro listed as 0 slip in CFM
+
+Expected Raurimucombined .stl file not found in meshdir. Raurimu	Raurimu South Y NB: Raurimu Slip rate (0.67) too low for a mesh to be made in TVZ
+
+Expected SaundersRoad-Waipukakacombined .stl file not found in meshdir. Saunders Road Y	Waipukaka Y  NB: Removed from combined list
+
+All of these combined files have been deleted from the combination file accordingly

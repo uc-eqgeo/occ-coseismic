@@ -135,10 +135,10 @@ def read_fakequakes_slip_rates(NSHM_directory):
     patches = list(df.columns)
     patches.remove('Average Slip (m)')
     rupture_slip_dict = {}
-    print('Writing rupture slip dictionary (this may take a while)...')
-    for _, row in df.iterrows():
+    for ix, row in df.iterrows():
+        print(f"Writing rupture slip dictionary... {ix}/{len(df)}", end="\r")
         rupture_slip_dict[row.name] = row[patches].values.reshape(-1, 1)
-
+    print("")
     all_ruptures = read_rupture_csv(os.path.join(proc_dir, f"../data/{NSHM_directory}/ruptures/indices.csv"))
     rates_df = pd.read_csv(os.path.join(proc_dir, f"../data/{NSHM_directory}/solution/rates.csv"))
 
@@ -689,7 +689,7 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
                 model_version = sz_model_version
                 slip_taper = False
                 if not single_branch:
-                    file_suffix_list_i = ["_sz_NJk2", "_sz_NTE2", "_sz_NzE0"]
+                    file_suffix_list_i = ["_sz_NJk2", "_sz_NzEx", "_sz_NzE0"]
                     NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2",
                                             "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzEx",
                                             "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]

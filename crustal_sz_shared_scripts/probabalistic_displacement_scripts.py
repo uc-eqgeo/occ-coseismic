@@ -793,6 +793,10 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         all_single_sz_branches_site_disp_dict = get_all_branches_site_disp_dict(sz_branch_weight_dict, gf_name, slip_taper,
                                                                                 sz_model_version_results_directory_list[ix])
 
+        with h5.File(all_single_sz_branches_site_disp_dict[list(sz_branch_weight_dict.keys())[0]]["site_disp_dict"]) as sz_h5:
+            site_names = list(set(site_names + [site for site in sz_h5.keys()]))
+            site_names.sort()
+
         all_sz_branches_site_disp_dict = all_sz_branches_site_disp_dict | all_single_sz_branches_site_disp_dict
 
         # make all the combinations of crustal and subduction zone branch pairs
@@ -946,8 +950,9 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                     fault_dir = next((sz_dir for sz_dir in sz_directory_list if f'/{fault_type}_' in sz_dir))
                 NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
                 with h5.File(NSHM_file, 'r') as NSHM_h5:
-                    NSHM_displacements = NSHM_h5[site]['scenario_displacements'][:]
-                cumulative_disp_scenarios += NSHM_displacements.reshape(-1)
+                    if site in NSHM_h5.keys():
+                        NSHM_displacements = NSHM_h5[site]['scenario_displacements'][:]
+                        cumulative_disp_scenarios += NSHM_displacements.reshape(-1)
 
             n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios.reshape(1, -1))
             site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)

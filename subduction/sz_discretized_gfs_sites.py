@@ -11,20 +11,20 @@ import shutil
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_fq_national_2km"
+version_extension = "_fq_recovery_test"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
 # Define whch subduction zone ([_fq_]hikkerk / puysegur)
-sz_zone = '_puysegur'
+sz_zone = '_fq_hikkerk'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-csvfile = 'national_2km_grid_points.csv'
+csvfile = 'JDE_sites.csv'
 try:
-    site_list_csv = os.path.join('/mnt/', 'c', 'Users', 'jmc753', 'Work', 'occ-coseismic', csvfile)
+    site_list_csv = os.path.join('/mnt/', 'c', 'Users', 'jmc753', 'Work', 'occ-coseismic', 'sites', csvfile)
     sites_df = pd.read_csv(site_list_csv)
 except FileNotFoundError:
-    site_list_csv = os.path.join('C:\\', 'Users', 'jmc753', 'Work', 'occ-coseismic', csvfile)
+    site_list_csv = os.path.join('C:\\', 'Users', 'jmc753', 'Work', 'occ-coseismic', 'sites', csvfile)
     sites_df = pd.read_csv(site_list_csv)
 
 site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
@@ -52,6 +52,11 @@ elif 'puysegur' in sz_zone:
 else:
     print("Please define a valid subduction zone (hikkerk / puysegur).")
     exit()
+
+deblobify = False
+if deblobify:
+    version_extension += "_deblobify"
+    sz_zone += "_deblobify"
 
 # Load files
 with open(f"discretised{sz_zone}/{prefix}_discretised_dict.pkl",
