@@ -499,6 +499,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
         if disps_scenario is not None:
             annual_rate = rates_df[rates_df.index == rupture_id]["Annual Rate"].values[0]
             # displacement dictionary for a single rupture scenario at all sites. Key is rupture id.
+            disps_scenario = [(ix, disp) for ix, disp in enumerate(disps_scenario) if disp != 0]
             rupture_disp_dict = {"rupture_id": rupture_id, "v_disps_m": disps_scenario, "annual_rate": annual_rate,
                                  "site_name_list": site_name_list, "site_coords": site_coords,
                                  "x_data": site_coords[:, 0], "y_data": site_coords[:, 1],
