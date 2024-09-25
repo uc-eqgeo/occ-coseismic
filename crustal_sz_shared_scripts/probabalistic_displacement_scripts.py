@@ -79,22 +79,22 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
     # list of lists. each item is a site location that contains displacements from each scenario (disp list length =
     # number of rupture scenarios)
     disps_by_location = []
-    annual_rates_by_location = []
+    #annual_rates_by_location = []
     for site_num in range(len(site_names)):
         print(f"\tPreparing disps by location... {site_num}\{len(site_names)}", end='\r')
         site_disp = [scenario[site_num] for scenario in disps_by_scenario]
         disps_by_location.append(site_disp)
-        annual_rates_by_location.append(annual_rates_by_scenario)
+        # annual_rates_by_location.append(annual_rates_by_scenario)
     print('')
     # make dictionary of displacements and other data. key is the site name.
     if os.path.exists(site_disp_h5file):
         os.remove(site_disp_h5file)
     with h5.File(site_disp_h5file, "w") as site_disp_PPEh5:
+        site_disp_PPEh5.create_dataset("rates", data=annual_rates_by_scenario)
         for i, site in enumerate(site_names):
             print(f"\tWriting sites to {site_disp_h5file}... {i}\{len(site_names)}", end='\r')
             site_group = site_disp_PPEh5.create_group(site)
             site_group.create_dataset("disps", data=disps_by_location[i])
-            site_group.create_dataset("rates", data=annual_rates_by_location[i])
             site_group.create_dataset("site_coords", data=site_coords[i])
     print('')
     return 
@@ -200,13 +200,12 @@ else:
 def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples, sd):
         print('\tPreparing random arrays...')
         branch_site_disp_dict = h5.File(branch_site_disp_dict_file, "r")
-        site1 = list(branch_site_disp_dict.keys())[0]
         rng = np.random.default_rng()
-        if "scaled_rates" not in branch_site_disp_dict[site1].keys():
+        if "scaled_rates" not in branch_site_disp_dict.keys():
             # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
-            rates = np.array(branch_site_disp_dict[site1]["rates"])
+            rates = np.array(branch_site_disp_dict["rates"])
         else:
-            rates = np.array(branch_site_disp_dict[site1]["scaled_rates"])
+            rates = np.array(branch_site_disp_dict["scaled_rates"])
         branch_site_disp_dict.close()
 
         n_ruptures = rates.shape[0]
@@ -313,8 +312,10 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         if isinstance(branch_site_disp_dict, str):
             with h5.File(branch_site_disp_dict, "r") as branch_h5:
                 site_dict_i = hdf5_to_dict(branch_h5[site_of_interest])
+                site_dict_i["scaled_rates"] = branch_h5["scaled_rates"][:]
         else:
             site_dict_i = branch_site_disp_dict[site_of_interest]
+            site_dict_i["scaled_rates"] = branch_h5["scaled_rates"][:]
 
         if not NSHM_branch:
             cumulative_disp_scenarios = np.zeros(n_samples)
@@ -507,17 +508,15 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.h5"
         if os.path.exists(branch_site_disp_dict_file):
             with h5.File(branch_site_disp_dict_file, 'r') as branch_h5:
-                site_list = [site for site in branch_h5.keys()]
+                site_list = [site for site in branch_h5.keys() if "rates" not in site]
         else:
             # Extract rates from the NSHM solution directory, but it is not scaled by the rate scaling factor
             write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5file=branch_site_disp_dict_file)
             branch_site_disp_dict = h5.File(branch_site_disp_dict_file, "a")
-            # multiply the rates by the rate scaling factor
-            for site in branch_site_disp_dict.keys():
-                # multiply each value in the rates array by the rate scaling factor
-                branch_site_disp_dict[site].create_dataset("scaled_rates", data=branch_site_disp_dict[site]["rates"][:] * rate_scaling_factor)
+            # multiply each value in the rates array by the rate scaling factor
+            branch_site_disp_dict.create_dataset("scaled_rates", data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
             
-            site_list = [site for site in branch_site_disp_dict.keys()]
+            site_list = [site for site in branch_site_disp_dict.keys() if not site in ["rates", "scaled_rates"]]
             branch_site_disp_dict.close()
 
         branch_cumu_PPE_dict_file = f"../{model_version_results_directory}/{extension1}/{branch_id}_cumu_PPE.h5"
