@@ -5,6 +5,7 @@ data/wellington*/
 data/nz_bathy*
 data/coastline/
 sites/
+QGIS/
 
 # Output directories
 results/

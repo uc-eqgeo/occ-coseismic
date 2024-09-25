@@ -30,7 +30,7 @@ save_arrays = True         # Do you want to save the displacement and probabilit
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../wellington_10km_grid_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
-use_saved_dictionary = False   # Use a saved dictionary if it exists
+use_saved_dictionary = True   # Use a saved dictionary if it exists
 
 # Processing Parameters
 time_interval = 100     # Time span of hazard forecast (yrs)
