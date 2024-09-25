@@ -326,8 +326,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             for NSHM_PPE in NSHM_PPEh5_list[1:]:
                 with h5.File(NSHM_PPE, "r") as PPEh5:
                     NSHM_displacements = PPEh5[site_of_interest]["scenario_displacements"][:]
+                    slip_scenarios = PPEh5[site_of_interest]["slip_scenarios_ix"][:]
 
-                cumulative_disp_scenarios += NSHM_displacements.reshape(-1)
+                cumulative_disp_scenarios[slip_scenarios] += NSHM_displacements.reshape(-1)
             if benchmarking:
                 print(f"Loaded PPE: {time() - begin:.5f} s")
             lap = time()
@@ -388,7 +389,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             lap = time()    
 
         # sum all the displacements in the 100 year window that exceed threshold
-        cumulative_disp_scenarios = cumulative_disp_scenarios.reshape(1, len(cumulative_disp_scenarios))       
+        cumulative_disp_scenarios = cumulative_disp_scenarios.reshape(1, len(cumulative_disp_scenarios))   
+        # Find indexes of scenarios where slip occurred
+        slip_scenarios = np.where(cumulative_disp_scenarios != 0)[1]    
         lap = time()
         n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
         if benchmarking:
@@ -403,9 +406,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         exceedance_probs_down = n_exceedances_down / n_samples
 
         # Minimum data needed for weighted_mean_PPE (done to reduce required storage, and if errors can be recalculated later if needed)
-        site_PPE_dict[site_of_interest] = {"exceedance_probs_total_abs": exceedance_probs_total_abs,
-                                           "exceedance_probs_up": exceedance_probs_up,
-                                           "exceedance_probs_down": exceedance_probs_down}
+        site_PPE_dict[site_of_interest] = {"exceedance_probs_total_abs": exceedance_probs_total_abs[exceedance_probs_total_abs != 0],
+                                           "exceedance_probs_up": exceedance_probs_up[exceedance_probs_up != 0],
+                                           "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
 
         # Save the rest of the data if this is a NSHM branch
         if NSHM_branch:
@@ -429,12 +432,13 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
             error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
 
-            site_PPE_dict[site_of_interest].update({"scenario_displacements": cumulative_disp_scenarios,
+            site_PPE_dict[site_of_interest].update({"scenario_displacements": cumulative_disp_scenarios[0, slip_scenarios],
+                                                    "slip_scenarios_ix": slip_scenarios,
                                                     "site_coords": site_dict_i["site_coords"],
                                                     "standard_deviation": sd,
-                                                    "error_total_abs": error_abs,
-                                                    "error_up": error_up,
-                                                    "error_down": error_down,
+                                                    "error_total_abs": error_abs[:, error_abs.sum(axis=0) != 0],
+                                                    "error_up": error_up[:, error_up.sum(axis=0) != 0],
+                                                    "error_down": error_down[:, error_down.sum(axis=0) != 0],
                                                     "sigma_lims": sigma_lims})
 
         elapsed = time_elasped(time(), start)
@@ -650,7 +654,6 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     site_coords_dict = fault_model_PPE_dict['meta']['site_coords_dict']
 
     # Create variables
-    thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
     sigma_lims = [2.275, 15.865, 84.135, 97.725]
     sigma_lims.sort()
     exceed_type_list = ["total_abs", "up", "down"]
@@ -955,7 +958,8 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 with h5.File(NSHM_file, 'r') as NSHM_h5:
                     if site in NSHM_h5.keys():
                         NSHM_displacements = NSHM_h5[site]['scenario_displacements'][:]
-                        cumulative_disp_scenarios += NSHM_displacements.reshape(-1)
+                        slip_scenarios = NSHM_h5[site]['slip_scenarios_ix'][:]
+                        cumulative_disp_scenarios[slip_scenarios] += NSHM_displacements.reshape(-1)
 
             n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios.reshape(1, -1))
             site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)

@@ -11,9 +11,9 @@ import h5py as h5
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "crustal"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_JDE"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = ["_national_2km", "_SouthIsland_2km"]       # must match suffix in the subduction directory with gfs - either all the same dirname, or all names must be given
+sz_model_version = ["_JDE", "_SouthIsland_2km"]       # must match suffix in the subduction directory with gfs - either all the same dirname, or all names must be given
 sz_list_order = ["sz", "py"]
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
@@ -25,7 +25,7 @@ paired_crustal_sz = False      # Do you want to calculate the PPEs for a single 
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = True             # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
-calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
+calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
 save_arrays = False         # Do you want to save the displacement and probability arrays?
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
@@ -36,7 +36,7 @@ use_saved_dictionary = True   # Use a saved dictionary if it exists
 time_interval = 100     # Time span of hazard forecast (yrs)
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 10
-thresh_lims = [0, 3]
+thresh_lims = [0, 5]
 thresh_step = 0.01
 
 # Nesi Parameters
@@ -306,7 +306,8 @@ if not paired_crustal_sz and calculate_weighted_mean_PPE or not os.path.exists(w
                                                             out_directory=out_version_results_directory,
                                                             outfile_extension=outfile_extension, slip_taper=slip_taper,
                                                             nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples,
-                                                            min_tasks_per_array=10, n_array_tasks=n_array_tasks, mem=mem, cpus=n_cpus, job_time=job_time)
+                                                            min_tasks_per_array=10, n_array_tasks=n_array_tasks, mem=mem, cpus=n_cpus, job_time=job_time,
+                                                            thresh_lims=thresh_lims, thresh_step=thresh_step)
 
 # plot hazard curves and save to file
 if save_arrays:
