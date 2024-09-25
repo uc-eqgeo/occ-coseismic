@@ -300,7 +300,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     # get displacement thresholds for calculating exceedance (hazard curve x axis)
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
 
-    site_PPE_dict["thresholds"] = thresholds
+    #site_PPE_dict["thresholds"] = thresholds
     start = time()
     benchmarking = False
     if not benchmarking:
@@ -464,7 +464,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension,
                               nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
                               time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=3, load_random=False,
-                              remake_PPE=True, sbatch=False):
+                              remake_PPE=True, sbatch=False, thresh_lims=[0, 3], thresh_step=0.01):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -536,16 +536,17 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]):
                     print(f"\tFound Pre-Prepared Branch PPE:  {fault_model_allbranch_PPE_dict[branch_id]}. Delete manually to remake...")
                 else:
+                    thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
                     if sbatch:
                         print(f"\tPreparing NESI combination for {fault_model_allbranch_PPE_dict[branch_id]}....")
                         prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
-                                            taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1])
+                                            taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1], thresholds=thresholds)
                         combine_branches += 1
                         continue
                     else:
                         print(f"\tCombining site dictionaries into {fault_model_allbranch_PPE_dict[branch_id]}....")
                         compile_site_cumu_PPE(site_list, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
-                                            taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
+                                            taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", thresholds=thresholds)
 
         else:
             if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_PPE:
@@ -558,7 +559,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict_file,
                                                     site_ids=site_list, slip_taper=slip_taper, load_random=load_random,
                                                     model_version_results_directory=model_version_results_directory,
-                                                    time_interval=time_interval, n_samples=n_samples, extension1="")
+                                                    time_interval=time_interval, n_samples=n_samples, extension1="",
+                                                    thresh_lims=[0, 3], thresh_step=0.01)
                 with h5.File(fault_model_allbranch_PPE_dict[branch_id], "w") as branch_PPEh5:
                     dict_to_hdf5(branch_PPEh5, branch_cumu_PPE_dict)
 
@@ -581,7 +583,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         n_tasks = int(np.ceil(n_jobs / tasks_per_array))
         print('\nCreating SLURM submission script....')
         prep_SLURM_submission(model_version_results_directory, int(tasks_per_array), int(n_tasks), hours=int(hours), mins=int(mins), job_time=job_time, mem=mem, cpus=cpus,
-                              account=account, time_interval=time_interval, n_samples=n_samples, sd=sd)
+                              account=account, time_interval=time_interval, n_samples=n_samples, sd=sd, thresh_lims=[0, 3], thresh_step=0.01)
         raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
 
     elif nesi and nesi_step == 'combine' and sbatch:
