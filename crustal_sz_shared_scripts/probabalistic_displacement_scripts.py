@@ -348,10 +348,16 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             drop_noslip = True
             if drop_noslip:
                 disps = site_dict_i['disps']
-                scaled_rates = scaled_rates[site_dict_i["disps_ix"]]
+                # Check this isn't a site that is uneffected by earthquakes
+                if disps.shape[0] > 0:
+                    scaled_rates = scaled_rates[site_dict_i["disps_ix"]]
+                else:
+                    disps = np.zeros(1)
+                    scaled_rates = np.zeros(1)
             else:
                 disps = np.zeros_like(scaled_rates)
-                disps[site_dict_i["disps_ix"]] = site_dict_i['disps']
+                if site_dict_i["disps_ix"] > 0:
+                    disps[site_dict_i["disps_ix"]] = site_dict_i['disps']
 
             # average number of events per time interval (effectively R*T from Ned's guide)
             lambdas = investigation_time * np.array(scaled_rates)
