@@ -65,23 +65,27 @@ def split_cell(cell_dicts, parent_id, max_grid, min_grid, max_id, coastline, fau
 
     return cell_dicts, max_id
 
-search_type = 'quad'  # 'grid', 'cube' or 'quad'
+search_type = 'cube'  # 'grid', 'cube' or 'quad'
 
 # Resolution
-max_grid = 8000  # Default resolution
-min_grid = 500  # Min grid is the highest resolution of the quad or cubetree. Must be reachable by halving or thirding max_grid 
+max_grid = 18000  # Default resolution
+min_grid = 3000  # Min grid is the highest resolution of the quad or cubetree. Must be reachable by halving or thirding max_grid 
 
 grid_width = 1000e3  # Width of the grid in meters
 grid_length = 1500e3 # Length of the grid in meters
 
 coastal_trim = True  # If True, removes any centroids that are not overland, even if polygon crosses the coast
 
+fault_buffer = None
+
 if search_type == 'quad':
     split_factor = 2
-    fault_buffer = 1/2  # This is the extra fault radius around each cell used to decide if the cell is to be divided
+    if fault_buffer is None:
+        fault_buffer = 1/2  # This is the extra fault radius around each cell used to decide if the cell is to be divided
 elif search_type == 'cube':
     split_factor = 3
-    fault_buffer = 1/3  # This is the extra fault radius around each cell used to decide if the cell is to be divided
+    if fault_buffer is None:
+        fault_buffer = 1/3  # This is the extra fault radius around each cell used to decide if the cell is to be divided
 elif search_type == 'grid':
     split_factor = 5
     fault_buffer = 0  # This is the extra fault radius around each cell used to decide if the cell is to be divided
