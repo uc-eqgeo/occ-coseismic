@@ -100,3 +100,5 @@ gdf.to_file(f"out_files{version_extension}/{prefix}_site_locations.geojson", dri
 
 for file in ["_discretised_polygons", "_all_rectangle_outlines", "_all_rectangle_centroids"]:
     shutil.copy(f"discretised{sz_zone}/{prefix}{file}.geojson", f"out_files{version_extension}/{prefix}{file}.geojson")
+
+print(f"\nout_files{version_extension} Complete!")

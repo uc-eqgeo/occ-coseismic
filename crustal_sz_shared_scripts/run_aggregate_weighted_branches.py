@@ -13,20 +13,20 @@ import h5py as h5
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_model_version = "_JDE"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = ["_JDE", "_SouthIsland_2km"]       # must match suffix in the subduction directory with gfs - either all the same dirname, or all names must be given
+sz_model_version = ["_national_50km", "_SouthIsland_2km"]       # must match suffix in the subduction directory with gfs - either all the same dirname, or all names must be given
 sz_list_order = ["sz", "py"]
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
-testing = False   # Impacts number of samples runs, job time etc
-fakequakes = False   # Use fakequakes for the subduction zone (applied only to hikkerk)
-
+testing = True   # Impacts number of samples runs, job time etc
+fakequakes = True   # Use fakequakes for the subduction zone (applied only to hikkerk)
+print('Low storage testing mode')
 # Processing Flags (True/False)
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = True             # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
-save_arrays = False         # Do you want to save the displacement and probability arrays?
+save_arrays = True         # Do you want to save the displacement and probability arrays?
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../wellington_10km_grid_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
@@ -36,7 +36,7 @@ use_saved_dictionary = True   # Use a saved dictionary if it exists
 time_interval = 100     # Time span of hazard forecast (yrs)
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 10
-thresh_lims = [0, 5]
+thresh_lims = [0, 3]
 thresh_step = 0.01
 
 # Nesi Parameters

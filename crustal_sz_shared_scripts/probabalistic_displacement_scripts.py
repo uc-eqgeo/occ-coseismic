@@ -73,7 +73,7 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
         print(f"\tPreparing disps by scenario... {ix}\{len(rupture_disp_dictionary.keys())}", end='\r')
         disps = np.zeros(len(site_names))
         non_zero_disps = np.array(rupture_disp_dictionary[rupture_id]["v_disps_m"])
-        disps[non_zero_disps[:, 0]] = non_zero_disps[:, 1]
+        disps[non_zero_disps[:, 0].astype(int)] = non_zero_disps[:, 1]
         disps_by_scenario.append(disps)
         annual_rate = rupture_disp_dictionary[rupture_id]["annual_rate"]
         annual_rates_by_scenario.append(annual_rate)
