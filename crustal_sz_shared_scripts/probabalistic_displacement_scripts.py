@@ -71,7 +71,9 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
     annual_rates_by_scenario = []
     for ix, rupture_id in enumerate(rupture_disp_dictionary.keys()):
         print(f"\tPreparing disps by scenario... {ix}\{len(rupture_disp_dictionary.keys())}", end='\r')
-        disps = rupture_disp_dictionary[rupture_id]["v_disps_m"]
+        disps = np.zeros(len(site_names))
+        non_zero_disps = np.array(rupture_disp_dictionary[rupture_id]["v_disps_m"])
+        disps[non_zero_disps[:, 0].astype(int)] = non_zero_disps[:, 1]
         disps_by_scenario.append(disps)
         annual_rate = rupture_disp_dictionary[rupture_id]["annual_rate"]
         annual_rates_by_scenario.append(annual_rate)
@@ -79,22 +81,26 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
     # list of lists. each item is a site location that contains displacements from each scenario (disp list length =
     # number of rupture scenarios)
     disps_by_location = []
-    annual_rates_by_location = []
+    scenarios_with_disps = []
+    #annual_rates_by_location = []
     for site_num in range(len(site_names)):
         print(f"\tPreparing disps by location... {site_num}\{len(site_names)}", end='\r')
-        site_disp = [scenario[site_num] for scenario in disps_by_scenario]
-        disps_by_location.append(site_disp)
-        annual_rates_by_location.append(annual_rates_by_scenario)
+        site_disp = np.array([scenario[site_num] for scenario in disps_by_scenario])
+        disp_ix = [ix for ix, disp in enumerate(site_disp) if disp != 0]
+        disps_by_location.append(site_disp[disp_ix].tolist())
+        scenarios_with_disps.append(disp_ix)
+        # annual_rates_by_location.append(annual_rates_by_scenario)
     print('')
     # make dictionary of displacements and other data. key is the site name.
     if os.path.exists(site_disp_h5file):
         os.remove(site_disp_h5file)
     with h5.File(site_disp_h5file, "w") as site_disp_PPEh5:
+        site_disp_PPEh5.create_dataset("rates", data=annual_rates_by_scenario)
         for i, site in enumerate(site_names):
             print(f"\tWriting sites to {site_disp_h5file}... {i}\{len(site_names)}", end='\r')
             site_group = site_disp_PPEh5.create_group(site)
             site_group.create_dataset("disps", data=disps_by_location[i])
-            site_group.create_dataset("rates", data=annual_rates_by_location[i])
+            site_group.create_dataset("disps_ix", data=scenarios_with_disps[i])
             site_group.create_dataset("site_coords", data=site_coords[i])
     print('')
     return 
@@ -200,13 +206,12 @@ else:
 def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples, sd):
         print('\tPreparing random arrays...')
         branch_site_disp_dict = h5.File(branch_site_disp_dict_file, "r")
-        site1 = list(branch_site_disp_dict.keys())[0]
         rng = np.random.default_rng()
-        if "scaled_rates" not in branch_site_disp_dict[site1].keys():
+        if "scaled_rates" not in branch_site_disp_dict.keys():
             # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
-            rates = np.array(branch_site_disp_dict[site1]["rates"])
+            rates = np.array(branch_site_disp_dict["rates"])
         else:
-            rates = np.array(branch_site_disp_dict[site1]["scaled_rates"])
+            rates = np.array(branch_site_disp_dict["scaled_rates"])
         branch_site_disp_dict.close()
 
         n_ruptures = rates.shape[0]
@@ -301,7 +306,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     # get displacement thresholds for calculating exceedance (hazard curve x axis)
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
 
-    site_PPE_dict["thresholds"] = thresholds
+    #site_PPE_dict["thresholds"] = thresholds
     start = time()
     benchmarking = False
     if not benchmarking:
@@ -313,16 +318,19 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         if isinstance(branch_site_disp_dict, str):
             with h5.File(branch_site_disp_dict, "r") as branch_h5:
                 site_dict_i = hdf5_to_dict(branch_h5[site_of_interest])
+                site_dict_i["scaled_rates"] = branch_h5["scaled_rates"][:]
         else:
             site_dict_i = branch_site_disp_dict[site_of_interest]
+            site_dict_i["scaled_rates"] = branch_h5["scaled_rates"][:]
 
         if not NSHM_branch:
             cumulative_disp_scenarios = np.zeros(n_samples)
             for NSHM_PPE in NSHM_PPEh5_list[1:]:
                 with h5.File(NSHM_PPE, "r") as PPEh5:
                     NSHM_displacements = PPEh5[site_of_interest]["scenario_displacements"][:]
+                    slip_scenarios = PPEh5[site_of_interest]["slip_scenarios_ix"][:]
 
-                cumulative_disp_scenarios += NSHM_displacements.reshape(-1)
+                cumulative_disp_scenarios[slip_scenarios] += NSHM_displacements.reshape(-1)
             if benchmarking:
                 print(f"Loaded PPE: {time() - begin:.5f} s")
             lap = time()
@@ -339,13 +347,17 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             # Drop ruptures that don't cause slip at this site
             drop_noslip = True
             if drop_noslip:
-                no_slip = [ix for ix, slip in enumerate(site_dict_i["disps"]) if slip == 0]
-                slip = [ix for ix, slip in enumerate(site_dict_i["disps"]) if slip != 0]
-                disps = [slip for ix, slip in enumerate(site_dict_i["disps"]) if ix not in no_slip]
-                scaled_rates = [rate for ix, rate in enumerate(scaled_rates) if ix not in no_slip]
-            else:
                 disps = site_dict_i['disps']
-                slip = np.arange(len(site_dict_i['disps']))
+                # Check this isn't a site that is uneffected by earthquakes
+                if disps.shape[0] > 0:
+                    scaled_rates = scaled_rates[site_dict_i["disps_ix"]]
+                else:
+                    disps = np.zeros(1)
+                    scaled_rates = np.zeros(1)
+            else:
+                disps = np.zeros_like(scaled_rates)
+                if site_dict_i["disps_ix"] > 0:
+                    disps[site_dict_i["disps_ix"]] = site_dict_i['disps']
 
             # average number of events per time interval (effectively R*T from Ned's guide)
             lambdas = investigation_time * np.array(scaled_rates)
@@ -357,7 +369,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 disp_uncertainty = np.roll(all_uncertainty, (sample_shift, rupture_shift))[:, :lambdas.size]
                 # Leave scenarios alone - no point rolling sample order, and can't shift sideways as can't appy one rupture's distribution
                 # to another
-                scenarios = all_scenarios[:, slip]
+                scenarios = all_scenarios[:, site_dict_i["disps_ix"]]
                 if benchmarking:
                     print(f"Time taken to prep random samples: {time() - begin:.5f} s")
                     lap = time()
@@ -385,7 +397,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             lap = time()    
 
         # sum all the displacements in the 100 year window that exceed threshold
-        cumulative_disp_scenarios = cumulative_disp_scenarios.reshape(1, len(cumulative_disp_scenarios))       
+        cumulative_disp_scenarios = cumulative_disp_scenarios.reshape(1, len(cumulative_disp_scenarios))   
+        # Find indexes of scenarios where slip occurred
+        slip_scenarios = np.where(cumulative_disp_scenarios != 0)[1]    
         lap = time()
         n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
         if benchmarking:
@@ -400,9 +414,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         exceedance_probs_down = n_exceedances_down / n_samples
 
         # Minimum data needed for weighted_mean_PPE (done to reduce required storage, and if errors can be recalculated later if needed)
-        site_PPE_dict[site_of_interest] = {"exceedance_probs_total_abs": exceedance_probs_total_abs,
-                                           "exceedance_probs_up": exceedance_probs_up,
-                                           "exceedance_probs_down": exceedance_probs_down}
+        site_PPE_dict[site_of_interest] = {"exceedance_probs_total_abs": exceedance_probs_total_abs[exceedance_probs_total_abs != 0],
+                                           "exceedance_probs_up": exceedance_probs_up[exceedance_probs_up != 0],
+                                           "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
 
         # Save the rest of the data if this is a NSHM branch
         if NSHM_branch:
@@ -426,12 +440,13 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
             error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
 
-            site_PPE_dict[site_of_interest].update({"scenario_displacements": cumulative_disp_scenarios,
+            site_PPE_dict[site_of_interest].update({"scenario_displacements": cumulative_disp_scenarios[0, slip_scenarios],
+                                                    "slip_scenarios_ix": slip_scenarios,
                                                     "site_coords": site_dict_i["site_coords"],
                                                     "standard_deviation": sd,
-                                                    "error_total_abs": error_abs,
-                                                    "error_up": error_up,
-                                                    "error_down": error_down,
+                                                    "error_total_abs": error_abs[:, error_abs.sum(axis=0) != 0],
+                                                    "error_up": error_up[:, error_up.sum(axis=0) != 0],
+                                                    "error_down": error_down[:, error_down.sum(axis=0) != 0],
                                                     "sigma_lims": sigma_lims})
 
         elapsed = time_elasped(time(), start)
@@ -463,7 +478,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension,
                               nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
                               time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=3, load_random=False,
-                              remake_PPE=True, sbatch=False):
+                              remake_PPE=True, sbatch=False, thresh_lims=[0, 3], thresh_step=0.01):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -507,17 +522,15 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.h5"
         if os.path.exists(branch_site_disp_dict_file):
             with h5.File(branch_site_disp_dict_file, 'r') as branch_h5:
-                site_list = [site for site in branch_h5.keys()]
+                site_list = [site for site in branch_h5.keys() if "rates" not in site]
         else:
             # Extract rates from the NSHM solution directory, but it is not scaled by the rate scaling factor
             write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5file=branch_site_disp_dict_file)
             branch_site_disp_dict = h5.File(branch_site_disp_dict_file, "a")
-            # multiply the rates by the rate scaling factor
-            for site in branch_site_disp_dict.keys():
-                # multiply each value in the rates array by the rate scaling factor
-                branch_site_disp_dict[site].create_dataset("scaled_rates", data=branch_site_disp_dict[site]["rates"][:] * rate_scaling_factor)
+            # multiply each value in the rates array by the rate scaling factor
+            branch_site_disp_dict.create_dataset("scaled_rates", data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
             
-            site_list = [site for site in branch_site_disp_dict.keys()]
+            site_list = [site for site in branch_site_disp_dict.keys() if not site in ["rates", "scaled_rates"]]
             branch_site_disp_dict.close()
 
         branch_cumu_PPE_dict_file = f"../{model_version_results_directory}/{extension1}/{branch_id}_cumu_PPE.h5"
@@ -537,16 +550,17 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]):
                     print(f"\tFound Pre-Prepared Branch PPE:  {fault_model_allbranch_PPE_dict[branch_id]}. Delete manually to remake...")
                 else:
+                    thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
                     if sbatch:
                         print(f"\tPreparing NESI combination for {fault_model_allbranch_PPE_dict[branch_id]}....")
                         prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
-                                            taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1])
+                                            taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1], thresholds=thresholds)
                         combine_branches += 1
                         continue
                     else:
                         print(f"\tCombining site dictionaries into {fault_model_allbranch_PPE_dict[branch_id]}....")
                         compile_site_cumu_PPE(site_list, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
-                                            taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
+                                            taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", thresholds=thresholds)
 
         else:
             if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_PPE:
@@ -559,7 +573,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict_file,
                                                     site_ids=site_list, slip_taper=slip_taper, load_random=load_random,
                                                     model_version_results_directory=model_version_results_directory,
-                                                    time_interval=time_interval, n_samples=n_samples, extension1="")
+                                                    time_interval=time_interval, n_samples=n_samples, extension1="",
+                                                    thresh_lims=thresh_lims, thresh_step=thresh_step)
                 with h5.File(fault_model_allbranch_PPE_dict[branch_id], "w") as branch_PPEh5:
                     dict_to_hdf5(branch_PPEh5, branch_cumu_PPE_dict)
 
@@ -582,7 +597,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         n_tasks = int(np.ceil(n_jobs / tasks_per_array))
         print('\nCreating SLURM submission script....')
         prep_SLURM_submission(model_version_results_directory, int(tasks_per_array), int(n_tasks), hours=int(hours), mins=int(mins), job_time=job_time, mem=mem, cpus=cpus,
-                              account=account, time_interval=time_interval, n_samples=n_samples, sd=sd)
+                              account=account, time_interval=time_interval, n_samples=n_samples, sd=sd, thresh_lims=thresh_lims, thresh_step=thresh_step)
         raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
 
     elif nesi and nesi_step == 'combine' and sbatch:
@@ -647,7 +662,6 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     site_coords_dict = fault_model_PPE_dict['meta']['site_coords_dict']
 
     # Create variables
-    thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
     sigma_lims = [2.275, 15.865, 84.135, 97.725]
     sigma_lims.sort()
     exceed_type_list = ["total_abs", "up", "down"]
@@ -952,7 +966,8 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 with h5.File(NSHM_file, 'r') as NSHM_h5:
                     if site in NSHM_h5.keys():
                         NSHM_displacements = NSHM_h5[site]['scenario_displacements'][:]
-                        cumulative_disp_scenarios += NSHM_displacements.reshape(-1)
+                        slip_scenarios = NSHM_h5[site]['slip_scenarios_ix'][:]
+                        cumulative_disp_scenarios[slip_scenarios] += NSHM_displacements.reshape(-1)
 
             n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios.reshape(1, -1))
             site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)

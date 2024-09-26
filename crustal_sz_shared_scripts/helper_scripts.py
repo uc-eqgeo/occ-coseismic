@@ -110,13 +110,16 @@ def make_qualitative_colormap(name, length):
     return colors
 
 
-def read_rupture_csv(csv_file: str):
+def read_rupture_csv(csv_file: str, fakequakes=False):
     rupture_dict = {}
     with open(csv_file, "r") as fid:
         index_data = fid.readlines()
-    for line in index_data[1:]:
+    for ix, line in enumerate(index_data[1:]):
         numbers = [int(num) for num in line.strip().split(",")]
-        rupture_dict[numbers[0]] = np.array(numbers[2:])
+        if fakequakes:
+            rupture_dict[ix] = np.array(numbers[2:])
+        else:
+            rupture_dict[numbers[0]] = np.array(numbers[2:])
     return rupture_dict
 
 
@@ -135,11 +138,11 @@ def read_fakequakes_slip_rates(NSHM_directory):
     patches = list(df.columns)
     patches.remove('Average Slip (m)')
     rupture_slip_dict = {}
-    for ix, row in df.iterrows():
+    for ix, (_, row) in enumerate(df.iterrows()):
         print(f"Writing rupture slip dictionary... {ix}/{len(df)}", end="\r")
-        rupture_slip_dict[row.name] = row[patches].values.reshape(-1, 1)
+        rupture_slip_dict[ix] = row[patches].values.reshape(-1, 1)
     print("")
-    all_ruptures = read_rupture_csv(os.path.join(proc_dir, f"../data/{NSHM_directory}/ruptures/indices.csv"))
+    all_ruptures = read_rupture_csv(os.path.join(proc_dir, f"../data/{NSHM_directory}/ruptures/indices.csv"), fakequakes=True)
     rates_df = pd.read_csv(os.path.join(proc_dir, f"../data/{NSHM_directory}/solution/rates.csv"))
 
     return rupture_slip_dict, rates_df, all_ruptures
@@ -275,7 +278,7 @@ def filter_ruptures_by_rate(directory):
 # This runs a bit slowly
 def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, model_version,
                                 crustal_directory="crustal_files", sz_directory="subduction_files",
-                                location=[1749150, 5428092], search_radius=2.5e5):
+                                location=[1749150, 5428092], search_radius=2.5e5, fakequakes=False):
     """ filters the initial rupture scenarios by which patches are involved
         set a distance from interest area and cut out scenarios that don't intersect
 
@@ -293,7 +296,7 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
         fault_rectangle_centroids_gdf = gpd.read_file(
             f"../{sz_directory}/out_files{model_version}/{fault_type}_all_rectangle_centroids.geojson")
 
-    all_ruptures_patch_indices = read_rupture_csv(f"../data/{NSHM_directory}/ruptures/indices.csv")
+    all_ruptures_patch_indices = read_rupture_csv(f"../data/{NSHM_directory}/ruptures/indices.csv", fakequakes=fakequakes)
 
     # find rupture scenarios that match input target ruptures (e.g., from filter by rate)
     trimmed_rupture_patch_indices = {i: all_ruptures_patch_indices[i] for i in all_ruptures_patch_indices.keys() if i in
@@ -411,6 +414,9 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
         elif len(ruptured_fault_ids_with_mesh) == 0:
             disps_scenario = None
 
+    # Abandon ruptures that don't cause any displacement
+    if sum(np.abs(disps_scenario)) == 0:
+        disps_scenario = None
 
     return disps_scenario, polygon_slips
 
@@ -466,7 +472,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
                                                              target_rupture_ids=filtered_ruptures_annual_rate,
                                                              fault_type=fault_type, crustal_directory=crustal_directory,
                                                              sz_directory=sz_directory, model_version=model_version,
-                                                             location=location, search_radius=search_radius)
+                                                             location=location, search_radius=search_radius, fakequakes=fakequakes)
 
     # Makes a new total gf displacement dictionary using rake. If points don't have a name (e.g., for whole coastline
     # calculations), the site name list is just a list of numbers
@@ -499,6 +505,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
         if disps_scenario is not None:
             annual_rate = rates_df[rates_df.index == rupture_id]["Annual Rate"].values[0]
             # displacement dictionary for a single rupture scenario at all sites. Key is rupture id.
+            disps_scenario = [(ix, disp) for ix, disp in enumerate(disps_scenario) if disp != 0]
             rupture_disp_dict = {"rupture_id": rupture_id, "v_disps_m": disps_scenario, "annual_rate": annual_rate,
                                  "site_name_list": site_name_list, "site_coords": site_coords,
                                  "x_data": site_coords[:, 0], "y_data": site_coords[:, 1],

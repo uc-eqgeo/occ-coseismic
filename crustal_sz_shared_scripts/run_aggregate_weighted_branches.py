@@ -11,15 +11,15 @@ import h5py as h5
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "crustal"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
-crustal_model_version = "_national_2km"           # "_Model1", "_Model2", or "_CFM"
-sz_model_version = ["_national_2km", "_SouthIsland_2km"]       # must match suffix in the subduction directory with gfs - either all the same dirname, or all names must be given
+fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+crustal_model_version = "_JDE"           # "_Model1", "_Model2", or "_CFM"
+sz_model_version = ["_national_50km", "_SouthIsland_2km"]       # must match suffix in the subduction directory with gfs - either all the same dirname, or all names must be given
 sz_list_order = ["sz", "py"]
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = True   # Prepares code for NESI runs
-testing = False   # Impacts number of samples runs, job time etc
-fakequakes = False   # Use fakequakes for the subduction zone (applied only to hikkerk)
-
+nesi = False   # Prepares code for NESI runs
+testing = True   # Impacts number of samples runs, job time etc
+fakequakes = True   # Use fakequakes for the subduction zone (applied only to hikkerk)
+print('Low storage testing mode')
 # Processing Flags (True/False)
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
@@ -36,10 +36,12 @@ use_saved_dictionary = True   # Use a saved dictionary if it exists
 time_interval = 100     # Time span of hazard forecast (yrs)
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 10
+thresh_lims = [0, 3]
+thresh_step = 0.01
 
 # Nesi Parameters
 prep_sbatch = True   # Prep jobs for sbatch
-nesi_step = 'prep'  # 'prep' or 'combine'
+nesi_step = 'combine'  # 'prep' or 'combine'
 n_array_tasks = 250    # Number of array tasks
 min_tasks_per_array = 250   # Minimum number of sites per array
 min_branches_per_array = 1  # Minimum number of branches per array
@@ -255,7 +257,7 @@ if not paired_crustal_sz:
                     model_version_results_directory=out_version_results_directory, n_samples=n_samples,
                     slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step, sbatch=prep_sbatch, mem=mem,
                     time_interval=time_interval, sd=sd, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array, job_time=job_time,
-                    load_random=load_random, remake_PPE=remake_PPE, account=account)
+                    load_random=load_random, remake_PPE=remake_PPE, account=account, thresh_lims=thresh_lims, thresh_step=thresh_step)
     else:
         print('Loading pre-prepared fault model PPE dictionary...')
         with open(PPE_filepath, 'rb') as f:
@@ -293,7 +295,8 @@ if paired_crustal_sz:
             paired_PPE_pickle_name=paired_PPE_pickle_name, slip_taper=slip_taper, n_samples=int(n_samples),
             out_directory=out_version_results_directory, outfile_extension=outfile_extension, sz_type_list=fault_type[1:],
             nesi=nesi, nesi_step=nesi_step, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array,
-            mem=mem, time_interval=time_interval, sd=sd, job_time=job_time, remake_PPE=remake_PPE, load_random=load_random, account=account)
+            mem=mem, time_interval=time_interval, sd=sd, job_time=job_time, remake_PPE=remake_PPE, load_random=load_random, account=account,
+            thresh_lims=thresh_lims, thresh_step=thresh_step)
 
 # calculate weighted mean PPE for the branch or paired dataset
 weighted_mean_PPE_filepath = f"../{out_version_results_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
@@ -303,7 +306,8 @@ if not paired_crustal_sz and calculate_weighted_mean_PPE or not os.path.exists(w
                                                             out_directory=out_version_results_directory,
                                                             outfile_extension=outfile_extension, slip_taper=slip_taper,
                                                             nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples,
-                                                            min_tasks_per_array=10, n_array_tasks=n_array_tasks, mem=mem, cpus=n_cpus, job_time=job_time)
+                                                            min_tasks_per_array=10, n_array_tasks=n_array_tasks, mem=mem, cpus=n_cpus, job_time=job_time,
+                                                            thresh_lims=thresh_lims, thresh_step=thresh_step)
 
 # plot hazard curves and save to file
 if save_arrays:

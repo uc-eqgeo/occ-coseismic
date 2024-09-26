@@ -67,7 +67,8 @@ def prep_nesi_site_list(model_version_results_directory, sites_of_interest, exte
 
 def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks,
                           hours: int = 0, mins: int = 3, mem: int = 45, cpus: int = 1, account: str = '',
-                          time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4, job_time = 0, NSHM_branch=True):
+                          time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4, job_time = 0, NSHM_branch=True,
+                          thresh_lims=[0, 3], thresh_step=0.01):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
 
@@ -113,10 +114,11 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
         f.write("module purge  2>/dev/null\n".encode())
         f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
 
-        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} --sd {sd} --nesi_job site_PPE {NSHM}\n\n".encode())
+        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} ".encode())
+        f.write(f"--sd {sd} --nesi_job site_PPE {NSHM} --thresh_lims {thresh_lims[0]}/{thresh_lims[1]} --thresh_step {thresh_step}\n\n".encode())
 
 
-def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=None):
+def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=None, thresholds=None):
     """
     Script to recompile all individual site PPE dictionaries into a single branch dictionary.
     For the sake of saving space, the individual site dictionaries are deleted after being combined into the branch dictionary.
@@ -129,8 +131,7 @@ def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, br
     if S == "":
         S = taper_extension
 
-    with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{sites[0]}.h5", "r") as site_h5:
-        branch_h5.create_dataset('thresholds', data=site_h5['thresholds'][:])
+    branch_h5.create_dataset('thresholds', data=thresholds)
 
     all_good = True
     bad_sites = []
@@ -161,7 +162,7 @@ def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, br
     if all_good:
         shutil.rmtree(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
     else:
-        print(f"Error with {len(bad_sites)} sites: ../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}")
+        print(f"\nError with {len(bad_sites)} sites: ../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}")
         print(f"Deleting {branch_h5file}")
         os.remove(branch_h5file)
         with open(f"../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}", "w") as f:
@@ -171,7 +172,7 @@ def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, br
     return
 
 
-def prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=0):
+def prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=0, thresholds=None):
 
     with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "rb") as f:
         combine_dict = pkl.load(f)
@@ -182,7 +183,8 @@ def prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_d
                                                      'branch_h5file': branch_h5file,
                                                      'taper_extension': taper_extension,
                                                      'S': S,
-                                                     'weight': weight}
+                                                     'weight': weight,
+                                                     'thresholds': thresholds}
 
     with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
         pkl.dump(combine_dict, f)
@@ -302,6 +304,8 @@ if __name__ == "__main__":
     parser.add_argument("--time_interval", type=int, default=100, help="Time interval to calculate exceedance probabilities over")
     parser.add_argument("--n_samples", type=int, default=1e5, help="Number of samples to use for the poissonian simulation")
     parser.add_argument("--sd", type=float, default=0.4, help="Standard deviation of the normal distribution to use for uncertainty in displacements")
+    parser.add_argument("--thresh_lims", type=str, default="0/3", help="Threshold limits for the exceedance probabilities")
+    parser.add_argument("--thresh_step", type=float, default=0.01, help="Step size for the threshold limits")
     parser.add_argument("--scaling", type=str, default="", help="Scaling factor for the displacements")
     parser.add_argument("--slip_taper", default=False, action='store_true', help="Tapered slip distribution")
     parser.add_argument("--paired_branch", dest='NSHM_branch', default=True, action='store_false', help="Run for paired branch")
@@ -438,7 +442,8 @@ if __name__ == "__main__":
                     continue
                 get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, [site], n_samples,
                             extension1, branch_key=branch_unique_ids, time_interval=investigation_time, sd=sd, scaling=scaling, load_random=False,
-                            plot_maximum_displacement=False, array_process=True, NSHM_branch=args.NSHM_branch, crustal_model_dir=crustal_model_dir, subduction_model_dirs=subduction_model_dir)
+                            plot_maximum_displacement=False, array_process=True, NSHM_branch=args.NSHM_branch, crustal_model_dir=crustal_model_dir, subduction_model_dirs=subduction_model_dir,
+                            thresh_lims=[float(val) for val in args.thresh_lims.split('/')], thresh_step=float(args.thresh_step))
                 # os.system(f"echo {ix} {extension1} {site} complete in {time() - lap:.2f} seconds\n")
 
             nesiprint(f"{extension1} complete in : {time() - begin:.2f} seconds\n")
@@ -474,10 +479,11 @@ if __name__ == "__main__":
                 nesiprint(f"Found Pre-Prepared Branch PPE:  {combine_dict[branch]['branch_h5file']}. Delete manually to remake...")
             else:
                 with h5.File(combine_dict[branch]['branch_site_disp_dict'], "r") as branch_h5:
-                    site_list = [key for key in branch_h5.keys()]
+                    site_list = [key for key in branch_h5.keys() if key not in ['rates', 'scaled_rates']]
                 nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
                 compile_site_cumu_PPE(site_list, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
-                                    branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'])
+                                    branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'],
+                                    thresholds=combine_dict[branch]['thresholds'])
         print('All branches combined!')
 
     elif args.nesi_job == 'weighted_mean':
@@ -488,10 +494,6 @@ if __name__ == "__main__":
 
         nesiprint('Calculating weighted mean PPE dictionary...')
         get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=args.outDir, outfile_extension=args.outfile_extension, slip_taper=args.slip_taper)
-
-
-    
-   
     
     elif args.nesi_job == 'site_weights':
         find_file_count = 0
