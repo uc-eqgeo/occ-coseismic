@@ -2,6 +2,7 @@ import geopandas as gpd
 import numpy as np
 import math
 from shapely.geometry import Polygon, Point
+import pandas as pd
 
 def split_cell(cell_dicts, parent_id, max_grid, min_grid, max_id, coastline, faults, fault_buffer, split_factor=2):
     print(f"Splitting {parent_id}", end='\r')
@@ -20,7 +21,6 @@ def split_cell(cell_dicts, parent_id, max_grid, min_grid, max_id, coastline, fau
                      'children': [],
                      'split': True,
                      'write_out': False}
-
 
         # Add cell dict to cell_dicts
         cell_dicts[parent_id]['children'].append(max_id)
@@ -65,49 +65,58 @@ def split_cell(cell_dicts, parent_id, max_grid, min_grid, max_id, coastline, fau
 
     return cell_dicts, max_id
 
+search_type = 'quad'  # 'grid', 'cube' or 'quad'
 
-search_type = 'cube'  # 'cube or quad'
+# Resolution
+max_grid = 8000  # Default resolution
+min_grid = 500  # Min grid is the highest resolution of the quad or cubetree. Must be reachable by halving or thirding max_grid 
 
-# Max grid is the default resulution of the cubetree
-max_grid = 3000
+grid_width = 1000e3  # Width of the grid in meters
+grid_length = 1500e3 # Length of the grid in meters
 
-# Min grid is the minimum resolution of the cubetree.
-# Must be reachable by halving or thirding max_grid 
-min_grid = 1000
-
-fault_buffer = 1/3  # This is the extra fault radius around each cell used to decide if the cell is to be divided
+coastal_trim = True  # If True, removes any centroids that are not overland, even if polygon crosses the coast
 
 if search_type == 'quad':
     split_factor = 2
+    fault_buffer = 1/2  # This is the extra fault radius around each cell used to decide if the cell is to be divided
 elif search_type == 'cube':
     split_factor = 3
+    fault_buffer = 1/3  # This is the extra fault radius around each cell used to decide if the cell is to be divided
+elif search_type == 'grid':
+    split_factor = 5
+    fault_buffer = 0  # This is the extra fault radius around each cell used to decide if the cell is to be divided
+    min_grid = max_grid
     
 min_grid = int(max_grid / split_factor ** np.ceil(math.log(max_grid / min_grid, split_factor)))
 
-print('Max Resolution:', max_grid)
-print('Min Resolution:', min_grid)
-print('Fault Buffer:', fault_buffer)
+coastline = gpd.read_file('QGIS\\nz-coastlines-and-islands-polygons-topo-1500k.gpkg')
+faults = gpd.read_file('C:\\Users\\jmc753\\Work\\NZ_CFM_v1_0\\Shapefiles\\NZ_CFM_v1_0.shp')
 
-# Based on bottom corner of NZ coastlines file used to create regular grids
-lon0, lon1, lat0, lat1 = 1089971.2195, 2100000, 4747966.4462, 6200000
+# Ensures the bottom left corner of the grid is based on the coastline file, rounded to 1km
+lon0 = np.round(coastline.bounds.minx.min(), -3) - min_grid / 2
+lat0 = np.round(coastline.bounds.miny.min(), -3) - min_grid / 2
 
-lon0 -= min_grid / 2
-lat0 -= min_grid / 2 
-lon1 = np.ceil((lon1 - lon0) / max_grid) * max_grid + lon0
-lat1 = np.ceil((lat1 - lat0) / max_grid) * max_grid + lat0
+lon1 = np.ceil(grid_width / max_grid) * max_grid + lon0
+lat1 = np.ceil(grid_length / max_grid) * max_grid + lat0
 
-
-# This makes sure that max_grid is the default resolution
+# This makes sure that everything is a square
 length = lon1 - lon0
 width = lat1 - lat0
 longside = max(length, width)
-longside = max_grid * split_factor ** np.ceil(math.log(max(length, width) / max_grid, split_factor))
+# Increase longside to be compatible with the split factor
+split_power = int(np.ceil(math.log(longside / max_grid, split_factor)))
+longside = max_grid * split_factor ** split_power
 
 lat1 = lat0 + longside
 lon1 = lon0 + longside
 
-coastline = gpd.read_file('QGIS\\nz-coastlines-and-islands-polygons-topo-1500k.gpkg')
-faults = gpd.read_file('C:\\Users\\jmc753\\Work\\NZ_CFM_v1_0\\Shapefiles\\NZ_CFM_v1_0.shp')
+print('Search Type:', search_type)
+print('Max Resolution:', max_grid)
+print('Min Resolution:', min_grid)
+print('Fault Buffer:', fault_buffer)
+print('Length/Width:', grid_length / 1e3, 'x', grid_width / 1e3, 'km')
+print('Split Power:', split_factor ** split_power, f"({split_factor} ** {split_power})")
+print('Starting Grid size:', longside / 1e3, 'km')
 
 cell_dicts = {}
 cell_dict = {'id': 0, 
@@ -131,6 +140,8 @@ ix = 0
 while cell_dicts[ix]['split']:
     cell_dicts, max_id = split_cell(cell_dicts, 0, max_grid, min_grid, max_id, coastline, faults, fault_buffer, split_factor)
 
+print('')
+
 id = []
 depth = []
 res = []
@@ -138,10 +149,18 @@ cell_poly = []
 split = []
 
 centroids = []
+n_cells = len(cell_dicts.keys())
 
 ix = 0
 for cell in cell_dicts.keys():
+    print(f"Calculating Centroids {ix}/{n_cells}", end='\r')
     if cell_dicts[cell]['write_out']:
+        centroid = Point((cell_dicts[cell]['lon0'] + cell_dicts[cell]['lon1']) / 2,
+                            (cell_dicts[cell]['lat0'] + cell_dicts[cell]['lat1']) / 2)
+        # Drop any centroids that are not overland
+        if coastal_trim and not coastline.contains(centroid).any():
+            n_cells -= 1
+            continue
         id.append(ix)
         depth.append(cell_dicts[cell]['depth'])
         res = cell_dicts[cell]['resolution']
@@ -150,21 +169,35 @@ for cell in cell_dicts.keys():
                                   (cell_dicts[cell]['lon1'], cell_dicts[cell]['lat1']), 
                                   (cell_dicts[cell]['lon0'], cell_dicts[cell]['lat1'])]))
         split.append(1 if cell_dicts[cell]['split'] else 0)
-        centroids.append(Point((cell_dicts[cell]['lon0'] + cell_dicts[cell]['lon1']) / 2,
-                               (cell_dicts[cell]['lat0'] + cell_dicts[cell]['lat1']) / 2))
+        centroids.append(centroid)
         ix += 1
+    else:
+        n_cells -= 1
 
 print('\nSubsampling Complete')
 
-outtag = f"_{str(max_grid).replace('.', '_')}_{str(min_grid).replace('.', '_')}_buffer_{str(f'{fault_buffer:.02f}').replace('.', '_')}"
+if search_type == 'grid':
+    polyname = f"national_{int(max_grid / 1000)}km_{search_type}_poly"
+    centroid_name = f"national_{int(max_grid / 1000)}km_{search_type}"
+else:
+    outtag = f"_{str(max_grid).replace('.', '_')}_{str(min_grid).replace('.', '_')}_buffer_{str(f'{fault_buffer:.02f}').replace('.', '_')}"
+    polyname = f"{search_type}_poly{outtag}"
+    centroid_name = f"{search_type}_centroids{outtag}"
 
 grid_points = gpd.GeoDataFrame({'id': id, 'depth': depth, 'resolution': res, 'geometry': cell_poly})
 grid_points.set_crs(epsg=2193, inplace=True)
-grid_points.to_file(f'sites\\{search_type}_poly{outtag}.geojson', driver='GeoJSON')
-print(f"Written sites\\{search_type}_poly{outtag}.geojson")
+grid_points.to_file(f'sites\\{polyname}.geojson', driver='GeoJSON')
+print(f"Written sites\\{polyname}.geojson")
 
 
 centroid_gdf = gpd.GeoDataFrame({'id': id, 'depth': depth, 'resolution': res, 'geometry': centroids})
 centroid_gdf.set_crs(epsg=2193, inplace=True)
-centroid_gdf.to_file(f'sites\\{search_type}_centroids{outtag}.geojson', driver='GeoJSON')
-print(f"Written sites\\{search_type}_centroids{outtag}.geojson")
+centroid_gdf.to_file(f'sites\\{centroid_name}.geojson', driver='GeoJSON')
+print(f"Written sites\\{centroid_name}.geojson")
+
+centroid_df = pd.DataFrame(columns=['X', 'Y', 'id'])
+centroid_df['X'] = centroid_gdf.geometry.x
+centroid_df['Y'] = centroid_gdf.geometry.y
+centroid_df['id'] = np.arange(centroid_df.shape[0])
+centroid_df.to_csv(f'sites\\{centroid_name}.csv', index=False)
+print(f"Written sites\\{centroid_name}.csv")
