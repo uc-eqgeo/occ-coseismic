@@ -19,7 +19,7 @@ outfile_extension = ""               # Optional; something to tack on to the end
 nesi = False   # Prepares code for NESI runs
 testing = True   # Impacts number of samples runs, job time etc
 fakequakes = True   # Use fakequakes for the subduction zone (applied only to hikkerk)
-print('Low storage testing mode')
+
 # Processing Flags (True/False)
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?

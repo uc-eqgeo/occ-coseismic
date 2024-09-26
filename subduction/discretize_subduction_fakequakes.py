@@ -6,6 +6,10 @@ from shapely.geometry import Polygon, LineString, Point
 import pickle as pkl
 import os
 
+"""
+This script will discretise the subduction zone into patches based on the fake quakes fault geometry.
+"""
+
 #### USER INPUT #####
 # Define whch subduction zone (hikkerk / puysegur)
 sz_zone = 'hikkerk'
