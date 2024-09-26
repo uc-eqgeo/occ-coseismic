@@ -114,7 +114,7 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
         f.write("module purge  2>/dev/null\n".encode())
         f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
 
-        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} ")
+        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} ".encode())
         f.write(f"--sd {sd} --nesi_job site_PPE {NSHM} --thresh_lims {thresh_lims[0]}/{thresh_lims[1]} --thresh_step {thresh_step}\n\n".encode())
 
 
