@@ -25,12 +25,8 @@ sz_zone = '_fq_hikkerk'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
 csvfile = 'national_25km_grid_points.csv'
-try:
-    site_list_csv = os.path.join('/mnt/', 'c', 'Users', 'jmc753', 'Work', 'occ-coseismic', 'sites', csvfile)
-    sites_df = pd.read_csv(site_list_csv)
-except FileNotFoundError:
-    site_list_csv = os.path.join('C:\\', 'Users', 'jmc753', 'Work', 'occ-coseismic', 'sites', csvfile)
-    sites_df = pd.read_csv(site_list_csv)
+site_list_csv = os.path.join('..', 'sites', csvfile)
+sites_df = pd.read_csv(site_list_csv)
 
 # Names of the sites we need to prepare
 gf_site_names = [str(site) for site in sites_df['siteId']]
@@ -62,8 +58,11 @@ if deblobify:
     version_extension += "_deblobify"
     sz_zone += "_deblobify"
 
+if "_fq_" in sz_zone and version_extension[:3] != "_fq":
+    version_extension = "_fq" + version_extension
+
 # Load pre made_greens_functions
-gf_h5_file = f"discretised{sz_zone}/sz_gf_dict_sites.h5"
+gf_h5_file = f"discretised{sz_zone}/{prefix}_gf_dict_sites.h5"
 if not os.path.exists(gf_h5_file):
     gf_file = h5.File(gf_h5_file, "w")
     gf_file.close()
@@ -72,8 +71,6 @@ if not os.path.exists(gf_h5_file):
 with open(f"discretised{sz_zone}/{prefix}_discretised_dict.pkl",
           "rb") as f:
     discretised_dict = pkl.load(f)
-
-gf_dict = {}
 
 requested_site_coords = np.ascontiguousarray(np.array(sites_df[['Lon', 'Lat', 'Height']]))
 
@@ -129,7 +126,7 @@ for fault_id in discretised_dict.keys():
     site_name_list = np.array(site_name_list, dtype='S')
 
     # Set rake to 90 so that in future functions total displacement is just equal to DS
-    disp_dict = {"ss": disps * 0, "ds": disps, "site_coords": site_coords[:, :2],
+    disp_dict = {"ss": (disps * 0).astype(int), "ds": disps, "site_coords": site_coords[:, :2],
                  "site_name_list": site_name_list}
     
     with h5.File(gf_h5_file, "r+") as gf_h5:

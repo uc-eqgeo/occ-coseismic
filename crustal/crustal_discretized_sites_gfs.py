@@ -5,7 +5,8 @@ from shapely.geometry import MultiPoint
 import geopandas as gpd
 import os
 import pandas as pd
-import shutil
+from time import time
+import h5py as h5
 
 
 # calculates green's functions at points specified in a list (or lists) of coordinates
@@ -15,17 +16,17 @@ import shutil
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_national_OCC"
-#out_extension = f"_{mesh_version}_v1"
+mesh_version = "_national_25km"
 
 steeper_dip, gentler_dip = False, False
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'sites', 'NZ_VLM_final_May24_points.csv')
+site_list_csv = os.path.join('..', 'sites', 'national_25km_grid_points.csv')
 sites_df = pd.read_csv(site_list_csv)
 
-site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
-site_name_list = [str(site) for site in sites_df['siteId']]
+gf_site_names = [str(site) for site in sites_df['siteId']]
+gf_site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
+
 #########################
 gf_type = "sites"
 
@@ -38,21 +39,20 @@ elif steeper_dip == True and gentler_dip == True:
     print("Dip modifications are wrong. Only one statement can be True at once. Try again.")
     exit()
 
+# Load pre made_greens_functions
+gf_h5_file = f"discretised{discretise_version}/crustal_gf_dict_sites.h5"
+if not os.path.exists(gf_h5_file):
+    gf_file = h5.File(gf_h5_file, "w")
+    gf_file.close()
+
 # load files
 with open(f"discretised{discretise_version}/crustal_discretised_dict.pkl", "rb") as f:
     discretised_dict = pkl.load(f)
 
 os.makedirs(f"out_files{mesh_version}", exist_ok=True)
 
-# make geojson of site locations
-site_df = gpd.GeoDataFrame({"site_name": site_name_list, "x": site_coords[:, 0], "y": site_coords[:, 1]})
-site_gdf = gpd.GeoDataFrame(site_df, geometry=gpd.points_from_xy(site_coords[:, 0], site_coords[:, 1]))
+requested_site_coords = np.ascontiguousarray(np.array(sites_df[['Lon', 'Lat', 'Height']]))
 
-# all_rectangle_outline_gs = gpd.GeoSeries(all_rectangle_polygons, crs=2193)
-# all_rectangle_outline_gdf = gpd.GeoDataFrame(df_all_rectangle, geometry=all_rectangle_outline_gs.geometry, crs=2193)
-site_gdf.to_file(f"out_files{mesh_version}/site_points.geojson", driver="GeoJSON", crs=2193)
-
-gf_dict_sites = {}
 for fault_id in discretised_dict.keys():
     triangles = discretised_dict[fault_id]["triangles"]
     rake = discretised_dict[fault_id]["rake"]
@@ -60,29 +60,67 @@ for fault_id in discretised_dict.keys():
     vertices = triangles.reshape(triangles.shape[0] * triangles.shape[1], 3)
     vertex_multipoint = MultiPoint(vertices)
 
-    pts = site_coords
-
     zero_slip_array = np.zeros((triangles.shape[0],))
     ones_slip_array = np.ones((triangles.shape[0],))
 
     dip_slip_array = np.vstack([zero_slip_array, ones_slip_array, zero_slip_array]).T
     strike_slip_array = np.vstack([ones_slip_array, zero_slip_array, zero_slip_array]).T
 
-    # calculate displacements
-    disps_ss = HS.disp_free(obs_pts=pts, tris=triangles, slips=strike_slip_array, nu=0.25)
-    disps_ds = HS.disp_free(obs_pts=pts, tris=triangles, slips=dip_slip_array, nu=0.25)
+    # Identify, for this rupture, which sites have not been processed
+    with h5.File(gf_h5_file, "r+") as gf_h5:
+        if str(fault_id) not in gf_h5.keys():
+            gf_h5.create_group(str(fault_id))
+            gf_h5[str(fault_id)].create_dataset('ss', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('ds', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('rake', data=rake)
+            gf_h5[str(fault_id)].create_dataset('site_name_list', data=np.array([], dtype='S'))
+            gf_h5[str(fault_id)].create_dataset('site_coords', data=np.array([]))
+        
+        prepared_site_names = gf_h5[str(fault_id)]['site_name_list'].asstr()[:].tolist()
+        prepared_site_coords = gf_h5[str(fault_id)]['site_coords'][:]
+        strikeslip = gf_h5[str(fault_id)]['ss'][:]
+        dipslip = gf_h5[str(fault_id)]['ds'][:]
+
+    begin = time()
+    site_name_array = np.array([(ix, str(site)) for ix, site in enumerate(sites_df['siteId']) if site not in prepared_site_names])
+    if len (site_name_array) == 0:
+        # All sites have been processed 
+        print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)', end='\r')
+        continue
+
+    # Index 
+    gf_ix = [int(ix) for ix in site_name_array[:, 0]]
+    gf_site_name_list = [site for site in site_name_array[:, 1]]
+    gf_site_coords = requested_site_coords[gf_ix, :]
+
+    # Calculate displacements for each fault
+    disps_ss = HS.disp_free(obs_pts=gf_site_coords, tris=triangles, slips=strike_slip_array, nu=0.25)
+    disps_ds = HS.disp_free(obs_pts=gf_site_coords, tris=triangles, slips=dip_slip_array, nu=0.25)
+
+    disps_ss = np.hstack([dipslip, disps_ss[:, -1]])
+    disps_ds = np.hstack([dipslip, disps_ds[:, -1]])
+    if prepared_site_coords.shape[0] == 0:
+        site_coords = gf_site_coords[:, :2]
+    else:
+        site_coords = np.vstack([prepared_site_coords, gf_site_coords[:, :2]])
+    site_name_list = prepared_site_names + gf_site_name_list
+    site_name_list = np.array(site_name_list, dtype='S')
 
     # make displacement dictionary for outputs. only use the vertical disps. (last column)
-    disp_dict = {"ss": disps_ss[:, -1], "ds": disps_ds[:, -1], "rake": rake, "site_name_list": site_name_list,
-                 "site_coords": site_coords, "x_data": site_coords[:, 0], "y_data": site_coords[:, 1]}
+    disp_dict = {"ss": disps_ss, "ds": disps_ds, "rake": rake, "site_coords": site_coords[:, :2],
+                 "site_name_list": site_name_list}
 
-    gf_dict_sites[fault_id] = disp_dict
-    print(f'discretised fault {fault_id} of {len(discretised_dict.keys())} ({triangles.shape[0]} triangles per patch)', end='\r')
+    with h5.File(gf_h5_file, "r+") as gf_h5:
+        for key in disp_dict.keys():
+            del gf_h5[str(fault_id)][key]
+            gf_h5[str(fault_id)].create_dataset(key, data=disp_dict[key])
 
-with open(f"out_files{mesh_version}/crustal_gf_dict_{gf_type}.pkl", "wb") as f:
-    pkl.dump(gf_dict_sites, f)
+    if fault_id % 1 == 0:
+        print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)', end='\r')
+print('')
 
-for file in ["crustal_discretised_polygons", "all_rectangle_outlines", "named_rectangle_centroids"]:
-    shutil.copy(f"discretised{discretise_version}/{file}.geojson", f"out_files{mesh_version}/{file}.geojson")
-    
+# This geojson file will be used to control the sites of the inversion
+gdf = gpd.GeoDataFrame(sites_df, geometry=gpd.points_from_xy(sites_df.Lon, sites_df.Lat), crs='EPSG:2193')
+gdf.to_file(f"discretised{discretise_version}/site_locations{mesh_version}.geojson", driver="GeoJSON")
+
 print(f"\nout_files{mesh_version} Complete!")
