@@ -124,7 +124,7 @@ def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, br
     For the sake of saving space, the individual site dictionaries are deleted after being combined into the branch dictionary.
     """
 
-    branch_h5 = h5.File(branch_h5file, "w")
+    branch_h5 = h5.File(branch_h5file, "r+")
     if 'grid_meta' in sites:
         sites.remove('grid_meta')
     
