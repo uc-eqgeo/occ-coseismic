@@ -60,9 +60,13 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
         rupture_disp_dictionary = pkl.load(fid)
 
     ###### reshape displacement data to be grouped by site location.
-    first_key = list(rupture_disp_dictionary.keys())[0]
-    site_names = rupture_disp_dictionary[first_key]["site_name_list"]
-    site_coords = rupture_disp_dictionary[first_key]["site_coords"]
+    site_coords = np.array([])
+    key = 0
+    while site_coords.shape[0] == 0:
+        rupt = list(rupture_disp_dictionary.keys())[key]
+        site_coords = rupture_disp_dictionary[rupt]["site_coords"]
+        key += 1
+    site_names = rupture_disp_dictionary[rupt]["site_name_list"]
 
     # makes a list of lists. each item is a rupture scenario that contains a list of displacements at each site.
     # could probably simplify this because it's the same shape as the dictionary, but I'm not sure how to do that yet
@@ -73,6 +77,8 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
         print(f"\tPreparing disps by scenario... {ix}\{len(rupture_disp_dictionary.keys())}", end='\r')
         disps = np.zeros(len(site_names))
         non_zero_disps = np.array(rupture_disp_dictionary[rupture_id]["v_disps_m"])
+        if non_zero_disps.shape[0] == 0:
+            continue
         disps[non_zero_disps[:, 0].astype(int)] = non_zero_disps[:, 1]
         disps_by_scenario.append(disps)
         annual_rate = rupture_disp_dictionary[rupture_id]["annual_rate"]
@@ -162,6 +168,8 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
         with h5.File(branch_site_disp_dict_file, "a") as branch_h5:
             for site in branch_h5.keys():
                 if "scaled_rates" not in branch_h5[site].keys():
+                    if "rates" not in branch_h5[site].keys():
+                        print('Oh No')
                     # multiply each value in the rates array by the rate scaling factor
                     branch_h5[site].create_dataset("scaled_rates", data=branch_h5[site]["rates"][:] * rate_scaling_factor)
 
@@ -447,7 +455,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                                     "error_total_abs": error_abs[:, error_abs.sum(axis=0) != 0],
                                                     "error_up": error_up[:, error_up.sum(axis=0) != 0],
                                                     "error_down": error_down[:, error_down.sum(axis=0) != 0],
-                                                    "sigma_lims": sigma_lims})
+                                                    "sigma_lims": sigma_lims,
+                                                    "n_samples": n_samples,
+                                                    "thresh_para": np.hstack([thresh_lims, thresh_step])})
 
         elapsed = time_elasped(time(), start)
         if benchmarking:
@@ -475,7 +485,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         else:
             return site_PPE_dict
 
-def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension,
+def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension, inv_sites=[],
                               nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
                               time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=3, load_random=False,
                               remake_PPE=True, sbatch=False, thresh_lims=[0, 3], thresh_step=0.01):
@@ -535,6 +545,37 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
         branch_cumu_PPE_dict_file = f"../{model_version_results_directory}/{extension1}/{branch_id}_cumu_PPE.h5"
         fault_model_allbranch_PPE_dict[branch_id] = branch_cumu_PPE_dict_file
+
+        # Reduce site list to only those that have not been processed or not processed to the required number of samples
+        thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
+        if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]):
+            print('\tChecking for existing PPE at each site...')
+            with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r") as branch_PPEh5:
+                # Checks that sites have been processed
+                existing_sites = [site for site in branch_PPEh5.keys() if site not in ["branch_weight"]]
+                # Checks that previous processing had required sampling (i.e. wasn't a testing run)
+                well_processed_sites = []
+                for site in existing_sites:
+                    if all([True if key in branch_PPEh5[site].keys() else False for key in ['n_samples', 'thresh_para']]):
+                        if branch_PPEh5[site]['n_samples'][()] >= n_samples:
+                            well_processed_sites.append(site)
+                #             # Check previous processing had required threshold limits  # Might be redundant, unless you want to plot only the single branch
+                #             proc_thresholds = np.round(np.arange(branch_PPEh5[site]['thresh_para'][0], branch_PPEh5[site]['thresh_para'][1] + branch_PPEh5[site]['thresh_para'][2], branch_PPEh5[site]['thresh_para'][2]), 4)
+                #             if np.in1d(thresholds, proc_thresholds).all():
+                #                 well_processed_sites.append(site)
+
+            prep_list = [site for site in inv_sites if site not in well_processed_sites]
+        else:
+            branch_PPEh5 = h5.File(fault_model_allbranch_PPE_dict[branch_id], "w")
+            branch_PPEh5.close()
+            prep_list = inv_sites
+        
+        if len(prep_list) == 0:
+            print(f"\tAll sites have been processed for {branch_id}. Skipping...")
+            continue
+        else:
+            print(f"\t{len(prep_list)}/{len(inv_sites)} requested sites need processing for {branch_id}...")
+
         ### get exceedance probability dictionary
         if nesi:
             if nesi_step == 'prep':
@@ -543,14 +584,13 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                     prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples, sd)
 
                 print(f"\tPrepping for NESI....")
-                prep_nesi_site_list(model_version_results_directory, site_list, extension1, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
+                prep_nesi_site_list(model_version_results_directory, prep_list, extension1, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
                 continue
 
             elif nesi_step == 'combine':
                 if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]):
                     print(f"\tFound Pre-Prepared Branch PPE:  {fault_model_allbranch_PPE_dict[branch_id]}. Delete manually to remake...")
                 else:
-                    thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
                     if sbatch:
                         print(f"\tPreparing NESI combination for {fault_model_allbranch_PPE_dict[branch_id]}....")
                         prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
@@ -559,7 +599,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                         continue
                     else:
                         print(f"\tCombining site dictionaries into {fault_model_allbranch_PPE_dict[branch_id]}....")
-                        compile_site_cumu_PPE(site_list, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
+                        compile_site_cumu_PPE(prep_list, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
                                             taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", thresholds=thresholds)
 
         else:
@@ -571,12 +611,12 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                     prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples, sd)
 
                 branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict_file,
-                                                    site_ids=site_list, slip_taper=slip_taper, load_random=load_random,
+                                                    site_ids=prep_list, slip_taper=slip_taper, load_random=load_random,
                                                     model_version_results_directory=model_version_results_directory,
                                                     time_interval=time_interval, n_samples=n_samples, extension1="",
                                                     thresh_lims=thresh_lims, thresh_step=thresh_step)
-                with h5.File(fault_model_allbranch_PPE_dict[branch_id], "w") as branch_PPEh5:
-                    dict_to_hdf5(branch_PPEh5, branch_cumu_PPE_dict)
+                with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r+") as branch_PPEh5:
+                    dict_to_hdf5(branch_PPEh5, branch_cumu_PPE_dict, replace_groups=True)
 
         if not all([nesi, nesi_step == 'combine', sbatch]):
             if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]):
@@ -633,7 +673,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
         return fault_model_allbranch_PPE_dict
 
-def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper, thresh_lims=[0, 3], thresh_step=0.01, nesi=False, nesi_step='prep', n_samples=100000,
+def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper, site_list=[], thresh_lims=[0, 3], thresh_step=0.01, nesi=False, nesi_step='prep', n_samples=100000,
                                min_tasks_per_array=100, n_array_tasks=100, mem=10, cpus=1, account='', job_time=60):
     """takes all the branch PPEs and combines them based on the branch weights into a weighted mean PPE dictionary
 
@@ -650,10 +690,10 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
         taper_extension = "_uniform"
 
     unique_id_list = fault_model_PPE_dict['meta']['branch_ids']
-    site_list = fault_model_PPE_dict['meta']['site_ids']
+    # site_list = fault_model_PPE_dict['meta']['site_ids']
 
     # weight the probabilities by NSHM branch weights to get a weighted mean
-    branch_weights = fault_model_PPE_dict['meta']['branch_weights']
+    branch_weights = np.array(fault_model_PPE_dict['meta']['branch_weights'])
 
     # need a more elegant solution to this I think
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
@@ -669,17 +709,26 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     # Check if previous h5 exists. If it does, preserve it until new weighted mean file is complete
     weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
     preserve_previous_h5 = False
-    if os.path.exists(weighted_h5_file):
-        weighted_h5_file = weighted_h5_file.replace('.h5', '_processing.h5')
-        preserve_previous_h5 = True
-        if os.path.exists(weighted_h5_file):
-            os.remove(weighted_h5_file)
+    # if os.path.exists(weighted_h5_file):
+    #     weighted_h5_file = weighted_h5_file.replace('.h5', '_processing.h5')
+    #     preserve_previous_h5 = True
+    #     if os.path.exists(weighted_h5_file):
+    #         os.remove(weighted_h5_file)
 
-    weighted_h5 = h5.File(weighted_h5_file, "w")
-    weighted_h5.create_dataset('branch_weights', data=branch_weights)
-    weighted_h5.create_dataset("thresholds", data=thresholds)
-    weighted_h5.create_dataset("branch_ids", data=unique_id_list)
-    weighted_h5.create_dataset('sigma_lims', data=sigma_lims)
+    meta_dict = {'branch_weights': branch_weights,
+                 'thresholds': thresholds,
+                 'branch_ids': np.array(unique_id_list, dtype='S'),
+                 'sigma_lims': sigma_lims}
+
+    if not os.path.exists(weighted_h5_file):
+        weighted_h5 = h5.File(weighted_h5_file, "w")
+        for key in meta_dict.keys():
+            weighted_h5.create_dataset(key, data=meta_dict[key])
+    else:
+        weighted_h5 = h5.File(weighted_h5_file, "r+")
+        for key in meta_dict.keys():
+            if any(weighted_h5[key][:] != meta_dict[key]):
+                print(f"Meta data for {key} does not match what was in the weighted.h5...")
 
     model_directory = '/'.join(fault_model_PPE_dict[unique_id_list[0]].split('/')[1:-2])
 
@@ -688,9 +737,10 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
         start = time()
         printProgressBar(0, n_sites, prefix=f'\t0/{n_sites} sites:', suffix='00:00:00 0 s/site', length=50)
         for ix, site in enumerate(site_list):
-            site_group = weighted_h5.create_group(site)
-            site_group.create_dataset("site_coords", data=site_coords_dict[site])
-            create_site_weighted_mean(site_group, site, n_samples, model_directory, [model_directory], 'sites', thresholds, exceed_type_list, unique_id_list, sigma_lims, branch_weights, compression=None)
+            if site not in weighted_h5.keys():
+                site_group = weighted_h5.create_group(site)
+                site_group.create_dataset("site_coords", data=site_coords_dict[site])
+                create_site_weighted_mean(site_group, site, n_samples, model_directory, [model_directory], 'sites', thresholds, exceed_type_list, unique_id_list, sigma_lims, branch_weights, compression=None)
             elapsed = time_elasped(time(), start, decimal=False)
             printProgressBar(ix + 1, len(site_list), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
         weighted_h5.close()
@@ -953,15 +1003,20 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
             for branch in pair_id.split('_-_'):
                 fault_type = branch.split('_')[-2]
                 branch_tag = branch.split('_')[-1]
+                if '_sz_' in branch:
+                    fault_type = 'sz'
+                    sz_name = 'hikkerk'
+                elif '_py_' in branch:
+                    fault_type = 'py'
+                    sz_name = 'puysegur'
                 if fault_type == 'fq':
-                    if 'sz_fq' in branch:
-                        fault_type = 'sz_fq'
-                    elif 'py_fq' in branch:
-                        fault_type = 'py_fq'
+                    fault_type += '_fq'
+                    sz_name = 'fq_' + sz_name
+                
                 if fault_type == 'c':
                     fault_dir = crustal_directory
                 else:
-                    fault_dir = next((sz_dir for sz_dir in sz_directory_list if f'/{fault_type}_' in sz_dir))
+                    fault_dir = next((sz_dir for sz_dir in sz_directory_list if f'/{sz_name}' in sz_dir))
                 NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
                 with h5.File(NSHM_file, 'r') as NSHM_h5:
                     if site in NSHM_h5.keys():
@@ -2045,7 +2100,7 @@ def save_disp_prob_tifs(extension1, slip_taper, model_version_results_directory,
 
 def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0,
                            probs_lims=[0.01, 0.2], probs_step=0, output_thresh=True, output_probs=True, weighted=False,
-                           output_grids=True, thresholds=None, probabilities=None):
+                           output_grids=True, thresholds=None, probabilities=None, sites=[], out_tag=''):
     """
     Add all results to x_array datasets, and save as netcdf files
     """
@@ -2068,8 +2123,11 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
 
     PPEh5 = h5.File(h5_file, 'r')
 
-    sites = [*PPEh5.keys()]
     metadata_keys = ['branch_weights', 'branch_ids', 'thresholds', 'threshold_vals', 'sigma_lims']
+
+    if sites == []:
+        sites = [*PPEh5.keys()]
+
     for meta in metadata_keys:
         if meta in sites:
             sites.remove(meta)
@@ -2086,8 +2144,8 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         os.mkdir(f"{outfile_directory}")
 
     if output_grids:
-        site_x = [pixel['site_coords'][:][0] for key, pixel in PPEh5.items() if key not in metadata_keys]
-        site_y = [pixel['site_coords'][:][1] for key, pixel in PPEh5.items() if key not in metadata_keys]
+        site_x = [PPEh5[site]['site_coords'][:][0] for site in sites]
+        site_y = [PPEh5[site]['site_coords'][:][1] for site in sites]
 
         x_data = np.unique(site_x)
         y_data = np.unique(site_y)
@@ -2180,7 +2238,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             out_name += 'prob_'
 
         ds.attrs['branch'] = branch_name
-        ds.to_netcdf(f"{outfile_directory}/{out_name}grids.nc")
+        ds.to_netcdf(f"{outfile_directory}/{model_version_results_directory.split('/')[-1]}_{out_name}{out_tag}_grids.nc".replace('__', '_'))
 
     return ds
 

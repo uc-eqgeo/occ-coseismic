@@ -17,11 +17,14 @@ finally:
     from scipy.interpolate import griddata
     import matplotlib.pyplot as plt
     from time import time
+    import h5py as h5
 
-def dict_to_hdf5(hdf5_group, dictionary, compression=None, compression_opts=None):
+def dict_to_hdf5(hdf5_group, dictionary, compression=None, compression_opts=None, replace_groups=False):
     for key, value in dictionary.items():
         if isinstance(value, dict):
             # Recursively create sub-groups
+            if replace_groups and key in hdf5_group:
+                del hdf5_group[key]
             sub_group = hdf5_group.create_group(key)
             dict_to_hdf5(sub_group, value)
         else:
@@ -148,12 +151,11 @@ def read_fakequakes_slip_rates(NSHM_directory):
     return rupture_slip_dict, rates_df, all_ruptures
 
 
-def make_total_slip_dictionary(gf_dict_pkl):
+def make_total_slip_dictionary(gf_dict_h5):
     """ calculates total greens function displacement using strike slip gf, dip slip gf, and rake value
     need to run the and crustal_discretised_gfs script first"""
 
-    with open(gf_dict_pkl, "rb") as fid:
-        gf_dict = pkl.load(fid)
+    gf_dict = h5.File(gf_dict_h5, "r")
 
     # Makes a new total gf displacement dictionary using rake
     gf_adjusted_dict = {}
@@ -167,12 +169,14 @@ def make_total_slip_dictionary(gf_dict_pkl):
             ds_gf = gf_dict[i]["ds"]
             rake = gf_dict[i]["rake"]
 
-            site_name_list = gf_dict[i]["site_name_list"]
-            site_coords = gf_dict[i]["site_coords"]
+            site_name_list = gf_dict[i]["site_name_list"].asstr()[:].tolist()
+            site_coords = gf_dict[i]["site_coords"][:]
 
             # calculate combined vertical from strike slip and dip slip using rake
             combined_gf = np.sin(np.radians(rake)) * ds_gf + np.cos(np.radians(rake)) * ss_gf
             gf_adjusted_dict[i] = {"combined_gf": combined_gf, "site_name_list": site_name_list, "site_coords": site_coords}
+
+    gf_dict.close()
 
     return gf_adjusted_dict, grid_meta
 
@@ -290,11 +294,11 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
     location = Point(location)
 
     if fault_type == "crustal":
-        fault_rectangle_centroids_gdf = gpd.read_file(f"../{crustal_directory}/out_files{model_version}"
+        fault_rectangle_centroids_gdf = gpd.read_file(f"../{crustal_directory}/discretised_{model_version}"
                                                       f"/named_rectangle_centroids.geojson")
     if fault_type == "sz" or fault_type == "py":
         fault_rectangle_centroids_gdf = gpd.read_file(
-            f"../{sz_directory}/out_files{model_version}/{fault_type}_all_rectangle_centroids.geojson")
+            f"../{sz_directory}/discretised_{model_version}/{fault_type}_all_rectangle_centroids.geojson")
 
     all_ruptures_patch_indices = read_rupture_csv(f"../data/{NSHM_directory}/ruptures/indices.csv", fakequakes=fakequakes)
 
@@ -335,19 +339,19 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
     """
 
     # find which patches have a mesh and which don't, to use greens functions later just with meshed patches
-    ruptured_fault_ids_with_mesh = np.intersect1d(ruptured_fault_ids, list(gf_total_slip_dict.keys()))
+    ruptured_fault_ids_with_mesh = np.intersect1d(ruptured_fault_ids, list(gf_total_slip_dict.keys())).astype('int')
 
     # calculate slip on each discretised polygon
     if slip_taper is False:
         # calculate displacements by multiplying scenario slip by scenario greens function
         # scenario gf sums displacements from all ruptured
         if fakequakes:
-            gf_array = np.array([gf_total_slip_dict[j]["combined_gf"] for j in ruptured_fault_ids_with_mesh])
+            gf_array = np.array([gf_total_slip_dict[str(j)]["combined_gf"] for j in ruptured_fault_ids_with_mesh])
             disps_scenario = (rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh].reshape(-1,1) * gf_array).sum(axis=0)
             polygon_slips = rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh]
 
         else:
-            gfs_i = np.sum([gf_total_slip_dict[j]["combined_gf"] for j in ruptured_fault_ids_with_mesh], axis=0)
+            gfs_i = np.sum([gf_total_slip_dict[str(j)]["combined_gf"] for j in ruptured_fault_ids_with_mesh], axis=0)
             disps_scenario = rupture_slip_dict[rupture_id] * gfs_i
             polygon_slips = rupture_slip_dict[rupture_id] * np.ones(len(ruptured_fault_ids_with_mesh))
 
@@ -420,8 +424,8 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
 
     return disps_scenario, polygon_slips
 
-def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf_name, model_version,
-                          results_version_directory, crustal_directory="crustal_files", sz_directory="subduction_files",
+def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf_name,
+                          results_version_directory, disc_version_directory, crustal_directory="crustal_files", sz_directory="subduction_files",
                           location=[1749150, 5428092], search_radius=2.5e5, fakequakes=False):
     """
     inputs: uses extension naming scheme to load NSHM rate/slip data and fault geometry, state slip taper
@@ -441,6 +445,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     # load saved data
     print(f"\nloading data for {extension1}")
     procdir = os.path.relpath(os.path.dirname(__file__)) + '/..'
+    disc_version = disc_version_directory.split('/')[-1]
 
     if fakequakes:
         rupture_slip_dict, rates_df, all_ruptures = read_fakequakes_slip_rates(NSHM_directory)
@@ -451,16 +456,15 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
         all_ruptures = read_rupture_csv(f"{procdir}/data/{NSHM_directory}/ruptures/indices.csv")
 
     if fault_type == "crustal":
-        discretised_polygons_gdf = gpd.read_file(f"{procdir}/"
-                                                 f"{crustal_directory}/out_files"
-                                                 f"{model_version}/crustal_discretised_polygons.geojson")
-        gf_dict_pkl = f"{procdir}/{crustal_directory}/out_files{model_version}/crustal_gf_dict_{gf_name}.pkl"
-        rectangle_outlines_gdf = gpd.read_file(f"{procdir}/{crustal_directory}/out_files"
-                                               f"{model_version}/all_rectangle_outlines.geojson")
+        discretised_polygons_gdf = gpd.read_file(f"{procdir}/{crustal_directory}/discretised_{disc_version}/"
+                                                 f"crustal_discretised_polygons.geojson")
+        gf_dict_pkl = f"{procdir}/{crustal_directory}/discretised_{disc_version}/crustal_gf_dict_{gf_name}.h5"
+        rectangle_outlines_gdf = gpd.read_file(f"{procdir}/{crustal_directory}/discretised_{disc_version}"
+                                               f"/all_rectangle_outlines.geojson")
     elif fault_type == "sz" or fault_type == "py":
-        discretised_polygons_gdf = gpd.read_file(f"{procdir}/{sz_directory}/out_files{model_version}/{fault_type}_discretised_polygons.geojson")
-        gf_dict_pkl = f"{procdir}/{sz_directory}/out_files{model_version}/{fault_type}_gf_dict_{gf_name}.pkl"
-        rectangle_outlines_gdf = gpd.read_file(f"{procdir}/{sz_directory}/out_files{model_version}/{fault_type}_all_rectangle_outlines.geojson")
+        discretised_polygons_gdf = gpd.read_file(f"{procdir}/{sz_directory}/discretised_{disc_version}/{fault_type}_discretised_polygons.geojson")
+        gf_dict_pkl = f"{procdir}/{sz_directory}/discretised_{disc_version}/{fault_type}_gf_dict_{gf_name}.h5"
+        rectangle_outlines_gdf = gpd.read_file(f"{procdir}/{sz_directory}/discretised_{disc_version}/{fault_type}_all_rectangle_outlines.geojson")
 
     # for some reason it defaults values to string. Convert to integer.
     discretised_polygons_gdf['fault_id'] = discretised_polygons_gdf['fault_id'].astype('int64')
@@ -471,7 +475,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     filtered_ruptures_location = filter_ruptures_by_location(NSHM_directory=NSHM_directory,
                                                              target_rupture_ids=filtered_ruptures_annual_rate,
                                                              fault_type=fault_type, crustal_directory=crustal_directory,
-                                                             sz_directory=sz_directory, model_version=model_version,
+                                                             sz_directory=sz_directory, model_version=disc_version,
                                                              location=location, search_radius=search_radius, fakequakes=fakequakes)
 
     # Makes a new total gf displacement dictionary using rake. If points don't have a name (e.g., for whole coastline
@@ -502,15 +506,18 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
 
         # extract annual rate and save data to dictionary. Key is the rupture ID. Ignores scenarios with zero
         # displacement at all sites. Sites can be a grid cell or a specific (named) site.
+        annual_rate = rates_df[rates_df.index == rupture_id]["Annual Rate"].values[0]
         if disps_scenario is not None:
-            annual_rate = rates_df[rates_df.index == rupture_id]["Annual Rate"].values[0]
             # displacement dictionary for a single rupture scenario at all sites. Key is rupture id.
             disps_scenario = [(ix, disp) for ix, disp in enumerate(disps_scenario) if disp != 0]
             rupture_disp_dict = {"rupture_id": rupture_id, "v_disps_m": disps_scenario, "annual_rate": annual_rate,
                                  "site_name_list": site_name_list, "site_coords": site_coords,
-                                 "x_data": site_coords[:, 0], "y_data": site_coords[:, 1],
                                  "polygon_slips_m": patch_slips}
-            disp_dictionary[rupture_id] = rupture_disp_dict
+        else:
+            rupture_disp_dict = {"rupture_id": rupture_id, "v_disps_m": np.array([]), "annual_rate": annual_rate,
+                        "site_name_list": site_name_list, "site_coords": np.array([]),
+                        "polygon_slips_m": patch_slips}
+        disp_dictionary[rupture_id] = rupture_disp_dict
 
     # print statement about how many scenarios have displacement > 0 at each site
     print(f"\nscenarios with displacement > 0: {len(disp_dictionary)}")
@@ -521,10 +528,9 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
         extension3 = "_uniform"
 
     # save displacements
-    if not os.path.exists(f"../{results_version_directory}/{extension1}"):
-        os.makedirs(f"../{results_version_directory}/{extension1}")
+    os.makedirs(f"{procdir}/results/{disc_version}/{extension1}", exist_ok=True)
 
-    with open(f"../{results_version_directory}/{extension1}/all_rupture_disps_{extension1}{extension3}.pkl",
+    with open(f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}.pkl",
               "wb") as f:
         pkl.dump(disp_dictionary, f)
 

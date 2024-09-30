@@ -121,6 +121,6 @@ print('')
 
 # This geojson file will be used to control the sites of the inversion
 gdf = gpd.GeoDataFrame(sites_df, geometry=gpd.points_from_xy(sites_df.Lon, sites_df.Lat), crs='EPSG:2193')
-gdf.to_file(f"discretised{discretise_version}/site_locations{mesh_version}.geojson", driver="GeoJSON")
+gdf.to_file(f"discretised{discretise_version}/crustal_site_locations{mesh_version}.geojson", driver="GeoJSON")
 
 print(f"\nout_files{mesh_version} Complete!")
