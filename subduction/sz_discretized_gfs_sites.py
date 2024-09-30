@@ -82,11 +82,6 @@ for fault_id in discretised_dict.keys():
     triangles = discretised_dict[fault_id]["triangles"]
     rake = discretised_dict[fault_id]["rake"]
 
-    # Get DS and SS components for each triangle element, depending on the element rake
-    ss_comp = np.cos(np.radians(rake))
-    ds_comp = np.sin(np.radians(rake))
-    total_slip_array = np.zeros([triangles.shape[0], 3])
-
     # Identify, for this rupture, which sites have not been processed
     with h5.File(gf_h5_file, "r+") as gf_h5:
         if str(fault_id) not in gf_h5.keys():
@@ -102,15 +97,20 @@ for fault_id in discretised_dict.keys():
         dipslip = gf_h5[str(fault_id)]['ds'][:]
 
     begin = time()
-    site_name_array = np.array([(ix, str(site)) for ix, site in enumerate(sites_df['siteId']) if site not in prepared_site_names])
-    if len (site_name_array) == 0:
+    site_ix = np.isin(sites_df['siteId'].values.tolist(), prepared_site_names, invert=True)
+    if not site_ix.any():
         # All sites have been processed 
-        print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)', end='\r')
+        print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} prep in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)', end='\r')
         continue
-    
+
+    # Get DS and SS components for each triangle element, depending on the element rake
+    ss_comp = np.cos(np.radians(rake))
+    ds_comp = np.sin(np.radians(rake))
+    total_slip_array = np.ascontiguousarray(np.zeros([triangles.shape[0], 3]))
+
     # Index 
-    gf_ix = [int(ix) for ix in site_name_array[:, 0]]
-    gf_site_name_list = [site for site in site_name_array[:, 1]]
+    gf_ix = np.where(site_ix)[0]
+    gf_site_name_list = sites_df['siteId'][gf_ix].values.tolist()
     gf_site_coords = requested_site_coords[gf_ix, :]
 
     # Calculate the slip components for each triangle element
