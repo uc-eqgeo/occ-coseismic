@@ -16,15 +16,15 @@ If the sites listed in the CSV already have a greens function calculated, then t
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_25km"
+version_extension = "_national_1km"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
 # Define whch subduction zone ([_fq_]hikkerk / puysegur)
-sz_zone = '_fq_hikkerk'
+sz_zone = '_hikkerk'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-csvfile = 'national_25km_grid_points.csv'
+csvfile = 'national_1km_grid_points.csv'
 site_list_csv = os.path.join('..', 'sites', csvfile)
 sites_df = pd.read_csv(site_list_csv)
 
@@ -34,6 +34,9 @@ gf_site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
 
 #############################################
 gf_type = "sites"
+
+if sz_zone[0] != '_':
+    sz_zone = '_' + sz_zone
 
 if steeper_dip and gentler_dip:
     print("Dip modifications are wrong. Only one statement can be True at once. Try again.")
@@ -119,9 +122,9 @@ for fault_id in discretised_dict.keys():
 
     disps = np.hstack([dipslip, disps[:, -1]])
     if prepared_site_coords.shape[0] == 0:
-        site_coords = gf_site_coords
+        site_coords = gf_site_coords[:, :2]
     else:
-        site_coords = np.vstack([prepared_site_coords, gf_site_coords])
+        site_coords = np.vstack([prepared_site_coords, gf_site_coords[:, :2]])
     site_name_list = prepared_site_names + gf_site_name_list
     site_name_list = np.array(site_name_list, dtype='S')
 

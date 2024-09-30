@@ -7,24 +7,27 @@ from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, \
 from helper_scripts import get_NSHM_directories, get_rupture_disp_dict
 import pickle as pkl
 import h5py as h5
-import geopandas as gpd
+try:
+    import geopandas as gpd
+except ImportError:
+    print("Running on NESI. Site geojsons won't be output....")
 
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "all"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
-crustal_site_names = "_national_50km"   # Name of the sites geojson
-sz_site_names = ["_50km", "_SouthIsland_50km"]       # Name of the sites geojson
+crustal_site_names = "_national_5km"   # Name of the sites geojson
+sz_site_names = ["_national_5km", "_SouthIsland_10km"]       # Name of the sites geojson
 sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerk", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = False   # Prepares code for NESI runs
-testing = True   # Impacts number of samples runs, job time etc
-fakequakes = True   # Use fakequakes for the subduction zone (applied only to hikkerk)
+nesi = True   # Prepares code for NESI runs
+testing = False   # Impacts number of samples runs, job time etc
+fakequakes = False   # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
-paired_crustal_sz = True      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = True             # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
@@ -246,8 +249,13 @@ if not paired_crustal_sz:
     else:
         site_geojson = f"../subduction/discretised_{version_discretise_directory[0].split('/')[-1]}/{fault_type[0]}_site_locations{['_fq' if fakequakes else ''][0]}{sz_site_names[0]}.geojson"
     
-    site_gdf = gpd.read_file(site_geojson)
-    inv_sites = site_gdf['siteId'].values.tolist()
+    if nesi:
+        with open(site_geojson, 'r') as f:
+            sites = f.readlines()
+            inv_sites = [site.split('"')[9] for site in sites if 'siteId' in site]
+    else:
+        site_gdf = gpd.read_file(site_geojson)
+        inv_sites = site_gdf['siteId'].values.tolist()
 
     for ix, extension1 in enumerate(extension1_list):
         ftype = [(jj, ftype) for jj, ftype in enumerate(fault_type) if '_' + ftype.replace('rustal', '') + '_' in extension1][0]
@@ -316,10 +324,34 @@ if paired_crustal_sz:
         calculate_fault_model_PPE = True
         use_saved_dictionary = False
 
+    # Get sites that we want to calculate PPE for
+    site_geojson = f"../crustal/discretised_{version_discretise_directory[0].split('/')[-1]}/{fault_type[0]}_site_locations{crustal_site_names}.geojson"
+    if nesi:
+        with open(site_geojson, 'r') as f:
+            sites = f.readlines()
+            site_gdf = [site.split('"')[9] for site in sites if 'siteId' in site]
+    else:
+        site_gdf = gpd.read_file(site_geojson)   
+    
+    for ix, ftype in enumerate(fault_type[1:]):
+        fq = '' if not all([fakequakes, ftype == 'sz']) else '_fq'
+        site_geojson = f"../subduction/discretised_{version_discretise_directory[ix + 1].split('/')[-1]}/{ftype}_site_locations{fq}{sz_site_names[sz_list_order.index(ftype)]}.geojson"
+        if nesi:
+            with open(site_geojson, 'r') as f:
+                sites = f.readlines()
+                site_gdf = list(set(site_gdf + [site.split('"')[9] for site in sites if 'siteId' in site]))
+                inv_sites = site_gdf
+                
+        else:
+            sz_gdf = gpd.read_file(site_geojson)
+            site_gdf = pd.concat([site_gdf, sz_gdf]).drop_duplicates().reset_index(drop=True)
+            inv_sites = site_gdf['siteId'].values.tolist()
+
     #### skip this part if you've already run it once and saved to a pickle file
     if calculate_fault_model_PPE or not use_saved_dictionary:
         if os.path.exists(PPE_filepath):
             os.remove(PPE_filepath)
+
         make_sz_crustal_paired_PPE_dict(
             crustal_branch_weight_dict=branch_weight_dict_list[0], sz_branch_weight_dict_list=branch_weight_dict_list[1:],
             crustal_model_version_results_directory=version_discretise_directory[0],
@@ -328,7 +360,7 @@ if paired_crustal_sz:
             out_directory=out_version_results_directory, outfile_extension=outfile_extension, sz_type_list=fault_type[1:],
             nesi=nesi, nesi_step=nesi_step, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array,
             mem=mem, time_interval=time_interval, sd=sd, job_time=job_time, remake_PPE=remake_PPE, load_random=load_random, account=account,
-            thresh_lims=thresh_lims, thresh_step=thresh_step)
+            thresh_lims=thresh_lims, thresh_step=thresh_step, site_gdf=site_gdf)
 
 # calculate weighted mean PPE for the branch or paired dataset
 weighted_mean_PPE_filepath = f"../{out_version_results_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"

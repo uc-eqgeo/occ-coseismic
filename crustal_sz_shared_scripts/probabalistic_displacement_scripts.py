@@ -166,12 +166,10 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
             write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5file=branch_site_disp_dict_file)
 
         with h5.File(branch_site_disp_dict_file, "a") as branch_h5:
-            for site in branch_h5.keys():
-                if "scaled_rates" not in branch_h5[site].keys():
-                    if "rates" not in branch_h5[site].keys():
-                        print('Oh No')
-                    # multiply each value in the rates array by the rate scaling factor
-                    branch_h5[site].create_dataset("scaled_rates", data=branch_h5[site]["rates"][:] * rate_scaling_factor)
+            if "scaled_rates" not in branch_h5.keys():
+                # multiply each value in the rates array by the rate scaling factor
+                branch_h5.create_dataset("scaled_rates", data=branch_h5["rates"][:] * rate_scaling_factor)
+
 
         all_branches_site_disp_dict[branch_id] = {"site_disp_dict":branch_site_disp_dict_file,
                                                 "branch_weight":branch_weight_dict[branch_id]["total_weight_RN"]}
@@ -533,15 +531,19 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         if os.path.exists(branch_site_disp_dict_file):
             with h5.File(branch_site_disp_dict_file, 'r') as branch_h5:
                 site_list = [site for site in branch_h5.keys() if "rates" not in site]
+            missing_sites = [site for site in inv_sites if site not in site_list]
+            if len(missing_sites) > 0:
+                write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5file=branch_site_disp_dict_file)
+                with h5.File(branch_site_disp_dict_file, "a") as branch_site_disp_dict:
+                    branch_site_disp_dict.create_dataset("scaled_rates", data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
+
         else:
             # Extract rates from the NSHM solution directory, but it is not scaled by the rate scaling factor
             write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5file=branch_site_disp_dict_file)
-            branch_site_disp_dict = h5.File(branch_site_disp_dict_file, "a")
-            # multiply each value in the rates array by the rate scaling factor
-            branch_site_disp_dict.create_dataset("scaled_rates", data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
-            
-            site_list = [site for site in branch_site_disp_dict.keys() if not site in ["rates", "scaled_rates"]]
-            branch_site_disp_dict.close()
+            with h5.File(branch_site_disp_dict_file, "a") as branch_site_disp_dict:
+                # multiply each value in the rates array by the rate scaling factor
+                branch_site_disp_dict.create_dataset("scaled_rates", data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
+                site_list = [site for site in branch_site_disp_dict.keys() if not site in ["rates", "scaled_rates"]]
 
         branch_cumu_PPE_dict_file = f"../{model_version_results_directory}/{extension1}/{branch_id}_cumu_PPE.h5"
         fault_model_allbranch_PPE_dict[branch_id] = branch_cumu_PPE_dict_file
@@ -625,7 +627,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                         del branch_PPEh5['branch_weight']
                     branch_PPEh5.create_dataset('branch_weight', data=branch_weight_list[-1])
 
-    n_sites = len(site_list)
+    n_sites = len(prep_list)
     if nesi and nesi_step == 'prep':
         n_jobs = len(branch_weight_dict.keys()) * n_sites
         tasks_per_array = np.ceil(n_jobs / n_array_tasks)
@@ -815,7 +817,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     paired_PPE_pickle_name, slip_taper, n_samples, out_directory, outfile_extension, sz_type_list,
                                     nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
                                     n_array_tasks=100, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=3, remake_PPE=True, load_random=False,
-                                    sbatch=True, thresh_lims=[0, 3], thresh_step=0.01):
+                                    sbatch=True, thresh_lims=[0, 3], thresh_step=0.01, site_gdf=None):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -845,10 +847,16 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
     # Make crustal_sz pair list
     all_crustal_branches_site_disp_dict = get_all_branches_site_disp_dict(crustal_branch_weight_dict, gf_name, slip_taper,
-                                                                            crustal_model_version_results_directory)
+                                                                          crustal_model_version_results_directory)
     
     with h5.File(all_crustal_branches_site_disp_dict[list(crustal_branch_weight_dict.keys())[0]]["site_disp_dict"]) as crust_h5:
-        site_names = [site for site in crust_h5.keys()]
+        processed_site_names = [site for site in crust_h5.keys() if "rates" not in site]
+
+    if isinstance(site_gdf, list):
+        site_names = site_gdf
+    else:
+        site_names = site_gdf['siteId'].values.tolist()
+        site_gdf['tree_count'] = 0
 
     # make a dictionary of displacements at each site from all the crustal earthquake scenarios
     all_sz_branches_site_disp_dict = {}
@@ -858,9 +866,11 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                                                                 sz_model_version_results_directory_list[ix])
 
         with h5.File(all_single_sz_branches_site_disp_dict[list(sz_branch_weight_dict.keys())[0]]["site_disp_dict"]) as sz_h5:
-            site_names = list(set(site_names + [site for site in sz_h5.keys()]))
-            site_names.sort()
+            processed_site_names = list(set(processed_site_names + [site for site in sz_h5.keys() if "rates" not in site]))
+            processed_site_names.sort()
 
+        if not isinstance(site_gdf, list):
+            site_gdf['tree_count'] += [1 if site in processed_site_names else 0 for site in site_names]
         all_sz_branches_site_disp_dict = all_sz_branches_site_disp_dict | all_single_sz_branches_site_disp_dict
 
         # make all the combinations of crustal and subduction zone branch pairs
@@ -869,6 +879,11 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
         if isinstance(crustal_sz_branch_pairs[0][0], tuple):
             crustal_sz_branch_pairs = [t1 + tuple([t2]) for t1, t2 in crustal_sz_branch_pairs]
+
+    if not isinstance(site_gdf, list):
+        site_gdf.to_file(f"../{out_directory}/{out_directory.split('/')[-1]}_site_locations.geojson", driver="GeoJSON")
+    missing_sites = [site for site in site_names if site not in processed_site_names]
+    assert len(missing_sites) == 0, f"Missing sites: {missing_sites}"
 
     pair_weight_list = []
     pair_id_list = []
@@ -1001,7 +1016,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
         for pair_id in pair_id_list:
             cumulative_disp_scenarios = np.zeros(n_samples)
             for branch in pair_id.split('_-_'):
-                fault_type = branch.split('_')[-2]
+                fault_tag = branch.split('_')[-2]
                 branch_tag = branch.split('_')[-1]
                 if '_sz_' in branch:
                     fault_type = 'sz'
@@ -1009,11 +1024,12 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 elif '_py_' in branch:
                     fault_type = 'py'
                     sz_name = 'puysegur'
-                if fault_type == 'fq':
+                if fault_tag == 'fq':
                     fault_type += '_fq'
                     sz_name = 'fq_' + sz_name
-                
-                if fault_type == 'c':
+
+                if fault_tag == 'c':
+                    fault_type = fault_tag
                     fault_dir = crustal_directory
                 else:
                     fault_dir = next((sz_dir for sz_dir in sz_directory_list if f'/{sz_name}' in sz_dir))
