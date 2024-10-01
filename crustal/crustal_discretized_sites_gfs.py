@@ -16,12 +16,12 @@ import h5py as h5
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_national_1km"
+mesh_version = "_national_5km"
 
 steeper_dip, gentler_dip = False, False
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'sites', 'national_1km_grid_points.csv')
+site_list_csv = os.path.join('..', 'sites', 'national_5km_grid_points.csv')
 sites_df = pd.read_csv(site_list_csv)
 
 gf_site_names = [str(site) for site in sites_df['siteId']]
@@ -29,6 +29,9 @@ gf_site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
 
 #########################
 gf_type = "sites"
+
+if discretise_version[0] != '_':
+    discretise_version = '_' + discretise_version
 
 # not at actually using this part right now
 if steeper_dip == True and gentler_dip == False:
@@ -39,19 +42,35 @@ elif steeper_dip == True and gentler_dip == True:
     print("Dip modifications are wrong. Only one statement can be True at once. Try again.")
     exit()
 
+requested_site_coords = np.ascontiguousarray(np.array(sites_df[['Lon', 'Lat', 'Height']]))
+requested_site_names = sites_df['siteId'].values
+
 # Load pre made_greens_functions
 gf_h5_file = f"discretised{discretise_version}/crustal_gf_dict_sites.h5"
 if not os.path.exists(gf_h5_file):
-    gf_file = h5.File(gf_h5_file, "w")
-    gf_file.close()
+    with h5.File(gf_h5_file, "w") as gf_h5:
+        gf_h5.create_dataset('site_name_list', data=np.array([], dtype='S'))
+        gf_h5.create_dataset('site_coords', data=np.array([]))
+
+with h5.File(gf_h5_file, "r") as gf_h5:
+        prepared_site_names = gf_h5['site_name_list'].asstr()[:].tolist()
+        prepared_site_coords = gf_h5['site_coords'][:]
+
+gf_ix = np.isin(np.array(requested_site_names), np.array(prepared_site_names), invert=True)
+all_site_names = prepared_site_names + requested_site_names[gf_ix].tolist()
+if prepared_site_coords.shape[0] == 0:
+    all_site_coords = requested_site_coords[:, :2]
+else:
+    all_site_coords = np.vstack([prepared_site_coords, requested_site_coords[gf_ix, :2]])
+with h5.File(gf_h5_file, "r+") as gf_h5:
+    for key in ['site_name_list', 'site_coords']:
+        del gf_h5[key]
+    gf_h5.create_dataset('site_name_list', data=np.array(all_site_names, dtype='S'))
+    gf_h5.create_dataset('site_coords', data=all_site_coords)
 
 # load files
 with open(f"discretised{discretise_version}/crustal_discretised_dict.pkl", "rb") as f:
     discretised_dict = pkl.load(f)
-
-os.makedirs(f"out_files{mesh_version}", exist_ok=True)
-
-requested_site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
 
 for fault_id in discretised_dict.keys():
     triangles = discretised_dict[fault_id]["triangles"]
@@ -63,17 +82,24 @@ for fault_id in discretised_dict.keys():
             gf_h5.create_group(str(fault_id))
             gf_h5[str(fault_id)].create_dataset('ss', data=np.array([]))
             gf_h5[str(fault_id)].create_dataset('ds', data=np.array([]))
-            gf_h5[str(fault_id)].create_dataset('rake', data=rake)
-            gf_h5[str(fault_id)].create_dataset('site_name_list', data=np.array([], dtype='S'))
-            gf_h5[str(fault_id)].create_dataset('site_coords', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('rake', data=90)
+            gf_h5[str(fault_id)].create_dataset('site_name_ix', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('non_zero_sites', data=np.array([]))
         
-        prepared_site_names = gf_h5[str(fault_id)]['site_name_list'].asstr()[:].tolist()
-        prepared_site_coords = gf_h5[str(fault_id)]['site_coords'][:]
-        strikeslip = gf_h5[str(fault_id)]['ss'][:]
-        dipslip = gf_h5[str(fault_id)]['ds'][:]
+        site_name_ix = gf_h5[str(fault_id)]['site_name_ix'][:]
+        if len(site_name_ix) > 0:
+            prepared_site_names = np.array(all_site_names)[site_name_ix].tolist()
+        else:
+            prepared_site_names = []
+        non_zero_ix = gf_h5[str(fault_id)]['non_zero_sites'][:]
+        if len(non_zero_ix) > 0:
+            dipslip = np.zeros([len(prepared_site_names)])
+            dipslip[non_zero_ix] = gf_h5[str(fault_id)]['ds'][:]
+        else:
+            dipslip = gf_h5[str(fault_id)]['ds'][:]
 
     begin = time()
-    site_ix = np.isin(sites_df['siteId'].values.tolist(), prepared_site_names, invert=True)
+    site_ix = np.isin(requested_site_names, prepared_site_names, invert=True)
     if not site_ix.any():
         # All sites have been processed 
         print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} prep in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)', end='\r')
@@ -90,7 +116,7 @@ for fault_id in discretised_dict.keys():
 
     # Index 
     gf_ix = np.where(site_ix)[0]
-    gf_site_name_list = sites_df['siteId'][gf_ix].values.tolist()
+    gf_site_name_list = requested_site_names[gf_ix].tolist()
     gf_site_coords = requested_site_coords[gf_ix, :]
 
     # Calculate displacements for each fault
@@ -104,11 +130,20 @@ for fault_id in discretised_dict.keys():
     else:
         site_coords = np.vstack([prepared_site_coords, gf_site_coords[:, :2]])
     site_name_list = prepared_site_names + gf_site_name_list
-    site_name_list = np.array(site_name_list, dtype='S')
+
+    zero_value = 1 / (50 * 1e3)  # Zero value is the limit to store values by requiring at least 1mm of displacement from 50m of slip
+    non_zero_ix = np.where((np.abs(disps_ss) + np.abs(disps_ds)) > zero_value)[0]
+    disps_ss = disps_ss[non_zero_ix]
+    disps_ds = disps_ds[non_zero_ix]
+
+    if all_site_names == site_name_list:
+        site_name_ix = np.arange(len(site_name_list))
+    else:
+        np.array([all_site_names.index(site) for site in site_name_list], dtype=np.int32)
 
     # make displacement dictionary for outputs. only use the vertical disps. (last column)
-    disp_dict = {"ss": disps_ss, "ds": disps_ds, "rake": rake, "site_coords": site_coords[:, :2],
-                 "site_name_list": site_name_list}
+    disp_dict = {"ss": disps_ss, "ds": disps_ds, "rake": rake, "non_zero_sites": non_zero_ix,
+                 "site_name_ix": site_name_ix}
 
     with h5.File(gf_h5_file, "r+") as gf_h5:
         for key in disp_dict.keys():
@@ -123,4 +158,4 @@ print('')
 gdf = gpd.GeoDataFrame(sites_df, geometry=gpd.points_from_xy(sites_df.Lon, sites_df.Lat), crs='EPSG:2193')
 gdf.to_file(f"discretised{discretise_version}/crustal_site_locations{mesh_version}.geojson", driver="GeoJSON")
 
-print(f"\nout_files{mesh_version} Complete!")
+print(f"\ndiscretised{discretise_version} Complete!")

@@ -64,18 +64,36 @@ if deblobify:
 if "_fq_" in sz_zone and version_extension[:3] != "_fq":
     version_extension = "_fq" + version_extension
 
+requested_site_coords = np.ascontiguousarray(np.array(sites_df[['Lon', 'Lat', 'Height']]))
+requested_site_names = sites_df['siteId'].values
+
 # Load pre made_greens_functions
 gf_h5_file = f"discretised{sz_zone}/{prefix}_gf_dict_sites.h5"
 if not os.path.exists(gf_h5_file):
-    gf_file = h5.File(gf_h5_file, "w")
-    gf_file.close()
+    with h5.File(gf_h5_file, "w") as gf_h5:
+        gf_h5.create_dataset('site_name_list', data=np.array([], dtype='S'))
+        gf_h5.create_dataset('site_coords', data=np.array([]))
+
+with h5.File(gf_h5_file, "r") as gf_h5:
+        prepared_site_names = gf_h5['site_name_list'].asstr()[:].tolist()
+        prepared_site_coords = gf_h5['site_coords'][:]
+
+gf_ix = np.isin(np.array(requested_site_names), np.array(prepared_site_names), invert=True)
+all_site_names = prepared_site_names + requested_site_names[gf_ix].tolist()
+if prepared_site_coords.shape[0] == 0:
+    all_site_coords = requested_site_coords[:, :2]
+else:
+    all_site_coords = np.vstack([prepared_site_coords, requested_site_coords[gf_ix, :2]])
+with h5.File(gf_h5_file, "r+") as gf_h5:
+    for key in ['site_name_list', 'site_coords']:
+        del gf_h5[key]
+    gf_h5.create_dataset('site_name_list', data=np.array(all_site_names, dtype='S'))
+    gf_h5.create_dataset('site_coords', data=all_site_coords)
 
 # Load files
 with open(f"discretised{sz_zone}/{prefix}_discretised_dict.pkl",
           "rb") as f:
     discretised_dict = pkl.load(f)
-
-requested_site_coords = np.ascontiguousarray(np.array(sites_df[['Lon', 'Lat', 'Height']]))
 
 for fault_id in discretised_dict.keys():
     # Mesh information
@@ -89,15 +107,23 @@ for fault_id in discretised_dict.keys():
             gf_h5[str(fault_id)].create_dataset('ss', data=np.array([]))
             gf_h5[str(fault_id)].create_dataset('ds', data=np.array([]))
             gf_h5[str(fault_id)].create_dataset('rake', data=90)
-            gf_h5[str(fault_id)].create_dataset('site_name_list', data=np.array([], dtype='S'))
-            gf_h5[str(fault_id)].create_dataset('site_coords', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('site_name_ix', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('non_zero_sites', data=np.array([]))
         
-        prepared_site_names = gf_h5[str(fault_id)]['site_name_list'].asstr()[:].tolist()
-        prepared_site_coords = gf_h5[str(fault_id)]['site_coords'][:]
-        dipslip = gf_h5[str(fault_id)]['ds'][:]
+        site_name_ix = gf_h5[str(fault_id)]['site_name_ix'][:]
+        if len(site_name_ix) > 0:
+            prepared_site_names = np.array(all_site_names)[site_name_ix].tolist()
+        else:
+            prepared_site_names = []
+        non_zero_ix = gf_h5[str(fault_id)]['non_zero_sites'][:]
+        if len(non_zero_ix) > 0:
+            dipslip = np.zeros([len(prepared_site_names)])
+            dipslip[non_zero_ix] = gf_h5[str(fault_id)]['ds'][:]
+        else:
+            dipslip = gf_h5[str(fault_id)]['ds'][:]
 
     begin = time()
-    site_ix = np.isin(sites_df['siteId'].values.tolist(), prepared_site_names, invert=True)
+    site_ix = np.isin(requested_site_names, prepared_site_names, invert=True)
     if not site_ix.any():
         # All sites have been processed 
         print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} prep in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)', end='\r')
@@ -110,7 +136,7 @@ for fault_id in discretised_dict.keys():
 
     # Index 
     gf_ix = np.where(site_ix)[0]
-    gf_site_name_list = sites_df['siteId'][gf_ix].values.tolist()
+    gf_site_name_list = requested_site_names[gf_ix].tolist()
     gf_site_coords = requested_site_coords[gf_ix, :]
 
     # Calculate the slip components for each triangle element
@@ -126,11 +152,19 @@ for fault_id in discretised_dict.keys():
     else:
         site_coords = np.vstack([prepared_site_coords, gf_site_coords[:, :2]])
     site_name_list = prepared_site_names + gf_site_name_list
-    site_name_list = np.array(site_name_list, dtype='S')
+
+    zero_value = 1 / (50 * 1e3)  # Zero value is the limit to store values by requiring at least 1mm of displacement from 50m of slip
+    non_zero_ix = np.where(np.abs(disps) > zero_value)[0]
+    disps = disps[non_zero_ix]
+
+    if all_site_names == site_name_list:
+        site_name_ix = np.arange(len(site_name_list))
+    else:
+        np.array([all_site_names.index(site) for site in site_name_list], dtype=np.int32)
 
     # Set rake to 90 so that in future functions total displacement is just equal to DS
-    disp_dict = {"ss": (disps * 0).astype(int), "ds": disps, "site_coords": site_coords[:, :2],
-                 "site_name_list": site_name_list}
+    disp_dict = {"ss": (disps * 0).astype(np.int8), "ds": disps, "non_zero_sites": non_zero_ix, "rake": 90,
+                 "site_name_ix": site_name_ix}
     
     with h5.File(gf_h5_file, "r+") as gf_h5:
         for key in disp_dict.keys():

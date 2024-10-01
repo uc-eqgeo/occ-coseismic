@@ -153,28 +153,33 @@ def read_fakequakes_slip_rates(NSHM_directory):
 
 def make_total_slip_dictionary(gf_dict_h5):
     """ calculates total greens function displacement using strike slip gf, dip slip gf, and rake value
-    need to run the and crustal_discretised_gfs script first"""
+    need to run the subduction and crustal_discretised_gfs script first"""
 
     gf_dict = h5.File(gf_dict_h5, "r")
 
     # Makes a new total gf displacement dictionary using rake
     gf_adjusted_dict = {}
     grid_meta = None
-    for i in gf_dict.keys():
+    all_site_names = gf_dict["site_name_list"].asstr()[:]
+    all_site_coords = gf_dict["site_coords"][:]
+    for i in [key for key in gf_dict.keys() if key not in ["site_coords", "site_name_list"]]:
         if i == 'grid_meta':
             grid_meta = gf_dict[i]
         else:
             # greens functions are just for the vertical component
-            ss_gf = gf_dict[i]["ss"]
-            ds_gf = gf_dict[i]["ds"]
-            rake = gf_dict[i]["rake"]
+            gf_ix = gf_dict[i]["site_name_ix"]
+            site_name_list = all_site_names[gf_ix]
+            site_coords = all_site_coords[gf_ix, :]
 
-            site_name_list = gf_dict[i]["site_name_list"].asstr()[:].tolist()
-            site_coords = gf_dict[i]["site_coords"][:]
+            ss_gf = np.zeros(len(all_site_names))
+            ds_gf = np.zeros(len(all_site_names))
+            ss_gf[gf_ix[gf_dict[i]['non_zero_sites']]] = gf_dict[i]["ss"]
+            ds_gf[gf_ix[gf_dict[i]['non_zero_sites']]] = gf_dict[i]["ds"]
+            rake = gf_dict[i]["rake"]
 
             # calculate combined vertical from strike slip and dip slip using rake
             combined_gf = np.sin(np.radians(rake)) * ds_gf + np.cos(np.radians(rake)) * ss_gf
-            gf_adjusted_dict[i] = {"combined_gf": combined_gf, "site_name_list": site_name_list, "site_coords": site_coords}
+            gf_adjusted_dict[i] = {"combined_gf": combined_gf, "site_name_list": all_site_names, "site_coords": all_site_coords.tolist()}
 
     gf_dict.close()
 
@@ -351,8 +356,8 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
             polygon_slips = rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh]
 
         else:
-            gfs_i = np.sum([gf_total_slip_dict[str(j)]["combined_gf"] for j in ruptured_fault_ids_with_mesh], axis=0)
-            disps_scenario = rupture_slip_dict[rupture_id] * gfs_i
+            gfs_array = np.array([gf_total_slip_dict[str(j)]["combined_gf"] for j in ruptured_fault_ids_with_mesh])
+            disps_scenario = rupture_slip_dict[rupture_id] * gfs_array.sum(axis=0)
             polygon_slips = rupture_slip_dict[rupture_id] * np.ones(len(ruptured_fault_ids_with_mesh))
 
         # storing zeros is more efficient than nearly zeros. Makes v small displacements = 0
