@@ -179,7 +179,7 @@ def make_total_slip_dictionary(gf_dict_h5):
 
             # calculate combined vertical from strike slip and dip slip using rake
             combined_gf = np.sin(np.radians(rake)) * ds_gf + np.cos(np.radians(rake)) * ss_gf
-            gf_adjusted_dict[i] = {"combined_gf": combined_gf, "site_name_list": all_site_names, "site_coords": all_site_coords.tolist()}
+            gf_adjusted_dict[i] = {"combined_gf": combined_gf, "site_name_list": all_site_names.tolist(), "site_coords": all_site_coords}
 
     gf_dict.close()
 
