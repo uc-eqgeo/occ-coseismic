@@ -588,21 +588,17 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 print(f"\tPrepping for NESI....")
                 prep_nesi_site_list(model_version_results_directory, prep_list, extension1, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
                 continue
-
             elif nesi_step == 'combine':
-                if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]):
-                    print(f"\tFound Pre-Prepared Branch PPE:  {fault_model_allbranch_PPE_dict[branch_id]}. Delete manually to remake...")
+                if sbatch:
+                    print(f"\tPreparing NESI combination for {fault_model_allbranch_PPE_dict[branch_id]}....")
+                    prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
+                                        taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1], thresholds=thresholds)
+                    combine_branches += 1
+                    continue
                 else:
-                    if sbatch:
-                        print(f"\tPreparing NESI combination for {fault_model_allbranch_PPE_dict[branch_id]}....")
-                        prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
-                                            taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1], thresholds=thresholds)
-                        combine_branches += 1
-                        continue
-                    else:
-                        print(f"\tCombining site dictionaries into {fault_model_allbranch_PPE_dict[branch_id]}....")
-                        compile_site_cumu_PPE(prep_list, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
-                                            taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", thresholds=thresholds)
+                    print(f"\tCombining site dictionaries into {fault_model_allbranch_PPE_dict[branch_id]}....")
+                    compile_site_cumu_PPE(prep_list, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
+                                        taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", thresholds=thresholds)
 
         else:
             if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_PPE:
