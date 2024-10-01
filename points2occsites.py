@@ -10,7 +10,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 
-searise_csv = ['.\\sites\\national_2km_grid.csv', '.\\sites\\national_5km_grid.csv']
+searise_csv = ['.\\sites\\SouthIsland_1km_grid.csv']
 
 out_csv_file = None  # If none, automatically set to the input file name with '_points' appended
 
@@ -54,7 +54,7 @@ if sort_values:
         out_pd['siteId'] = np.array(out_pd.index) # Reset siteIds
 
 ix = np.unique(out_pd['siteId'].to_numpy(), return_index=True)[1]  # Remove duplicate siteIds for different searise scenarios
-out_pd = out_pd[['siteId', 'Lon', 'Lat']].iloc[ix].reset_index(drop=True)
+out_pd = out_pd[['siteId', 'Lon', 'Lat', 'Height']].iloc[ix].reset_index(drop=True)
 
 
 if out_csv_file is None:
