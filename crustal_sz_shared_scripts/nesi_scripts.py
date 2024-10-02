@@ -141,7 +141,7 @@ def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, br
     printProgressBar(0, len(sites), prefix=f'\tAdded {0}/{len(sites)} Sites:', suffix='0 secs', length=50)
     for ix, site_of_interest in enumerate(sites):
         try:
-            if not os.path.exists(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.pkl"):
+            if not os.path.exists(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5"):
                 continue
             with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5", "r") as site_h5:
                 if site_of_interest in branch_h5.keys():
@@ -535,7 +535,6 @@ if __name__ == "__main__":
                                           site_h5['sigma_lims'], 
                                           site_h5['branch_weights'],
                                           compression='gzip')
-                print(site_h5.keys())
             nesiprint(f"Site {site_name} complete")
         print('\nAll sites complete!')
 
