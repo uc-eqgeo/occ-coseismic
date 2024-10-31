@@ -16,12 +16,12 @@ import h5py as h5
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_wellington_1km"
+mesh_version = "_national_3km"
 
 steeper_dip, gentler_dip = False, False
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'sites', 'wellington_1km_grid_points.csv')
+site_list_csv = os.path.join('..', 'sites', 'national_3km_grid_points.csv')
 sites_df = pd.read_csv(site_list_csv)
 
 gf_site_names = [str(site) for site in sites_df['siteId']]
@@ -117,9 +117,8 @@ for fault_id in discretised_dict.keys():
     strike_slip_array = np.ascontiguousarray(np.vstack([ones_slip_array, zero_slip_array, zero_slip_array]).T)
 
     # Index 
-    gf_ix = np.where(site_ix)[0]
-    gf_site_name_list = requested_site_names[gf_ix].tolist()
-    gf_site_coords = requested_site_coords[gf_ix, :]
+    gf_site_name_list = requested_site_names[site_ix].tolist()
+    gf_site_coords = requested_site_coords[site_ix, :]
 
     # Calculate displacements for each fault
     disps_ss = HS.disp_free(obs_pts=gf_site_coords, tris=triangles, slips=strike_slip_array, nu=0.25)
@@ -161,4 +160,4 @@ print('')
 gdf = gpd.GeoDataFrame(sites_df, geometry=gpd.points_from_xy(sites_df.Lon, sites_df.Lat), crs='EPSG:2193')
 gdf.to_file(f"discretised{discretise_version}/crustal_site_locations{mesh_version}.geojson", driver="GeoJSON")
 
-print(f"\ndiscretised{discretise_version} Complete!")
+print(f"\ndiscretised{discretise_version}/crustal_site_locations{mesh_version} Complete!")

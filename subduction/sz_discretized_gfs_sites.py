@@ -137,9 +137,8 @@ for fault_id in discretised_dict.keys():
     total_slip_array = np.ascontiguousarray(np.zeros([triangles.shape[0], 3]))
 
     # Index 
-    gf_ix = np.where(site_ix)[0]
-    gf_site_name_list = requested_site_names[gf_ix].tolist()
-    gf_site_coords = requested_site_coords[gf_ix, :]
+    gf_site_name_list = requested_site_names[site_ix].tolist()
+    gf_site_coords = requested_site_coords[site_ix, :]
 
     # Calculate the slip components for each triangle element
     for tri in range(triangles.shape[0]):
