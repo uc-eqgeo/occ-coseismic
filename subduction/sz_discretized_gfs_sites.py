@@ -21,7 +21,7 @@ version_extension = "_national_1km"
 steeper_dip, gentler_dip = False, False
 
 # Define whch subduction zone ([_fq_]hikkerk / puysegur)
-sz_zone = '_hikkerk'
+sz_zone = '_fq_hikkerk'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
 csvfile = 'national_1km_grid_points.csv'
@@ -78,7 +78,8 @@ with h5.File(gf_h5_file, "r") as gf_h5:
         prepared_site_names = gf_h5['site_name_list'].asstr()[:].tolist()
         prepared_site_coords = gf_h5['site_coords'][:]
 
-gf_ix = np.isin(np.array(requested_site_names), np.array(prepared_site_names), invert=True)
+prepare_set = set(prepared_site_names)  # Convert to set for faster lookup
+gf_ix = [ix for ix, site in enumerate(requested_site_names) if site not in prepare_set]
 all_site_names = prepared_site_names + requested_site_names[gf_ix].tolist()
 if prepared_site_coords.shape[0] == 0:
     all_site_coords = requested_site_coords[:, :2]
@@ -123,10 +124,11 @@ for fault_id in discretised_dict.keys():
             dipslip = gf_h5[str(fault_id)]['ds'][:]
 
     begin = time()
-    site_ix = np.isin(requested_site_names, prepared_site_names, invert=True)
+    prepare_set = set(prepared_site_names)  # Convert to set for faster lookup
+    site_ix = np.array([ix for ix, site in enumerate(requested_site_names) if site not in prepare_set])
     if not site_ix.any():
         # All sites have been processed 
-        print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} prep in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)', end='\r')
+        print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
         continue
 
     # Get DS and SS components for each triangle element, depending on the element rake
