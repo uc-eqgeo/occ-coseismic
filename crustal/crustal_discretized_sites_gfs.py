@@ -16,12 +16,12 @@ import h5py as h5
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_national_5km"
+mesh_version = "_wellington_1km"
 
 steeper_dip, gentler_dip = False, False
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'sites', 'national_5km_grid_points.csv')
+site_list_csv = os.path.join('..', 'sites', 'wellington_1km_grid_points.csv')
 sites_df = pd.read_csv(site_list_csv)
 
 gf_site_names = [str(site) for site in sites_df['siteId']]
@@ -141,7 +141,8 @@ for fault_id in discretised_dict.keys():
     if all_site_names == site_name_list:
         site_name_ix = np.arange(len(site_name_list))
     else:
-        np.array([all_site_names.index(site) for site in site_name_list], dtype=np.int32)
+        index_map = {value: idx for idx, value in enumerate(all_site_names)}  #  Create a dictionary to map the indices of all_site_names
+        site_name_ix = np.array([index_map[value] for value in site_name_list if value in index_map])  # Use list comprehension to find indices
 
     # make displacement dictionary for outputs. only use the vertical disps. (last column)
     disp_dict = {"ss": disps_ss, "ds": disps_ds, "rake": rake, "non_zero_sites": non_zero_ix,
@@ -153,7 +154,7 @@ for fault_id in discretised_dict.keys():
             gf_h5[str(fault_id)].create_dataset(key, data=disp_dict[key])
 
     if fault_id % 1 == 0:
-        print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)', end='\r')
+        print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)    ', end='\r')
 print('')
 
 # This geojson file will be used to control the sites of the inversion

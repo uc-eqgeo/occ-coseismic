@@ -16,15 +16,15 @@ If the sites listed in the CSV already have a greens function calculated, then t
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_national_1km"
+version_extension = "_SouthIsland_1km"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
 # Define whch subduction zone ([_fq_]hikkerk / puysegur)
-sz_zone = '_fq_hikkerk'
+sz_zone = '_puysegur'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-csvfile = 'national_1km_grid_points.csv'
+csvfile = 'SouthIsland_1km_grid_points.csv'
 site_list_csv = os.path.join('..', 'sites', csvfile)
 sites_df = pd.read_csv(site_list_csv)
 
@@ -162,7 +162,8 @@ for fault_id in discretised_dict.keys():
     if all_site_names == site_name_list:
         site_name_ix = np.arange(len(site_name_list))
     else:
-        np.array([all_site_names.index(site) for site in site_name_list], dtype=np.int32)
+        index_map = {value: idx for idx, value in enumerate(all_site_names)}  #  Create a dictionary to map the indices of all_site_names
+        site_name_ix = np.array([index_map[value] for value in site_name_list if value in index_map])  # Use list comprehension to find indices
 
     # Set rake to 90 so that in future functions total displacement is just equal to DS
     disp_dict = {"ss": (disps * 0).astype(np.int8), "ds": disps, "non_zero_sites": non_zero_ix, "rake": 90,
@@ -174,7 +175,7 @@ for fault_id in discretised_dict.keys():
             gf_h5[str(fault_id)].create_dataset(key, data=disp_dict[key])
 
     if fault_id % 1 == 0:
-        print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)', end='\r')
+        print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)    ', end='\r')
 print('')
 
 # This geojson file will be used to control the sites of the inversion
