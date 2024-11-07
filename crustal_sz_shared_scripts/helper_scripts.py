@@ -162,26 +162,30 @@ def make_total_slip_dictionary(gf_dict_h5):
     grid_meta = None
     all_site_names = gf_dict["site_name_list"].asstr()[:]
     all_site_coords = gf_dict["site_coords"][:]
-    for i in [key for key in gf_dict.keys() if key not in ["site_coords", "site_name_list"]]:
-        if i == 'grid_meta':
-            grid_meta = gf_dict[i]
+    for ix, key in enumerate([key for key in gf_dict.keys() if key not in ["site_coords", "site_name_list"]]):
+        print('Writing total slip dictionary: {}/{} ruptures'.format(ix, len(gf_dict.keys()) - 2), end="\r")
+        if key == 'grid_meta':
+            grid_meta = gf_dict[key]
         else:
             # greens functions are just for the vertical component
-            gf_ix = gf_dict[i]["site_name_ix"]
-            site_name_list = all_site_names[gf_ix]
-            site_coords = all_site_coords[gf_ix, :]
+            gf_ix = gf_dict[key]["site_name_ix"]
+#            site_name_list = all_site_names[gf_ix]
+#            site_coords = all_site_coords[gf_ix, :]
 
             ss_gf = np.zeros(len(all_site_names))
             ds_gf = np.zeros(len(all_site_names))
-            ss_gf[gf_ix[gf_dict[i]['non_zero_sites']]] = gf_dict[i]["ss"]
-            ds_gf[gf_ix[gf_dict[i]['non_zero_sites']]] = gf_dict[i]["ds"]
-            rake = gf_dict[i]["rake"]
+            non_zero_ix = gf_ix[gf_dict[key]['non_zero_sites']]
+
+            ss_gf[non_zero_ix] = gf_dict[key]["ss"]
+            ds_gf[non_zero_ix] = gf_dict[key]["ds"]
+            rake = gf_dict[key]["rake"]
 
             # calculate combined vertical from strike slip and dip slip using rake
             combined_gf = np.sin(np.radians(rake)) * ds_gf + np.cos(np.radians(rake)) * ss_gf
-            gf_adjusted_dict[i] = {"combined_gf": combined_gf, "site_name_list": all_site_names.tolist(), "site_coords": all_site_coords}
+            gf_adjusted_dict[key] = {"combined_gf": combined_gf, "site_name_list": all_site_names.tolist(), "site_coords": all_site_coords}
 
     gf_dict.close()
+    print('')
 
     return gf_adjusted_dict, grid_meta
 
@@ -327,7 +331,7 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
         # uses scenarios that include any patch within that search radius
         if np.isin(trimmed_rupture_patch_indices[rupture_index], filtered_fault_ids).any():
             filtered_scenarios.append(rupture_index)
-
+    print(f"location filtered scenarios: {len(filtered_scenarios)}")
     return filtered_scenarios
 
 
