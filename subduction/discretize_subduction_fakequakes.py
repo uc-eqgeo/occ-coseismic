@@ -6,6 +6,10 @@ from shapely.geometry import Polygon, LineString, Point
 import pickle as pkl
 import os
 
+"""
+This script will discretise the subduction zone into patches based on the fake quakes fault geometry.
+"""
+
 #### USER INPUT #####
 # Define whch subduction zone (hikkerk / puysegur)
 sz_zone = 'hikkerk'
@@ -120,11 +124,12 @@ all_rectangle_outline_gdf.to_file(f"discretised_fq_{sz_zone}/{prefix}_all_rectan
 #####
 # read in triangle mesh and add the patch centroids as points
 if sz_zone == 'hikkerk':
-    mesh = meshio.read(f"../data/hik_kerk3k_with_rake.vtk")
+    mesh = meshio.read(f"../data/hik_kerm_adjusted_lock_final_slip_rates_coarse.vtk")
 else:
     mesh = meshio.read(f"../data/puysegur.vtk")
 
 mesh_rake = mesh.cell_data["rake"][0]
+mesh_slip = mesh.cell_data["slip"][0]
 mesh_triangles = mesh.cells_dict["triangle"]    # indices of vertices that make up triangles
 mesh_vertices = mesh.points              # xyz of vertices
 mesh_centroids = np.mean(mesh_vertices[mesh_triangles], axis=1)
@@ -153,14 +158,18 @@ triangle_centroids[:, 2] /= -1000  # Convert to km, positive down
 
 # Find the rake for each rectangle patch by finding closest triangle centroid to the rectangle centroid
 rectangle_rake = []
+rectangle_slip = []
 for rectangle_centroid in all_rectangle_centroids:
     distances = np.linalg.norm(rectangle_centroid - mesh_centroids, axis=1)
     if distances.min() < trace_length: # Find all triangles within 1 patch width of the patches
         closest_triangle = np.argmin(distances)
         rectangle_rake.append(mesh_rake[closest_triangle])
+        rectangle_slip.append(mesh_slip[closest_triangle])
     else:
         rectangle_rake.append(np.nan)
+        rectangle_slip.append(np.nan)
 rectangle_rake = np.array(rectangle_rake)
+rectangle_slip = np.array(rectangle_slip)
 # %%
 # find the closest rectangle to each triangle centroid
 closest_rectangles = []
@@ -295,7 +304,7 @@ for index in range(n_patches):
 
 # %%
 # Create a geodataframe and geojson file from the polygons
-gdf = gpd.GeoDataFrame({"rake": rectangle_rake, "geometry": discretised_polygons, "fault_id": np.arange(n_patches)}, crs=2193)
+gdf = gpd.GeoDataFrame({"fault_id": np.arange(n_patches), "rake": rectangle_rake, "slip": rectangle_slip, "geometry": discretised_polygons}, crs=2193)
 gdf.to_file(f"discretised_fq_{sz_zone}/{prefix}_discretised_polygons.geojson", driver="GeoJSON")
 
 pkl.dump(discretised_dict, open(f"discretised_fq_{sz_zone}/{prefix}_discretised_dict.pkl", "wb"))
