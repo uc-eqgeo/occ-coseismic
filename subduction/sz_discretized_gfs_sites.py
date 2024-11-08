@@ -3,10 +3,8 @@ import numpy as np
 import geopandas as gpd
 import pandas as pd
 import cutde.halfspace as HS
-from shapely.geometry import MultiPoint, LineString, Point
 import os
 from time import time
-import shutil
 import h5py as h5
 
 """
@@ -16,15 +14,15 @@ If the sites listed in the CSV already have a greens function calculated, then t
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_SouthIsland_1km"
+version_extension = "_JDE_sites"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
 # Define whch subduction zone ([_fq_]hikkerk / puysegur)
-sz_zone = '_puysegur'
+sz_zone = '_fq_hikkerk'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-csvfile = 'SouthIsland_1km_grid_points.csv'
+csvfile = 'JDE_sites_12.csv'
 site_list_csv = os.path.join('..', 'sites', csvfile)
 sites_df = pd.read_csv(site_list_csv)
 
