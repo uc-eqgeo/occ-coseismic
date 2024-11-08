@@ -163,7 +163,7 @@ def make_total_slip_dictionary(gf_dict_h5):
     all_site_names = gf_dict["site_name_list"].asstr()[:]
     all_site_coords = gf_dict["site_coords"][:]
     for ix, key in enumerate([key for key in gf_dict.keys() if key not in ["site_coords", "site_name_list"]]):
-        print('Writing total slip dictionary: {}/{} ruptures'.format(ix, len(gf_dict.keys()) - 2), end="\r")
+        print('Writing total slip dictionary: {}/{} rupture patches'.format(ix, len(gf_dict.keys()) - 2), end="\r")
         if key == 'grid_meta':
             grid_meta = gf_dict[key]
         else:
@@ -542,6 +542,12 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     with open(f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}.pkl",
               "wb") as f:
         pkl.dump(disp_dictionary, f)
+    
+    # Save the site names to a seperate pickle file, as it is quicker to load and check on later runs
+    site_name_dict = {'site_name_list': site_name_list}
+    with open(f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}_sites.pkl",
+              "wb") as f:
+        pkl.dump(site_name_dict, f)
 
     if grid_meta:
         with open(f"../{results_version_directory}/{extension1}/grid_limits.pkl", "wb") as f:

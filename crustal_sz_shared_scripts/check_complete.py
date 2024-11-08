@@ -1,7 +1,7 @@
 import os
 
 """
-Script to check the status of the .h5 files during the initial processing of site sumu .h5 files
+Script to check the status of the .h5 files during the initial processing of site cumu .h5 files
 """
 
 directories = ['py_national_10km', 'sz_national_10km', 'crustal_Model_CFM_national_10km']
