@@ -731,13 +731,13 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
         for key in meta_dict.keys():
             if not np.array_equal(weighted_h5[key][:], meta_dict[key]):
                 if key == 'thresholds':
-                    # Check to see if the previous run had the same thrshold start and step, just a lower maximum limit
+                    # Check to see if the previous run had the same threshold start and step, just a lower maximum limit
                     if np.array_equal(weighted_h5[key][:], meta_dict[key][:weighted_h5[key][:].shape[0]]):
                         print(f"Previous threshold limits were different, but the same start and step. Extending the limits to match the new limits...")
                         del weighted_h5[key]
-                        weighted_h5[key] = meta_dict[key]
+                        weighted_h5.create_dataset(key, data=meta_dict[key])
                     else:
-                        Exception(f"Meta data for cannot match newly requested thresholds to those from previous runs....")
+                        raise Exception(f"Meta data for cannot match newly requested thresholds to those from previous runs....")
                 else:
                     print(f"Meta data for **{key}** does not match what was in the weighted.h5...")
 
@@ -1433,7 +1433,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 ax.axhline(y=0.02, color="g", linestyle='dashed')
                 ax.axhline(y=0.1, color="g", linestyle='dotted')
 
-                xmin, xmax = 0.01, 3
+                xmin, xmax = 0.01, 10
                 ymin, ymax = 0.000005, 1
                 ax.set_title(site)
                 ax.set_yscale('log'), ax.set_xscale('log')
@@ -2163,7 +2163,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         else:
             thresholds = PPEh5["thresholds"]
     
-    thresholds = [round(val, 4) for val in thresholds]   # Rounding to try and deal with the floating point errors
+    thresholds = np.array([round(val, 4) for val in thresholds])   # Rounding to try and deal with the floating point errors
 
     if not os.path.exists(f"{outfile_directory}"):
         os.mkdir(f"{outfile_directory}")

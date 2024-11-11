@@ -234,6 +234,7 @@ for sheet in sheet_list:
 
 # designate which branch weight dictionary to use based on the fault type
 if not paired_crustal_sz:
+    print('Checking rupture_disp_dicts...')
     fault_model_branch_weight_dict = {}
     for ii in range(len(fault_type)):
         fault_model_branch_weight_dict = fault_model_branch_weight_dict | branch_weight_dict_list[ii]
@@ -261,7 +262,7 @@ if not paired_crustal_sz:
         ftype = [(jj, ftype) for jj, ftype in enumerate(fault_type) if '_' + ftype.replace('rustal', '') + '_' in extension1][0]
         all_rupture_disp_file = f"../{version_discretise_directory[ftype[0]]}/{extension1}/all_rupture_disps_{extension1}{taper_extension}_sites.pkl"
 
-        print(f"\nbranch {ix + 1} of {len(extension1_list)}")
+        print(f"\n\tbranch {ix + 1} of {len(extension1_list)}")
         if os.path.exists(all_rupture_disp_file):
             with open(all_rupture_disp_file, 'rb') as fid:
                 rupt = pkl.load(fid)
@@ -292,6 +293,7 @@ if not paired_crustal_sz:
         use_saved_dictionary = False
 
     if calculate_fault_model_PPE or not use_saved_dictionary:
+        print('\nCreating fault model PPE dictionarys...')
         PPE_dict = make_fault_model_PPE_dict(
                     branch_weight_dict=fault_model_branch_weight_dict,
                     model_version_results_directory=out_version_results_directory, n_samples=n_samples,
