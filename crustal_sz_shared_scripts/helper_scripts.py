@@ -18,6 +18,7 @@ finally:
     import matplotlib.pyplot as plt
     from time import time
     import h5py as h5
+    from scipy.sparse import csr_matrix
 
 def dict_to_hdf5(hdf5_group, dictionary, compression=None, compression_opts=None, replace_groups=False):
     for key, value in dictionary.items():
@@ -158,12 +159,15 @@ def make_total_slip_dictionary(gf_dict_h5):
     gf_dict = h5.File(gf_dict_h5, "r")
 
     # Makes a new total gf displacement dictionary using rake
-    gf_adjusted_dict = {}
     grid_meta = None
     all_site_names = gf_dict["site_name_list"].asstr()[:]
+    n_sites = len(all_site_names)
+    n_ruptures = np.sum([1 for key in gf_dict.keys() if key not in ["site_coords", "site_name_list", "grid_meta"]])
+    gf_adjusted_array = np.zeros([n_ruptures, n_sites])
     all_site_coords = gf_dict["site_coords"][:]
+    key_list = []
     for ix, key in enumerate([key for key in gf_dict.keys() if key not in ["site_coords", "site_name_list"]]):
-        print('Writing total slip dictionary: {}/{} rupture patches'.format(ix, len(gf_dict.keys()) - 2), end="\r")
+        print('Writing total slip dictionary: {}/{} rupture patches'.format(ix, n_ruptures), end="\r")
         if key == 'grid_meta':
             grid_meta = gf_dict[key]
         else:
@@ -172,22 +176,17 @@ def make_total_slip_dictionary(gf_dict_h5):
 #            site_name_list = all_site_names[gf_ix]
 #            site_coords = all_site_coords[gf_ix, :]
 
-            ss_gf = np.zeros(len(all_site_names))
-            ds_gf = np.zeros(len(all_site_names))
             non_zero_ix = gf_ix[gf_dict[key]['non_zero_sites']]
 
-            ss_gf[non_zero_ix] = gf_dict[key]["ss"]
-            ds_gf[non_zero_ix] = gf_dict[key]["ds"]
-            rake = gf_dict[key]["rake"]
-
             # calculate combined vertical from strike slip and dip slip using rake
-            combined_gf = np.sin(np.radians(rake)) * ds_gf + np.cos(np.radians(rake)) * ss_gf
-            gf_adjusted_dict[key] = {"combined_gf": combined_gf, "site_name_list": all_site_names.tolist(), "site_coords": all_site_coords}
+            combined_gf = np.sin(np.radians(gf_dict[key]["rake"])) * gf_dict[key]["ds"] + np.cos(np.radians(gf_dict[key]["rake"])) * gf_dict[key]["ss"]
+            gf_adjusted_array[len(key_list), non_zero_ix] = combined_gf
+            key_list.append(key)
 
     gf_dict.close()
     print('')
 
-    return gf_adjusted_dict, grid_meta
+    return csr_matrix(gf_adjusted_array), all_site_names.tolist(), all_site_coords, key_list, grid_meta
 
 
 def merge_rupture_attributes(directory, trimmed=True):
@@ -337,7 +336,7 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
 
 
 def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectangle_outlines_gdf, rupture_id,
-                             ruptured_fault_ids, slip_taper, rupture_slip_dict, gf_total_slip_dict, fakequakes=False):
+                             ruptured_fault_ids, slip_taper, rupture_slip_dict, gf_total_slip_array, rupture_order, fakequakes=False):
     """ calculates displacements for given rupture scenario at a single site
     not yet sure if I should set it up to allow more than one site at a time
 
@@ -348,24 +347,20 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
     """
 
     # find which patches have a mesh and which don't, to use greens functions later just with meshed patches
-    begin = time()
-    ruptured_fault_ids_with_mesh = np.intersect1d(ruptured_fault_ids, list(gf_total_slip_dict.keys()), assume_unique=True).astype('int')
-    print(f"a0 {time() - begin}")
+    ruptured_fault_ids_with_mesh, _, mesh_indices = np.intersect1d(ruptured_fault_ids, rupture_order, assume_unique=True, return_indices=True)
+    ruptured_fault_ids_with_mesh = ruptured_fault_ids_with_mesh.astype(int)
     # calculate slip on each discretised polygon
     if slip_taper is False:
         # calculate displacements by multiplying scenario slip by scenario greens function
         # scenario gf sums displacements from all ruptured
         if fakequakes:
-            begin = time()
-            gf_array = np.array([gf_total_slip_dict[j]["combined_gf"] for j in map(str, ruptured_fault_ids_with_mesh)])
-            print(f"a {time() - begin}")
-            disps_scenario = np.matmul(rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh].T, gf_array).flatten()
+            sparse_rupt_slip = csr_matrix(rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh])
+            disps_scenario = np.array(gf_total_slip_array[mesh_indices, :].multiply(sparse_rupt_slip).sum(0)).reshape(-1)
             polygon_slips = rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh]
 
-            disps_scenario = np.matmul(rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh].T, gf_array).flatten()
         else:
-            gfs_array = np.array([gf_total_slip_dict[j]["combined_gf"] for j in map(str, ruptured_fault_ids_with_mesh)])
-            disps_scenario = rupture_slip_dict[rupture_id] * gfs_array.sum(axis=0)
+            gf_array = gf_total_slip_array[mesh_indices, :].toarray()
+            disps_scenario = rupture_slip_dict[rupture_id] * gf_array.sum(axis=0)
             polygon_slips = rupture_slip_dict[rupture_id] * np.ones(len(ruptured_fault_ids_with_mesh))
 
         # storing zeros is more efficient than nearly zeros. Makes v small displacements = 0
@@ -422,7 +417,7 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
         # this will be a list of lists
         disps_i_list = []
         for i, fault_id in enumerate(ruptured_discretised_polygons_gdf.fault_id):
-            disp_i = gf_total_slip_dict[fault_id]["combined_gf"] * polygon_slips[i]
+            disp_i = gf_total_slip_dict[fault_id]["combined_gf"] * polygon_slips[i]  # Currently will break beacuse gf_total_slip_dict replaced by gf_arrays
             disps_i_list.append(disp_i)
         #sum displacements from each patch
         disps_scenario = np.sum(disps_i_list, axis=0)
@@ -493,10 +488,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
 
     # Makes a new total gf displacement dictionary using rake. If points don't have a name (e.g., for whole coastline
     # calculations), the site name list is just a list of numbers
-    gf_total_slip_dict, grid_meta = make_total_slip_dictionary(gf_dict_pkl)
-    first_key = list(gf_total_slip_dict.keys())[0]
-    site_name_list = gf_total_slip_dict[first_key]["site_name_list"]
-    site_coords = gf_total_slip_dict[first_key]["site_coords"]
+    gf_total_slip_array, site_name_list, site_coords, key_order, grid_meta = make_total_slip_dictionary(gf_dict_pkl)
 
     # calculate displacements at all the sites by rupture. Output dictionary keys are by rupture ID.
     disp_dictionary = {}
@@ -515,7 +507,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
                                      ruptured_rectangle_outlines_gdf=ruptured_rectangle_outlines_gdf,
                                      rupture_id=rupture_id, ruptured_fault_ids=ruptured_fault_ids,
                                      slip_taper=slip_taper, rupture_slip_dict=rupture_slip_dict,
-                                     gf_total_slip_dict=gf_total_slip_dict, fakequakes=fakequakes)
+                                     gf_total_slip_array=gf_total_slip_array, rupture_order=key_order, fakequakes=fakequakes)
 
         # extract annual rate and save data to dictionary. Key is the rupture ID. Ignores scenarios with zero
         # displacement at all sites. Sites can be a grid cell or a specific (named) site.
