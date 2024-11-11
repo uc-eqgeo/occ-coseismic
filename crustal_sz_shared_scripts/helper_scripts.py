@@ -348,19 +348,23 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
     """
 
     # find which patches have a mesh and which don't, to use greens functions later just with meshed patches
-    ruptured_fault_ids_with_mesh = np.intersect1d(ruptured_fault_ids, list(gf_total_slip_dict.keys())).astype('int')
-
+    begin = time()
+    ruptured_fault_ids_with_mesh = np.intersect1d(ruptured_fault_ids, list(gf_total_slip_dict.keys()), assume_unique=True).astype('int')
+    print(f"a0 {time() - begin}")
     # calculate slip on each discretised polygon
     if slip_taper is False:
         # calculate displacements by multiplying scenario slip by scenario greens function
         # scenario gf sums displacements from all ruptured
         if fakequakes:
-            gf_array = np.array([gf_total_slip_dict[str(j)]["combined_gf"] for j in ruptured_fault_ids_with_mesh])
-            disps_scenario = (rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh].reshape(-1,1) * gf_array).sum(axis=0)
+            begin = time()
+            gf_array = np.array([gf_total_slip_dict[j]["combined_gf"] for j in map(str, ruptured_fault_ids_with_mesh)])
+            print(f"a {time() - begin}")
+            disps_scenario = np.matmul(rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh].T, gf_array).flatten()
             polygon_slips = rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh]
 
+            disps_scenario = np.matmul(rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh].T, gf_array).flatten()
         else:
-            gfs_array = np.array([gf_total_slip_dict[str(j)]["combined_gf"] for j in ruptured_fault_ids_with_mesh])
+            gfs_array = np.array([gf_total_slip_dict[j]["combined_gf"] for j in map(str, ruptured_fault_ids_with_mesh)])
             disps_scenario = rupture_slip_dict[rupture_id] * gfs_array.sum(axis=0)
             polygon_slips = rupture_slip_dict[rupture_id] * np.ones(len(ruptured_fault_ids_with_mesh))
 
