@@ -417,7 +417,11 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
         # this will be a list of lists
         disps_i_list = []
         for i, fault_id in enumerate(ruptured_discretised_polygons_gdf.fault_id):
-            disp_i = gf_total_slip_dict[fault_id]["combined_gf"] * polygon_slips[i]  # Currently will break beacuse gf_total_slip_dict replaced by gf_arrays
+            # This section has never been tested following change from gf_total_slip_dict to gf_arrays
+            fault_ix = rupture_order.index(fault_id)
+            combined_gf = gf_total_slip_array[fault_ix, :].toarray()
+            disp_i = combined_gf * polygon_slips[i]
+            # disp_i = gf_total_slip_dict[fault_id]["combined_gf"] * polygon_slips[i]
             disps_i_list.append(disp_i)
         #sum displacements from each patch
         disps_scenario = np.sum(disps_i_list, axis=0)
