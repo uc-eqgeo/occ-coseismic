@@ -267,7 +267,7 @@ if not paired_crustal_sz:
             with open(all_rupture_disp_file, 'rb') as fid:
                 rupt = pkl.load(fid)
             sites = rupt['site_name_list']
-            if any([True for site in inv_sites if site not in sites]):
+            if len(set(inv_sites).intersection(sites)) < len(inv_sites):
                 get_rupture_dict = True
         else:
             get_rupture_dict = True
