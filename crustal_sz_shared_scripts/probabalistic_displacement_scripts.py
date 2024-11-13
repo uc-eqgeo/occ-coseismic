@@ -729,17 +729,21 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     else:
         weighted_h5 = h5.File(weighted_h5_file, "r+")
         for key in meta_dict.keys():
-            if not np.array_equal(weighted_h5[key][:], meta_dict[key]):
-                if key == 'thresholds':
-                    # Check to see if the previous run had the same threshold start and step, just a lower maximum limit
-                    if np.array_equal(weighted_h5[key][:], meta_dict[key][:weighted_h5[key][:].shape[0]]):
-                        print(f"Previous threshold limits were different, but the same start and step. Extending the limits to match the new limits...")
-                        del weighted_h5[key]
-                        weighted_h5.create_dataset(key, data=meta_dict[key])
+            if key in weighted_h5.keys():
+                if not np.array_equal(weighted_h5[key][:], meta_dict[key]):
+                    if key == 'thresholds':
+                        # Check to see if the previous run had the same threshold start and step, just a lower maximum limit
+                        if np.array_equal(weighted_h5[key][:], meta_dict[key][:weighted_h5[key][:].shape[0]]):
+                            print(f"Previous threshold limits were different, but the same start and step. Extending the limits to match the new limits...")
+                            del weighted_h5[key]
+                            weighted_h5.create_dataset(key, data=meta_dict[key])
+                        else:
+                            raise Exception(f"Meta data for cannot match newly requested thresholds to those from previous runs....")
                     else:
-                        raise Exception(f"Meta data for cannot match newly requested thresholds to those from previous runs....")
-                else:
-                    print(f"Meta data for **{key}** does not match what was in the weighted.h5...")
+                        print(f"Meta data for **{key}** does not match what was in the weighted.h5...")
+            else:
+                print(f"Meta data for **{key}** was not in the weighted.h5. Adding...")
+                weighted_h5.create_dataset(key, data=meta_dict[key])
 
     model_directory = '/'.join(fault_model_PPE_dict[unique_id_list[0]].split('/')[1:-2])
 
