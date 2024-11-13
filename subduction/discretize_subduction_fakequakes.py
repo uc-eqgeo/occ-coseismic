@@ -84,11 +84,11 @@ for i in range(n_patches):
 
     low_depth, up_depth = patch_points[:, 2].min(), patch_points[:, 2].max()
 
-    ######## depth sensitivity testing
-    if steeper_dip:
-        low_depth, up_depth = patch_points[:, 2].min() * 1.15, patch_points[:, 2].max() * 1.15
-    if gentler_dip:
-        low_depth, up_depth = patch_points[:, 2].min() * 0.85, patch_points[:, 2].max() * 0.85
+    # ######## depth sensitivity testing
+    # if steeper_dip:
+    #     low_depth, up_depth = patch_points[:, 2].min() * 1.15, patch_points[:, 2].max() * 1.15
+    # if gentler_dip:
+    #     low_depth, up_depth = patch_points[:, 2].min() * 0.85, patch_points[:, 2].max() * 0.85
     
     patch_height = (low_depth - up_depth) * 1000.
     patch_horizontal_dist = np.sqrt(np.sum((patch_points[0, :2] - patch_points[1, :2]) ** 2))  # Horizontal distance in to down dip direction
@@ -135,13 +135,13 @@ mesh_vertices = mesh.points              # xyz of vertices
 mesh_centroids = np.mean(mesh_vertices[mesh_triangles], axis=1)
 mesh_centroids[:, 2] /= -1000  # Convert to km, positive down
 
-# multiply depths by steeper/gentler constant
-if steeper_dip == True:
-    mesh_vertices = mesh.points * [1, 1, 1.15]
-elif gentler_dip == True:
-    mesh_vertices = mesh.points * [1, 1, 0.85]
-else:
-    mesh_vertices = mesh.points # xyz of vertices in mesh. indexed.
+# # multiply depths by steeper/gentler constant
+# if steeper_dip == True:
+#     mesh_vertices = mesh.points * [1, 1, 1.15]
+# elif gentler_dip == True:
+#     mesh_vertices = mesh.points * [1, 1, 0.85]
+# else:
+mesh_vertices = mesh.points # xyz of vertices in mesh. indexed.
 # array of 3 xyz arrays. (three sets of vertices to make a triangle)
 triangle_vertex_arrays = mesh_vertices[mesh_triangles]
 
@@ -292,6 +292,10 @@ discretised_dict = {}
 for index in range(n_patches):
     triangles_locs = np.where(closest_rectangles == index)[0]
     triangles = ordered_triangle_vertex_arrays[triangles_locs]
+    if steeper_dip:
+        triangles[:, :, 2] *= 1.15
+    if gentler_dip:
+        triangles[:, :, 2] *= 0.85
 
     # make dictionary of triangles that go with each polygon
     triangle_polygons = [Polygon(triangle) for triangle in triangles]
