@@ -553,7 +553,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
         # Reduce site list to only those that have not been processed or not processed to the required number of samples
         thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
-        if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]):
+        if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_PPE:
             print('\tChecking for existing PPE at each site...')
             with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r") as branch_PPEh5:
                 # Checks that sites have been processed
@@ -676,7 +676,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         return fault_model_allbranch_PPE_dict
 
 def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper, site_list=[], thresh_lims=[0, 3], thresh_step=0.01, nesi=False, nesi_step='prep', n_samples=100000,
-                               min_tasks_per_array=100, n_array_tasks=100, mem=10, cpus=1, account='', job_time=60):
+                               min_tasks_per_array=100, n_array_tasks=100, mem=10, cpus=1, account='', job_time=60, remake_PPE=False):
     """takes all the branch PPEs and combines them based on the branch weights into a weighted mean PPE dictionary
 
     :param fault_model_PPE_dict: The dictionary has PPEs for each branch (or branch pairing).
@@ -729,17 +729,21 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     else:
         weighted_h5 = h5.File(weighted_h5_file, "r+")
         for key in meta_dict.keys():
-            if not np.array_equal(weighted_h5[key][:], meta_dict[key]):
-                if key == 'thresholds':
-                    # Check to see if the previous run had the same thrshold start and step, just a lower maximum limit
-                    if np.array_equal(weighted_h5[key][:], meta_dict[key][:weighted_h5[key][:].shape[0]]):
-                        print(f"Previous threshold limits were different, but the same start and step. Extending the limits to match the new limits...")
-                        del weighted_h5[key]
-                        weighted_h5[key] = meta_dict[key]
+            if key in weighted_h5.keys():
+                if not np.array_equal(weighted_h5[key][:], meta_dict[key]):
+                    if key == 'thresholds':
+                        # Check to see if the previous run had the same threshold start and step, just a lower maximum limit
+                        if np.array_equal(weighted_h5[key][:], meta_dict[key][:weighted_h5[key][:].shape[0]]):
+                            print(f"Previous threshold limits were different, but the same start and step. Extending the limits to match the new limits...")
+                            del weighted_h5[key]
+                            weighted_h5.create_dataset(key, data=meta_dict[key])
+                        else:
+                            raise Exception(f"Meta data for cannot match newly requested thresholds to those from previous runs....")
                     else:
-                        Exception(f"Meta data for cannot match newly requested thresholds to those from previous runs....")
-                else:
-                    print(f"Meta data for **{key}** does not match what was in the weighted.h5...")
+                        print(f"Meta data for **{key}** does not match what was in the weighted.h5...")
+            else:
+                print(f"Meta data for **{key}** was not in the weighted.h5. Adding...")
+                weighted_h5.create_dataset(key, data=meta_dict[key])
 
     model_directory = '/'.join(fault_model_PPE_dict[unique_id_list[0]].split('/')[1:-2])
 
@@ -748,6 +752,8 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
         start = time()
         printProgressBar(0, n_sites, prefix=f'\t0/{n_sites} sites:', suffix='00:00:00 0 s/site', length=50)
         for ix, site in enumerate(site_list):
+            if remake_PPE and site in weighted_h5.keys():
+                del weighted_h5[site]
             if site not in weighted_h5.keys():
                 site_group = weighted_h5.create_group(site)
                 site_group.create_dataset("site_coords", data=site_coords_dict[site])
@@ -1433,7 +1439,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 ax.axhline(y=0.02, color="g", linestyle='dashed')
                 ax.axhline(y=0.1, color="g", linestyle='dotted')
 
-                xmin, xmax = 0.01, 3
+                xmin, xmax = 0.01, 10
                 ymin, ymax = 0.000005, 1
                 ax.set_title(site)
                 ax.set_yscale('log'), ax.set_xscale('log')
@@ -2163,7 +2169,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         else:
             thresholds = PPEh5["thresholds"]
     
-    thresholds = [round(val, 4) for val in thresholds]   # Rounding to try and deal with the floating point errors
+    thresholds = np.array([round(val, 4) for val in thresholds])   # Rounding to try and deal with the floating point errors
 
     if not os.path.exists(f"{outfile_directory}"):
         os.mkdir(f"{outfile_directory}")

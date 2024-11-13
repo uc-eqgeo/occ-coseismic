@@ -91,7 +91,7 @@ if compare_hazcurves:
 if disps_net:
     compare_disps_with_net(PPE_paths=mean_PPE_path_list, plot_name=file_name, outfile_directory=outfile_directory,
                            title=title, pretty_names=pretty_names,
-                           file_type_list=file_type_list)
+                           file_type_list=file_type_list, sites=plot_order)
 if make_map:
     PPE_dicts = []
     for PPE_path in mean_PPE_path_list:
