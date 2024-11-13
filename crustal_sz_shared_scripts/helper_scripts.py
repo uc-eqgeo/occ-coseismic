@@ -431,7 +431,7 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
             disps_scenario = None
 
     # Abandon ruptures that don't cause any displacement
-    if sum(np.abs(disps_scenario)) == 0:
+    if disps_scenario is not None and sum(np.abs(disps_scenario)) == 0:
         disps_scenario = None
 
     return disps_scenario, polygon_slips
