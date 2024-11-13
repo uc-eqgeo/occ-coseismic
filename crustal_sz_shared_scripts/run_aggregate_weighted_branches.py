@@ -15,34 +15,34 @@ except ImportError:
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "py"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
-crustal_site_names = "_national_5km"   # Name of the sites geojson
-sz_site_names = ["_national_5km", "_SouthIsland_10km"]       # Name of the sites geojson
+crustal_site_names = "_national_1km"   # Name of the sites geojson
+sz_site_names = ["_JDE_sites", "_SouthIsland_10km"]       # Name of the sites geojson
 sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerk", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = True   # Prepares code for NESI runs
-testing = False   # Impacts number of samples runs, job time etc
+nesi = False   # Prepares code for NESI runs
+testing = True   # Impacts number of samples runs, job time etc
 fakequakes = False   # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
-calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
+calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
 remake_PPE = True             # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
-calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
-save_arrays = True         # Do you want to save the displacement and probability arrays?
+calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
+save_arrays = False         # Do you want to save the displacement and probability arrays?
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
-plot_order_csv = "../wellington_10km_grid_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
+plot_order_csv = "../national_10km_grid_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
 
 # Processing Parameters
 time_interval = 100     # Time span of hazard forecast (yrs)
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 10
-thresh_lims = [0, 3]
+thresh_lims = [0, 10]
 thresh_step = 0.01
 
 # Nesi Parameters
@@ -259,12 +259,13 @@ if not paired_crustal_sz:
 
     for ix, extension1 in enumerate(extension1_list):
         ftype = [(jj, ftype) for jj, ftype in enumerate(fault_type) if '_' + ftype.replace('rustal', '') + '_' in extension1][0]
-        all_rupture_disp_file = f"../{version_discretise_directory[ftype[0]]}/{extension1}/all_rupture_disps_{extension1}{taper_extension}.pkl"
+        all_rupture_disp_file = f"../{version_discretise_directory[ftype[0]]}/{extension1}/all_rupture_disps_{extension1}{taper_extension}_sites.pkl"
 
+        print(f"\nbranch {ix + 1} of {len(extension1_list)}")
         if os.path.exists(all_rupture_disp_file):
             with open(all_rupture_disp_file, 'rb') as fid:
                 rupt = pkl.load(fid)
-            sites = rupt[list(rupt.keys())[0]]['site_name_list']
+            sites = rupt['site_name_list']
             if any([True for site in inv_sites if site not in sites]):
                 get_rupture_dict = True
         else:
@@ -272,7 +273,6 @@ if not paired_crustal_sz:
 
         if get_rupture_dict:
             calculate_fault_model_PPE = True
-            print(f"\nbranch {ix + 1} of {len(extension1_list)}")
             get_rupture_disp_dict(NSHM_directory=NSHM_directory_list[ix], extension1=extension1_list[ix],
                                     slip_taper=slip_taper, fault_type=ftype[1], gf_name=gf_name,
                                     results_version_directory=site_names_list[ftype[0]],

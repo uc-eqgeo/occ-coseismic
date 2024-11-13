@@ -9,7 +9,7 @@ from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 from matplotlib.patches import Patch
 from matplotlib.patches import Rectangle
 from helper_scripts import make_qualitative_colormap
-from run_mean_bar_charts import get_mean_prob_barchart_data #get_mean_disp_barchart_data
+#from run_mean_bar_charts import get_mean_prob_barchart_data #get_mean_disp_barchart_data
 
 
 
@@ -22,12 +22,12 @@ plot_order = ["Paraparaumu", "Porirua CBD north", "South Coast", "Wellington Air
 #plot_name = "CFM_mean_uniform_tapered"
 
 names = ["CFM mean uniform", "Alt. Fault 1 mean uniform"]
-mean_PPE_paths = ["../results_jde/crustal_CFM/weighted_mean_PPE_dict_testing_uniform.pkl",
-                   "../results_jde/crustal_Model1/weighted_mean_PPE_dict_testing_uniform.pkl"]
+mean_PPE_paths = ["../results/hikkerk/weighted_mean_PPE_dict_testing_uniform.pkl",
+                   "../results/hikkerk/weighted_mean_PPE_dict_testing_uniform.pkl"]
 plot_name = "CFM_mean_uniform_alt1_mean_uniform"
 
 
-outfile_directory = "../results_jde/compare_fault_models"
+outfile_directory = "../results/hikkerk"
 
 title = "CFM mean uniform vs Alt. Fault 1 mean uniform"
 
