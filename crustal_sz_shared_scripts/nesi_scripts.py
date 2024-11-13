@@ -124,14 +124,15 @@ def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, br
     For the sake of saving space, the individual site dictionaries are deleted after being combined into the branch dictionary.
     """
 
-    branch_h5 = h5.File(branch_h5file, "w")
+    branch_h5 = h5.File(branch_h5file, "r+")
     if 'grid_meta' in sites:
         sites.remove('grid_meta')
     
     if S == "":
         S = taper_extension
 
-    branch_h5.create_dataset('thresholds', data=thresholds)
+    if not 'thresholds' in branch_h5.keys():
+        branch_h5.create_dataset('thresholds', data=thresholds)
 
     all_good = True
     bad_sites = []
@@ -140,7 +141,11 @@ def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, br
     printProgressBar(0, len(sites), prefix=f'\tAdded {0}/{len(sites)} Sites:', suffix='0 secs', length=50)
     for ix, site_of_interest in enumerate(sites):
         try:
+            if not os.path.exists(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5"):
+                continue
             with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5", "r") as site_h5:
+                if site_of_interest in branch_h5.keys():
+                    del branch_h5[site_of_interest]
                 branch_h5.create_group(site_of_interest)
                 if all_good:
                     for key in site_h5[site_of_interest].keys():
@@ -155,12 +160,13 @@ def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, br
             bad_flag = f" (Error with {len(bad_sites)} sites)"
 
     if weight:
-        if weight > 0:
+        if weight > 0 and 'branch_weight' not in branch_h5.keys():
             branch_h5.create_dataset('branch_weight', data=weight)
 
     branch_h5.close()
     if all_good:
-        shutil.rmtree(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
+        #shutil.rmtree(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
+        print(f'\nNot deleting ../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}!')
     else:
         print(f"\nError with {len(bad_sites)} sites: ../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}")
         print(f"Deleting {branch_h5file}")
@@ -475,16 +481,13 @@ if __name__ == "__main__":
             combine_dict = pkl.load(f)
        
         for branch in task_branches:
-            if os.path.exists(combine_dict[branch]['branch_h5file']):
-                nesiprint(f"Found Pre-Prepared Branch PPE:  {combine_dict[branch]['branch_h5file']}. Delete manually to remake...")
-            else:
-                with h5.File(combine_dict[branch]['branch_site_disp_dict'], "r") as branch_h5:
-                    site_list = [key for key in branch_h5.keys() if key not in ['rates', 'scaled_rates']]
-                nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
-                compile_site_cumu_PPE(site_list, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
-                                    branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'],
-                                    thresholds=combine_dict[branch]['thresholds'])
-        print('All branches combined!')
+            with h5.File(combine_dict[branch]['branch_site_disp_dict'], "r") as branch_h5:
+                site_list = [key for key in branch_h5.keys() if key not in ['rates', 'scaled_rates']]
+            nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
+            compile_site_cumu_PPE(site_list, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
+                                branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'],
+                                thresholds=combine_dict[branch]['thresholds'])
+        print('\nAll branches combined!')
 
     elif args.nesi_job == 'weighted_mean':
         nesiprint('Loading fault model PPE dictionary...')
@@ -532,9 +535,8 @@ if __name__ == "__main__":
                                           site_h5['sigma_lims'], 
                                           site_h5['branch_weights'],
                                           compression='gzip')
-                print(site_h5.keys())
             nesiprint(f"Site {site_name} complete")
-        print('All sites complete!')
+        print('\nAll sites complete!')
 
     else:
         raise Exception(f"Job {args.nesi_job} not recognised")
