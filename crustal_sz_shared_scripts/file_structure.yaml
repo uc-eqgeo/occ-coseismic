@@ -1,0 +1,32 @@
+File Struture:
+
+results/
+    - fault_type/
+        -branch_type/
+            -all_rupture_disps_*.pkl
+
+            -branch_site_disp_dict*h5
+
+            -scaled_branch_cumu_PPE.h5
+                - site_name
+                    - 'error_down'
+                    - 'error_total_abs'
+                    - 'error_up'
+                    - 'exceedance_probs_down'
+                    - 'exceedance_probs_total_abs'
+                    - 'exceedance_probs_up'
+                    - 'n_samples'
+                    - 'scenario_displacements'
+                    - 'sigma_lims'
+                    - 'site_coords'
+                    - 'slip_scenarios_ix'
+                    - 'standard_deviation'
+                    - 'thresh_para'
+                - 'branch_weight' : float
+
+        -all_branch_PPE_dict.pkl
+        -combined_site_meta.pkl
+        -disp_uncertainty.pkl
+        -scenarios.pkl
+        -site_name_list.txt
+        -weighted_mean_PPE_dict_uniform.h5
