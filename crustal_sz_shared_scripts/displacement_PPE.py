@@ -2,9 +2,9 @@ import os
 from scipy.interpolate import RegularGridInterpolator
 import numpy as np
 import pandas as pd
-from array_operations import read_gmt_grid, read_tiff
+from rsqsim_array_operations import read_gmt_grid, read_tiff
 import matplotlib.pyplot as plt
-from helper_scripts import printProgressBar, get_probability_bar_chart_data, get_exceedance_bar_chart_data
+from rsqsim_helper_scripts import printProgressBar, get_probability_bar_chart_data, get_exceedance_bar_chart_data
 from time import time
 import h5py as h5
 import xarray as xr
@@ -41,14 +41,14 @@ def profile_windows(n_sites, thresholds, n_windows, chunksize, cumu_disp, sigma_
     return exceedance_probs_up, exceedance_probs_down, exceedance_probs_abs, err_exceedance_up, err_exceedance_down, err_exceedance_abs
 
 procDir = 'C:/Users/jmc753/Work/RSQSim/Aotearoa/whole_nz_rsqsim'
-siteCSV = '../sites/national_5km_grid_points.csv'
+siteCSV = '../sites/EastCoastNI_5km_grid_points.csv'
 grdDir = 'grds_5km'
 catalogue = 'whole_nz_Mw6_5-10_0.csv'
 geoTiff = True
-timeSpan = 100.
-t0 = 1e4
-tlen = 1e5
-thresholds = '0/10/0.01'   # Dislacement thresholds to use for exceedance probability calculations
+timeSpan = 100.  # Window length in years for mini catalogues
+t0 = 1e4   # Burnin time in years
+tlen = 1e5  # Total length of catalogue
+thresholds = '0/3/0.05'   # Dislacement thresholds to use for exceedance probability calculations
 chunksize = 100 # Number of windows to include in each subset for error calculation (pseudo-bootstrapping)
 
 recalculate_displacements = False
@@ -244,10 +244,9 @@ if do_disps:
 do_probs = True
 if do_probs:
     print(f"\tAdding Probability Exceedence DataArrays....")
-    probs_lims = [0.02, 0.1]
-    probs_step = 0.02
+    probs_lims = [0.0, 0.2]
+    probs_step = 0.01
     probabilities = np.round(np.arange(probs_lims[0], probs_lims[1] + probs_step, probs_step), 4)
-    probabilities = np.array([0.02, 0.1])
 
     for exceed_type in exceed_type_list:
         thresh_grd = np.zeros([len(probabilities), len(y_data), len(x_data)]) * np.nan
