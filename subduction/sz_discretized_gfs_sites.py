@@ -14,15 +14,15 @@ If the sites listed in the CSV already have a greens function calculated, then t
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_EastCoastNI_10km"
+version_extension = "_EastCoastNI_5km"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
 # Define whch subduction zone ([_fq_]hikkerk / puysegur)
-sz_zone = '_fq_hikkerk'
+sz_zone = '_hikkerk'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-csvfile = 'EastCoastNI_10km_grid_points.csv'
+csvfile = 'EastCoastNI_5km_grid_points.csv'
 site_list_csv = os.path.join('..', 'sites', csvfile)
 sites_df = pd.read_csv(site_list_csv)
 

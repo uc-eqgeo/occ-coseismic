@@ -655,13 +655,13 @@ def maximum_displacement_plot(site_ids, branch_site_disp_dict, model_dir, branch
 def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_version, deformation_model='geologic and geodetic', time_independent=True,
                          time_dependent=True, single_branch=False, fakequakes=False):
     # Set up which branches you want to calculate displacements and probabilities for
+    # File suffixes and NSHM directories for each branch MUST be in the same order or you'll cause problems
     file_suffix_list = []
     NSHM_directory_list = []
     n_branches = []
     for fault_type in fault_type_list:
         fault_branches = 0
         if fault_type == "crustal":
-            model_version = crustal_model_extension
             if time_independent and not single_branch:
                 if "geologic" in deformation_model:
                     file_suffix_list_i = ["_c_MDA2", "_c_MDEz", "_c_MDE1"]
@@ -669,16 +669,12 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
                                              "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz",
                                              "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE1"
                                             ]
-                    file_suffix_list.extend(file_suffix_list_i)
-                    NSHM_directory_list.extend(NSHM_directory_list_i)
                     fault_branches += len(file_suffix_list_i)
                 if "geodetic" in deformation_model:
                     file_suffix_list_i = ["_c_MDE2", "_c_MDE5", "_c_MDI0"]
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE2",
                                              "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE5",
                                              "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDI0"]
-                    file_suffix_list.extend(file_suffix_list_i)
-                    NSHM_directory_list.extend(NSHM_directory_list_i)
                     fault_branches += len(file_suffix_list_i)
             if time_dependent and not single_branch:
                 if "geologic" in deformation_model:
@@ -686,67 +682,61 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjE5",
                                              "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI2",
                                              "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI3"]
-                    file_suffix_list.extend(file_suffix_list_i)
-                    NSHM_directory_list.extend(NSHM_directory_list_i)
                     fault_branches += len(file_suffix_list_i)
                 if "geodetic" in deformation_model:
                     file_suffix_list_i = ["_c_NjI5", "_c_NjMy", "_c_NjM3"]
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI5",
                                              "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjMy",
                                              "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjM3"]
-                    file_suffix_list.extend(file_suffix_list_i)
-                    NSHM_directory_list.extend(NSHM_directory_list_i)
                     fault_branches += len(file_suffix_list_i)
             if single_branch:
-                file_suffix_list_i = ["_c_MDEz"]
-                NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"]
+                print("\n\n********\nCAUTION: SINGLE BRANCH HARD CODED FOR CRUSTAL FAULTS. MANUALLY CHANGE IN HELPER SCRIPTS UNTIL I GET ROUND TO FIXING\n********\n\n")
                 file_suffix_list_i = ["_c_MDEw"]
                 NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEw"]
-                file_suffix_list.extend(file_suffix_list_i)
-                NSHM_directory_list.extend(NSHM_directory_list_i)
+            file_suffix_list.extend(file_suffix_list_i)
+            NSHM_directory_list.extend(NSHM_directory_list_i)
 
         elif fault_type == "sz":
             if fakequakes:
-                file_suffix_list_i = ["_sz_fq_b124", "_sz_fq_b110", "_sz_fq_b095"]
+                file_suffix_list_i = ["_sz_fq_b124", "_sz_fq_b110", "_sz_fq_b095", "_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nb110", "_sz_fq_pnb110", "_sz_fq_3lb110", "_sz_fq_plb110"]
                 NSHM_directory_list_i = ["sz_solutions/FakeQuakes_sz_n5000_S10_N1_GR500_b1-24_N27-9_nIt1000000_narchi10",
                                          "sz_solutions/FakeQuakes_sz_n5000_S10_N1_GR500_b1-1_N21-5_nIt1000000_narchi10",
-                                         "sz_solutions/FakeQuakes_sz_n5000_S10_N1_GR500_b0-95_N16-5_nIt1000000_narchi10"]
-
-                file_suffix_list.extend(file_suffix_list_i)
-                NSHM_directory_list.extend(NSHM_directory_list_i)
-                fault_branches += len(file_suffix_list_i) * 3  # For scaling
-
+                                         "sz_solutions/FakeQuakes_sz_n5000_S10_N1_GR500_b0-95_N16-5_nIt1000000_narchi10",
+                                         "sz_solutions/FakeQuakes_hk_3e10_nolocking_uniformSlip_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10",
+                                         "sz_solutions/FakeQuakes_hk_prem_nolocking_uniformSlip_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10",
+                                         "sz_solutions/FakeQuakes_hk_3e10_nolocking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10",
+                                         "sz_solutions/FakeQuakes_hk_prem_nolocking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10",
+                                         "sz_solutions/FakeQuakes_hk_3e10_locking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10",
+                                         "sz_solutions/FakeQuakes_hk_prem_locking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10"]
             else:
-                model_version = sz_model_version
-                slip_taper = False
-                if not single_branch:
-                    file_suffix_list_i = ["_sz_NJk2", "_sz_NzEx", "_sz_NzE0"]
-                    NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2",
-                                             "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzEx",
-                                             "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
+                file_suffix_list_i = ["_sz_NJk2", "_sz_NzEx", "_sz_NzE0"]
+                NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2",
+                                         "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzEx",
+                                         "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
 
-                    file_suffix_list.extend(file_suffix_list_i)
-                    NSHM_directory_list.extend(NSHM_directory_list_i)
-                    fault_branches += len(file_suffix_list_i) * 3  # For scaling
-                if single_branch:
-                    file_suffix_list_i = ["_sz_NzE0"]  # "_sz_NzE0" Highest weighted Branch
-                    NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
-                    file_suffix_list.extend(file_suffix_list_i)
-                    NSHM_directory_list.extend(NSHM_directory_list_i)
-        elif fault_type == "py":
-            model_version = sz_model_version
-            slip_taper = False
-            if not single_branch:
-                file_suffix_list_i = ["_py_M5NQ"]
-                NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTMyNzM5NQ=="]
-                file_suffix_list.extend(file_suffix_list_i)
-                NSHM_directory_list.extend(NSHM_directory_list_i)
-                fault_branches += len(file_suffix_list_i) * 3  # For scaling
             if single_branch:
-                file_suffix_list_i = ["_py_M5NQ"]
-                NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTMyNzM5NQ=="]
-                file_suffix_list.extend(file_suffix_list_i)
-                NSHM_directory_list.extend(NSHM_directory_list_i)
+                branch_index = file_suffix_list_i.index(single_branch)
+                file_suffix_list_i = [file_suffix_list_i[branch_index]]
+                NSHM_directory_list_i = [NSHM_directory_list_i[branch_index]]
+            else:
+                fault_branches += len(file_suffix_list_i) * 3  # For scaling
+
+            file_suffix_list.extend(file_suffix_list_i)
+            NSHM_directory_list.extend(NSHM_directory_list_i)
+
+        elif fault_type == "py":
+            file_suffix_list_i = ["_py_M5NQ"]
+            NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTMyNzM5NQ=="]
+
+            if single_branch:
+                branch_index = file_suffix_list_i.index(single_branch)
+                file_suffix_list_i = [file_suffix_list_i[branch_index]]
+                NSHM_directory_list_i = [NSHM_directory_list_i[branch_index]]
+            else:
+                fault_branches += len(file_suffix_list_i) * 3  # For scaling
+
+            file_suffix_list.extend(file_suffix_list_i)
+            NSHM_directory_list.extend(NSHM_directory_list_i)
         n_branches.append(fault_branches)
 
     return NSHM_directory_list, file_suffix_list, n_branches

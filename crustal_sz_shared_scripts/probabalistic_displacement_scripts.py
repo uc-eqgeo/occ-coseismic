@@ -1155,7 +1155,10 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
     probs_threshold = []
     for site in site_list:
         site_PPE = site_PPE_dictionary[site][f"{prefix}exceedance_probs_{exceed_type}"]
-        probs_threshold.append(site_PPE[index])
+        if site_PPE.shape[0] > index:
+            probs_threshold.append(site_PPE[index])
+        else:
+            probs_threshold.append(0)
 
     return probs_threshold
 
@@ -2131,7 +2134,7 @@ def save_disp_prob_tifs(extension1, slip_taper, model_version_results_directory,
 
 def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0,
                            probs_lims=[0.01, 0.2], probs_step=0, output_thresh=True, output_probs=True, weighted=False,
-                           output_grids=True, thresholds=None, probabilities=None, sites=[], out_tag=''):
+                           output_grids=True, thresholds=None, probabilities=None, sites=[], out_tag='', single_branch=''):
     """
     Add all results to x_array datasets, and save as netcdf files
     """
@@ -2147,11 +2150,14 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
     if weighted:
         h5_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict{extension1}{taper_extension}.h5"
         outfile_directory = f"../{model_version_results_directory}/weighted_mean_xarray"
-
+    elif single_branch != '':
+        branch_suffix = '_'.join(single_branch.split('_')[-2:])
+        h5_file = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/{single_branch}_cumu_PPE.h5"
+        outfile_directory = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/probability_grids"
     else:
         h5_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob{extension1}{taper_extension}.h5"
         outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
-
+    
     PPEh5 = h5.File(h5_file, 'r')
 
     metadata_keys = ['branch_weights', 'branch_ids', 'thresholds', 'threshold_vals', 'sigma_lims']
@@ -2169,6 +2175,32 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         else:
             thresholds = PPEh5["thresholds"]
     
+    if single_branch != '':
+        # check processing thresholds for all are the same
+        proc_thresh = np.zeros((len(sites),3))
+        for ix, site in enumerate(sites):
+            proc_thresh[ix, :] = PPEh5[site]['thresh_para'][:]
+        proc_thresh[:, 0] = np.where(proc_thresh[:, 0] <= thresh_lims[0], 1, 0)  # Correct lowest limit?
+        proc_thresh[:, 1] = np.where(proc_thresh[:, 1] >= thresh_lims[1], 1, 0)  # Correct upper limit?
+        proc_thresh[:, 2] = np.where(proc_thresh[:, 2] == np.median(proc_thresh[:, 2]), 1, 0)  # All the same threshold step?
+        proc_thresh_check = proc_thresh.sum(axis=0)
+        if proc_thresh_check[0] != len(sites):
+            print('Some sites have minimum thresholds above the requested minimum threshold. Reprocess with new minimum threshold')
+            return
+        if proc_thresh_check[1] != len(sites):
+            print('Some sites have maximum thresholds below the requested maximum threshold. Reprocess with new maximum threshold')
+            return
+        if proc_thresh_check[2] != len(sites):
+            print('Not all sites have the same threshold step. Reprocess with new threshold steps')
+            return
+        PPEh5.close()
+        with h5.File(h5_file, 'a') as PPEh5:
+            if 'thresholds' in PPEh5.keys():
+                del PPEh5['thresholds']
+            PPEh5.create_dataset('thresholds', data=np.arange(PPEh5[sites[0]]['thresh_para'][0], PPEh5[sites[0]]['thresh_para'][1] + PPEh5[sites[0]]['thresh_para'][2], PPEh5[sites[0]]['thresh_para'][2]))
+        PPEh5 = h5.File(h5_file, 'r')
+
+
     thresholds = np.array([round(val, 4) for val in thresholds])   # Rounding to try and deal with the floating point errors
 
     if not os.path.exists(f"{outfile_directory}"):
@@ -2189,7 +2221,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         y_data = np.arange(ymin, ymax + y_res, y_res)
 
         if not all(np.isin(site_x, x_data)) or not all(np.isin(site_y, y_data)):
-            print("Site coordinates cant all be aligned to grid. Check sites are evenly spaced. Saving as site geojson instead...")
+            print("Site coordinates can't all be aligned to grid. Check sites are evenly spaced. Saving as site geojson instead...")
             save_disp_prob_geojson(extension1, slip_taper, model_version_results_directory, thresh_lims=thresh_lims, thresh_step=thresh_step, thresholds=thresholds,
                                        probs_lims=probs_lims, probs_step=probs_step, probabilities=probabilities, weighted=weighted)
             return

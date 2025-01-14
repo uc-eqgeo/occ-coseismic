@@ -18,21 +18,22 @@ slip_taper = False                           # True or False, only matters if cr
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
 crustal_site_names = "_JDE_sites"   # Name of the sites geojson
-sz_site_names = ["_EastCoastNI_10km", "_SouthIsland_10km"]       # Name of the sites geojson
+sz_site_names = ["_EastCoastNI_5km", "_SouthIsland_10km"]       # Name of the sites geojson
 sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerk", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
-testing = True   # Impacts number of samples runs, job time etc
+testing = False   # Impacts number of samples runs, job time etc
 fakequakes = False  # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
+single_branch = "_sz_NzEx"          # Do you want to calculate PPEs for a single branch? Either "None" or the suffix of the branch you want to use
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
-remake_PPE = True            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
-calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
-remake_weighted_PPE = True    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
+remake_PPE = False            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
+calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
+remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 save_arrays = True         # Do you want to save the displacement and probability arrays?
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
@@ -125,6 +126,14 @@ else:
         raise Exception("Can't have fault type = 'all' and paired_crustal_sz = False")
     fault_type = [fault_type]
 
+if single_branch is not None:
+    if paired_crustal_sz:
+        raise Exception("Can't have single branch and paired crustal sz")
+    if calculate_weighted_mean_PPE:
+        print("Can't have single branch and calculate weighted mean PPE. Stopping after fault model PPE calculation.")
+        calculate_weighted_mean_PPE = False
+        save_arrays = False
+
 ######################################################
 
 def make_branch_weight_dict(branch_weight_file_path, sheet_name):
@@ -144,13 +153,13 @@ def make_branch_weight_dict(branch_weight_file_path, sheet_name):
     branch_weight_dict = {}
     for row in range(len(branch_weights)):
 
-        N_val = branch_weights["N"][row]
+        N_val = branch_weights["N"][row].astype(float)
         N_string = str(N_val).replace('.', '')
-        b_val = branch_weights["b"][row]
+        b_val = branch_weights["b"][row].astype(float)
         b_string = str(b_val).replace('.', '')
         C_val = branch_weights["C"][row]
         C_string = str(C_val).replace('.', '')
-        S_val = branch_weights["S"][row]
+        S_val = branch_weights["S"][row].astype(float)
         S_string = str(S_val).replace('.', '')
         def_model  = branch_weights["def_model"][row]
         time_dependence = branch_weights["time_dependence"][row]
@@ -239,9 +248,14 @@ if not paired_crustal_sz:
     fault_model_branch_weight_dict = {}
     for ii in range(len(fault_type)):
         fault_model_branch_weight_dict = fault_model_branch_weight_dict | branch_weight_dict_list[ii]
-
+    
     NSHM_directory_list, file_suffix_list, n_branches = get_NSHM_directories(fault_type, crustal_site_names, sz_site_names, deformation_model='geologic and geodetic', time_independent=True,
-                            time_dependent=True, single_branch=False, fakequakes=fakequakes)
+                            time_dependent=True, single_branch=single_branch, fakequakes=fakequakes)
+    
+    if single_branch:
+        branch_keys = list(fault_model_branch_weight_dict.keys())
+        branch_key = [key for key in branch_keys if any(["_S10_" in key, "_S1_" in key]) and file_suffix_list[0] in key][0]
+        fault_model_branch_weight_dict = {branch_key: fault_model_branch_weight_dict[branch_key]}
 
     extension1_list = [gf_name + suffix for suffix in file_suffix_list]
     get_rupture_dict = False
@@ -294,7 +308,7 @@ if not paired_crustal_sz:
         use_saved_dictionary = False
 
     if calculate_fault_model_PPE or not use_saved_dictionary:
-        print('\nCreating fault model PPE dictionarys...')
+        print('\nCreating fault model PPE dictionaries...')
         PPE_dict = make_fault_model_PPE_dict(
                     branch_weight_dict=fault_model_branch_weight_dict,
                     model_version_results_directory=out_version_results_directory, n_samples=n_samples,
@@ -379,9 +393,14 @@ if not paired_crustal_sz and calculate_weighted_mean_PPE or not os.path.exists(w
 # plot hazard curves and save to file
 if save_arrays:
     print('Saving data arrays...')
+    if single_branch:
+        weighted = False
+    else:
+        weighted = True
+        branch_key = ''
     ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
                         thresh_lims=[0, 3], thresh_step=0.05, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.01,
-                        output_probs=True, weighted=True, sites=inv_sites, out_tag=site_names_list[0])
+                        output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=branch_key)
 
 if paired_crustal_sz:
     site_names_title = f"paired crustal{crustal_site_names} and "
