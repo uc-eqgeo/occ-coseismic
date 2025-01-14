@@ -31,5 +31,6 @@ docs/
 *png
 *.geojson
 *.qgz
+pcdhm/
 testing.ipynb
 subduction/plot_greensFunctions.ipynb
