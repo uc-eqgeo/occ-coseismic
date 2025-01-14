@@ -23,17 +23,17 @@ sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerk", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
-testing = True   # Impacts number of samples runs, job time etc
+testing = False   # Impacts number of samples runs, job time etc
 fakequakes = False  # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
-single_branch = True          # Do you want to calculate PPEs for a single branch?
+single_branch = "_sz_NzEx"          # Do you want to calculate PPEs for a single branch? Either "None" or the suffix of the branch you want to use
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = False            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
-remake_weighted_PPE = True    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
+remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 save_arrays = True         # Do you want to save the displacement and probability arrays?
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
@@ -126,7 +126,7 @@ else:
         raise Exception("Can't have fault type = 'all' and paired_crustal_sz = False")
     fault_type = [fault_type]
 
-if single_branch:
+if single_branch is not None:
     if paired_crustal_sz:
         raise Exception("Can't have single branch and paired crustal sz")
     if calculate_weighted_mean_PPE:
@@ -153,13 +153,13 @@ def make_branch_weight_dict(branch_weight_file_path, sheet_name):
     branch_weight_dict = {}
     for row in range(len(branch_weights)):
 
-        N_val = branch_weights["N"][row]
+        N_val = branch_weights["N"][row].astype(float)
         N_string = str(N_val).replace('.', '')
-        b_val = branch_weights["b"][row]
+        b_val = branch_weights["b"][row].astype(float)
         b_string = str(b_val).replace('.', '')
         C_val = branch_weights["C"][row]
         C_string = str(C_val).replace('.', '')
-        S_val = branch_weights["S"][row]
+        S_val = branch_weights["S"][row].astype(float)
         S_string = str(S_val).replace('.', '')
         def_model  = branch_weights["def_model"][row]
         time_dependence = branch_weights["time_dependence"][row]
@@ -254,7 +254,7 @@ if not paired_crustal_sz:
     
     if single_branch:
         branch_keys = list(fault_model_branch_weight_dict.keys())
-        branch_key = [key for key in branch_keys if "S10" in key and file_suffix_list[0] in key][0]
+        branch_key = [key for key in branch_keys if any(["_S10_" in key, "_S1_" in key]) and file_suffix_list[0] in key][0]
         fault_model_branch_weight_dict = {branch_key: fault_model_branch_weight_dict[branch_key]}
 
     extension1_list = [gf_name + suffix for suffix in file_suffix_list]
