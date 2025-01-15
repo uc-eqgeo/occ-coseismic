@@ -17,11 +17,15 @@ finally:
     from scipy.interpolate import griddata
     import matplotlib.pyplot as plt
     from time import time
+    import h5py as h5
+    from scipy.sparse import csr_matrix
 
-def dict_to_hdf5(hdf5_group, dictionary, compression=None, compression_opts=None):
+def dict_to_hdf5(hdf5_group, dictionary, compression=None, compression_opts=None, replace_groups=False):
     for key, value in dictionary.items():
         if isinstance(value, dict):
             # Recursively create sub-groups
+            if replace_groups and key in hdf5_group:
+                del hdf5_group[key]
             sub_group = hdf5_group.create_group(key)
             dict_to_hdf5(sub_group, value)
         else:
@@ -148,33 +152,41 @@ def read_fakequakes_slip_rates(NSHM_directory):
     return rupture_slip_dict, rates_df, all_ruptures
 
 
-def make_total_slip_dictionary(gf_dict_pkl):
+def make_total_slip_dictionary(gf_dict_h5):
     """ calculates total greens function displacement using strike slip gf, dip slip gf, and rake value
-    need to run the and crustal_discretised_gfs script first"""
+    need to run the subduction and crustal_discretised_gfs script first"""
 
-    with open(gf_dict_pkl, "rb") as fid:
-        gf_dict = pkl.load(fid)
+    gf_dict = h5.File(gf_dict_h5, "r")
 
     # Makes a new total gf displacement dictionary using rake
-    gf_adjusted_dict = {}
     grid_meta = None
-    for i in gf_dict.keys():
-        if i == 'grid_meta':
-            grid_meta = gf_dict[i]
+    all_site_names = gf_dict["site_name_list"].asstr()[:]
+    n_sites = len(all_site_names)
+    n_ruptures = np.sum([1 for key in gf_dict.keys() if key not in ["site_coords", "site_name_list", "grid_meta"]])
+    gf_adjusted_array = np.zeros([n_ruptures, n_sites])
+    all_site_coords = gf_dict["site_coords"][:]
+    key_list = []
+    for ix, key in enumerate([key for key in gf_dict.keys() if key not in ["site_coords", "site_name_list"]]):
+        print('Writing total slip dictionary: {}/{} rupture patches'.format(ix, n_ruptures), end="\r")
+        if key == 'grid_meta':
+            grid_meta = gf_dict[key]
         else:
             # greens functions are just for the vertical component
-            ss_gf = gf_dict[i]["ss"]
-            ds_gf = gf_dict[i]["ds"]
-            rake = gf_dict[i]["rake"]
+            gf_ix = gf_dict[key]["site_name_ix"]
+#            site_name_list = all_site_names[gf_ix]
+#            site_coords = all_site_coords[gf_ix, :]
 
-            site_name_list = gf_dict[i]["site_name_list"]
-            site_coords = gf_dict[i]["site_coords"]
+            non_zero_ix = gf_ix[gf_dict[key]['non_zero_sites']]
 
             # calculate combined vertical from strike slip and dip slip using rake
-            combined_gf = np.sin(np.radians(rake)) * ds_gf + np.cos(np.radians(rake)) * ss_gf
-            gf_adjusted_dict[i] = {"combined_gf": combined_gf, "site_name_list": site_name_list, "site_coords": site_coords}
+            combined_gf = np.sin(np.radians(gf_dict[key]["rake"])) * gf_dict[key]["ds"] + np.cos(np.radians(gf_dict[key]["rake"])) * gf_dict[key]["ss"]
+            gf_adjusted_array[len(key_list), non_zero_ix] = combined_gf
+            key_list.append(key)
 
-    return gf_adjusted_dict, grid_meta
+    gf_dict.close()
+    print('')
+
+    return csr_matrix(gf_adjusted_array), all_site_names.tolist(), all_site_coords, key_list, grid_meta
 
 
 def merge_rupture_attributes(directory, trimmed=True):
@@ -290,11 +302,11 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
     location = Point(location)
 
     if fault_type == "crustal":
-        fault_rectangle_centroids_gdf = gpd.read_file(f"../{crustal_directory}/out_files{model_version}"
+        fault_rectangle_centroids_gdf = gpd.read_file(f"../{crustal_directory}/discretised_{model_version}"
                                                       f"/named_rectangle_centroids.geojson")
     if fault_type == "sz" or fault_type == "py":
         fault_rectangle_centroids_gdf = gpd.read_file(
-            f"../{sz_directory}/out_files{model_version}/{fault_type}_all_rectangle_centroids.geojson")
+            f"../{sz_directory}/discretised_{model_version}/{fault_type}_all_rectangle_centroids.geojson")
 
     all_ruptures_patch_indices = read_rupture_csv(f"../data/{NSHM_directory}/ruptures/indices.csv", fakequakes=fakequakes)
 
@@ -318,13 +330,13 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
         # uses scenarios that include any patch within that search radius
         if np.isin(trimmed_rupture_patch_indices[rupture_index], filtered_fault_ids).any():
             filtered_scenarios.append(rupture_index)
-
+    print(f"location filtered scenarios: {len(filtered_scenarios)}")
     return filtered_scenarios
 
 
 
 def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectangle_outlines_gdf, rupture_id,
-                             ruptured_fault_ids, slip_taper, rupture_slip_dict, gf_total_slip_dict, fakequakes=False):
+                             ruptured_fault_ids, slip_taper, rupture_slip_dict, gf_total_slip_array, rupture_order, fakequakes=False):
     """ calculates displacements for given rupture scenario at a single site
     not yet sure if I should set it up to allow more than one site at a time
 
@@ -335,20 +347,20 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
     """
 
     # find which patches have a mesh and which don't, to use greens functions later just with meshed patches
-    ruptured_fault_ids_with_mesh = np.intersect1d(ruptured_fault_ids, list(gf_total_slip_dict.keys()))
-
+    ruptured_fault_ids_with_mesh, _, mesh_indices = np.intersect1d(ruptured_fault_ids, rupture_order, assume_unique=True, return_indices=True)
+    ruptured_fault_ids_with_mesh = ruptured_fault_ids_with_mesh.astype(int)
     # calculate slip on each discretised polygon
     if slip_taper is False:
         # calculate displacements by multiplying scenario slip by scenario greens function
         # scenario gf sums displacements from all ruptured
         if fakequakes:
-            gf_array = np.array([gf_total_slip_dict[j]["combined_gf"] for j in ruptured_fault_ids_with_mesh])
-            disps_scenario = (rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh].reshape(-1,1) * gf_array).sum(axis=0)
+            sparse_rupt_slip = csr_matrix(rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh])
+            disps_scenario = np.array(gf_total_slip_array[mesh_indices, :].multiply(sparse_rupt_slip).sum(0)).reshape(-1)
             polygon_slips = rupture_slip_dict[rupture_id][ruptured_fault_ids_with_mesh]
 
         else:
-            gfs_i = np.sum([gf_total_slip_dict[j]["combined_gf"] for j in ruptured_fault_ids_with_mesh], axis=0)
-            disps_scenario = rupture_slip_dict[rupture_id] * gfs_i
+            gf_array = gf_total_slip_array[mesh_indices, :].toarray()
+            disps_scenario = rupture_slip_dict[rupture_id] * gf_array.sum(axis=0)
             polygon_slips = rupture_slip_dict[rupture_id] * np.ones(len(ruptured_fault_ids_with_mesh))
 
         # storing zeros is more efficient than nearly zeros. Makes v small displacements = 0
@@ -405,7 +417,11 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
         # this will be a list of lists
         disps_i_list = []
         for i, fault_id in enumerate(ruptured_discretised_polygons_gdf.fault_id):
-            disp_i = gf_total_slip_dict[fault_id]["combined_gf"] * polygon_slips[i]
+            # This section has never been tested following change from gf_total_slip_dict to gf_arrays
+            fault_ix = rupture_order.index(fault_id)
+            combined_gf = gf_total_slip_array[fault_ix, :].toarray()
+            disp_i = combined_gf * polygon_slips[i]
+            # disp_i = gf_total_slip_dict[fault_id]["combined_gf"] * polygon_slips[i]
             disps_i_list.append(disp_i)
         #sum displacements from each patch
         disps_scenario = np.sum(disps_i_list, axis=0)
@@ -415,13 +431,13 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
             disps_scenario = None
 
     # Abandon ruptures that don't cause any displacement
-    if sum(np.abs(disps_scenario)) == 0:
+    if disps_scenario is not None and sum(np.abs(disps_scenario)) == 0:
         disps_scenario = None
 
     return disps_scenario, polygon_slips
 
-def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf_name, model_version,
-                          results_version_directory, crustal_directory="crustal_files", sz_directory="subduction_files",
+def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf_name,
+                          results_version_directory, disc_version_directory, crustal_directory="crustal_files", sz_directory="subduction_files",
                           location=[1749150, 5428092], search_radius=2.5e5, fakequakes=False):
     """
     inputs: uses extension naming scheme to load NSHM rate/slip data and fault geometry, state slip taper
@@ -441,6 +457,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     # load saved data
     print(f"\nloading data for {extension1}")
     procdir = os.path.relpath(os.path.dirname(__file__)) + '/..'
+    disc_version = disc_version_directory.split('/')[-1]
 
     if fakequakes:
         rupture_slip_dict, rates_df, all_ruptures = read_fakequakes_slip_rates(NSHM_directory)
@@ -451,16 +468,15 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
         all_ruptures = read_rupture_csv(f"{procdir}/data/{NSHM_directory}/ruptures/indices.csv")
 
     if fault_type == "crustal":
-        discretised_polygons_gdf = gpd.read_file(f"{procdir}/"
-                                                 f"{crustal_directory}/out_files"
-                                                 f"{model_version}/crustal_discretised_polygons.geojson")
-        gf_dict_pkl = f"{procdir}/{crustal_directory}/out_files{model_version}/crustal_gf_dict_{gf_name}.pkl"
-        rectangle_outlines_gdf = gpd.read_file(f"{procdir}/{crustal_directory}/out_files"
-                                               f"{model_version}/all_rectangle_outlines.geojson")
+        discretised_polygons_gdf = gpd.read_file(f"{procdir}/{crustal_directory}/discretised_{disc_version}/"
+                                                 f"crustal_discretised_polygons.geojson")
+        gf_dict_pkl = f"{procdir}/{crustal_directory}/discretised_{disc_version}/crustal_gf_dict_{gf_name}.h5"
+        rectangle_outlines_gdf = gpd.read_file(f"{procdir}/{crustal_directory}/discretised_{disc_version}"
+                                               f"/all_rectangle_outlines.geojson")
     elif fault_type == "sz" or fault_type == "py":
-        discretised_polygons_gdf = gpd.read_file(f"{procdir}/{sz_directory}/out_files{model_version}/{fault_type}_discretised_polygons.geojson")
-        gf_dict_pkl = f"{procdir}/{sz_directory}/out_files{model_version}/{fault_type}_gf_dict_{gf_name}.pkl"
-        rectangle_outlines_gdf = gpd.read_file(f"{procdir}/{sz_directory}/out_files{model_version}/{fault_type}_all_rectangle_outlines.geojson")
+        discretised_polygons_gdf = gpd.read_file(f"{procdir}/{sz_directory}/discretised_{disc_version}/{fault_type}_discretised_polygons.geojson")
+        gf_dict_pkl = f"{procdir}/{sz_directory}/discretised_{disc_version}/{fault_type}_gf_dict_{gf_name}.h5"
+        rectangle_outlines_gdf = gpd.read_file(f"{procdir}/{sz_directory}/discretised_{disc_version}/{fault_type}_all_rectangle_outlines.geojson")
 
     # for some reason it defaults values to string. Convert to integer.
     discretised_polygons_gdf['fault_id'] = discretised_polygons_gdf['fault_id'].astype('int64')
@@ -471,15 +487,12 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     filtered_ruptures_location = filter_ruptures_by_location(NSHM_directory=NSHM_directory,
                                                              target_rupture_ids=filtered_ruptures_annual_rate,
                                                              fault_type=fault_type, crustal_directory=crustal_directory,
-                                                             sz_directory=sz_directory, model_version=model_version,
+                                                             sz_directory=sz_directory, model_version=disc_version,
                                                              location=location, search_radius=search_radius, fakequakes=fakequakes)
 
     # Makes a new total gf displacement dictionary using rake. If points don't have a name (e.g., for whole coastline
     # calculations), the site name list is just a list of numbers
-    gf_total_slip_dict, grid_meta = make_total_slip_dictionary(gf_dict_pkl)
-    first_key = list(gf_total_slip_dict.keys())[0]
-    site_name_list = gf_total_slip_dict[first_key]["site_name_list"]
-    site_coords = gf_total_slip_dict[first_key]["site_coords"]
+    gf_total_slip_array, site_name_list, site_coords, key_order, grid_meta = make_total_slip_dictionary(gf_dict_pkl)
 
     # calculate displacements at all the sites by rupture. Output dictionary keys are by rupture ID.
     disp_dictionary = {}
@@ -498,19 +511,22 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
                                      ruptured_rectangle_outlines_gdf=ruptured_rectangle_outlines_gdf,
                                      rupture_id=rupture_id, ruptured_fault_ids=ruptured_fault_ids,
                                      slip_taper=slip_taper, rupture_slip_dict=rupture_slip_dict,
-                                     gf_total_slip_dict=gf_total_slip_dict, fakequakes=fakequakes)
+                                     gf_total_slip_array=gf_total_slip_array, rupture_order=key_order, fakequakes=fakequakes)
 
         # extract annual rate and save data to dictionary. Key is the rupture ID. Ignores scenarios with zero
         # displacement at all sites. Sites can be a grid cell or a specific (named) site.
+        annual_rate = rates_df[rates_df.index == rupture_id]["Annual Rate"].values[0]
         if disps_scenario is not None:
-            annual_rate = rates_df[rates_df.index == rupture_id]["Annual Rate"].values[0]
             # displacement dictionary for a single rupture scenario at all sites. Key is rupture id.
             disps_scenario = [(ix, disp) for ix, disp in enumerate(disps_scenario) if disp != 0]
             rupture_disp_dict = {"rupture_id": rupture_id, "v_disps_m": disps_scenario, "annual_rate": annual_rate,
                                  "site_name_list": site_name_list, "site_coords": site_coords,
-                                 "x_data": site_coords[:, 0], "y_data": site_coords[:, 1],
                                  "polygon_slips_m": patch_slips}
-            disp_dictionary[rupture_id] = rupture_disp_dict
+        else:
+            rupture_disp_dict = {"rupture_id": rupture_id, "v_disps_m": np.array([]), "annual_rate": annual_rate,
+                        "site_name_list": site_name_list, "site_coords": np.array([]),
+                        "polygon_slips_m": patch_slips}
+        disp_dictionary[rupture_id] = rupture_disp_dict
 
     # print statement about how many scenarios have displacement > 0 at each site
     print(f"\nscenarios with displacement > 0: {len(disp_dictionary)}")
@@ -521,12 +537,17 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
         extension3 = "_uniform"
 
     # save displacements
-    if not os.path.exists(f"../{results_version_directory}/{extension1}"):
-        os.makedirs(f"../{results_version_directory}/{extension1}")
+    os.makedirs(f"{procdir}/results/{disc_version}/{extension1}", exist_ok=True)
 
-    with open(f"../{results_version_directory}/{extension1}/all_rupture_disps_{extension1}{extension3}.pkl",
+    with open(f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}.pkl",
               "wb") as f:
         pkl.dump(disp_dictionary, f)
+    
+    # Save the site names to a seperate pickle file, as it is quicker to load and check on later runs
+    site_name_dict = {'site_name_list': site_name_list}
+    with open(f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}_sites.pkl",
+              "wb") as f:
+        pkl.dump(site_name_dict, f)
 
     if grid_meta:
         with open(f"../{results_version_directory}/{extension1}/grid_limits.pkl", "wb") as f:
@@ -634,95 +655,88 @@ def maximum_displacement_plot(site_ids, branch_site_disp_dict, model_dir, branch
 def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_version, deformation_model='geologic and geodetic', time_independent=True,
                          time_dependent=True, single_branch=False, fakequakes=False):
     # Set up which branches you want to calculate displacements and probabilities for
+    # File suffixes and NSHM directories for each branch MUST be in the same order or you'll cause problems
     file_suffix_list = []
     NSHM_directory_list = []
     n_branches = []
     for fault_type in fault_type_list:
         fault_branches = 0
         if fault_type == "crustal":
-            model_version = crustal_model_extension
             if time_independent and not single_branch:
                 if "geologic" in deformation_model:
                     file_suffix_list_i = ["_c_MDA2", "_c_MDEz", "_c_MDE1"]
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA2",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE1"
+                                             "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz",
+                                             "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE1"
                                             ]
-                    file_suffix_list.extend(file_suffix_list_i)
-                    NSHM_directory_list.extend(NSHM_directory_list_i)
                     fault_branches += len(file_suffix_list_i)
                 if "geodetic" in deformation_model:
                     file_suffix_list_i = ["_c_MDE2", "_c_MDE5", "_c_MDI0"]
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE2",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE5",
-                                            "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDI0"]
-                    file_suffix_list.extend(file_suffix_list_i)
-                    NSHM_directory_list.extend(NSHM_directory_list_i)
+                                             "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE5",
+                                             "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDI0"]
                     fault_branches += len(file_suffix_list_i)
             if time_dependent and not single_branch:
                 if "geologic" in deformation_model:
                     file_suffix_list_i = ["_c_NjE5", "_c_NjI2", "_c_NjI3"]
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjE5",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI2",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI3"]
-                    file_suffix_list.extend(file_suffix_list_i)
-                    NSHM_directory_list.extend(NSHM_directory_list_i)
+                                             "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI2",
+                                             "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI3"]
                     fault_branches += len(file_suffix_list_i)
                 if "geodetic" in deformation_model:
                     file_suffix_list_i = ["_c_NjI5", "_c_NjMy", "_c_NjM3"]
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI5",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjMy",
-                                            "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjM3"]
-                    file_suffix_list.extend(file_suffix_list_i)
-                    NSHM_directory_list.extend(NSHM_directory_list_i)
+                                             "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjMy",
+                                             "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjM3"]
                     fault_branches += len(file_suffix_list_i)
             if single_branch:
-                file_suffix_list_i = ["_c_MDEz"]
-                NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"]
+                print("\n\n********\nCAUTION: SINGLE BRANCH HARD CODED FOR CRUSTAL FAULTS. MANUALLY CHANGE IN HELPER SCRIPTS UNTIL I GET ROUND TO FIXING\n********\n\n")
                 file_suffix_list_i = ["_c_MDEw"]
                 NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEw"]
-                file_suffix_list.extend(file_suffix_list_i)
-                NSHM_directory_list.extend(NSHM_directory_list_i)
+            file_suffix_list.extend(file_suffix_list_i)
+            NSHM_directory_list.extend(NSHM_directory_list_i)
 
         elif fault_type == "sz":
             if fakequakes:
-                file_suffix_list_i = ["_sz_fq_1"]
-                NSHM_directory_list_i = ["sz_solutions/FakeQuakes_sz_n5000_S10_N1_GR100_b1-1_N21-5_nIt500000_narchi10"]
-                file_suffix_list.extend(file_suffix_list_i)
-                NSHM_directory_list.extend(NSHM_directory_list_i)
-                fault_branches += len(file_suffix_list_i) * 3  # For scaling
-
+                file_suffix_list_i = ["_sz_fq_b124", "_sz_fq_b110", "_sz_fq_b095", "_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nb110", "_sz_fq_pnb110", "_sz_fq_3lb110", "_sz_fq_plb110"]
+                NSHM_directory_list_i = ["sz_solutions/FakeQuakes_sz_n5000_S10_N1_GR500_b1-24_N27-9_nIt1000000_narchi10",
+                                         "sz_solutions/FakeQuakes_sz_n5000_S10_N1_GR500_b1-1_N21-5_nIt1000000_narchi10",
+                                         "sz_solutions/FakeQuakes_sz_n5000_S10_N1_GR500_b0-95_N16-5_nIt1000000_narchi10",
+                                         "sz_solutions/FakeQuakes_hk_3e10_nolocking_uniformSlip_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10",
+                                         "sz_solutions/FakeQuakes_hk_prem_nolocking_uniformSlip_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10",
+                                         "sz_solutions/FakeQuakes_hk_3e10_nolocking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10",
+                                         "sz_solutions/FakeQuakes_hk_prem_nolocking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10",
+                                         "sz_solutions/FakeQuakes_hk_3e10_locking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10",
+                                         "sz_solutions/FakeQuakes_hk_prem_locking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10"]
             else:
-                model_version = sz_model_version
-                slip_taper = False
-                if not single_branch:
-                    file_suffix_list_i = ["_sz_NJk2", "_sz_NzEx", "_sz_NzE0"]
-                    NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2",
-                                            "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzEx",
-                                            "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
+                file_suffix_list_i = ["_sz_NJk2", "_sz_NzEx", "_sz_NzE0"]
+                NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2",
+                                         "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzEx",
+                                         "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
 
-                    file_suffix_list.extend(file_suffix_list_i)
-                    NSHM_directory_list.extend(NSHM_directory_list_i)
-                    fault_branches += len(file_suffix_list_i) * 3  # For scaling
-                if single_branch:
-                    file_suffix_list_i = ["_sz_NzE0"]  # "_sz_NzE0" Highest weighted Branch
-                    NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
-                    file_suffix_list.extend(file_suffix_list_i)
-                    NSHM_directory_list.extend(NSHM_directory_list_i)
-        elif fault_type == "py":
-            model_version = sz_model_version
-            slip_taper = False
-            if not single_branch:
-                file_suffix_list_i = ["_py_M5NQ"]
-                NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTMyNzM5NQ=="]
-                file_suffix_list.extend(file_suffix_list_i)
-                NSHM_directory_list.extend(NSHM_directory_list_i)
-                fault_branches += len(file_suffix_list_i) * 3  # For scaling
             if single_branch:
-                file_suffix_list_i = ["_py_M5NQ"]
-                NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTMyNzM5NQ=="]
-                file_suffix_list.extend(file_suffix_list_i)
-                NSHM_directory_list.extend(NSHM_directory_list_i)
+                branch_index = file_suffix_list_i.index(single_branch)
+                file_suffix_list_i = [file_suffix_list_i[branch_index]]
+                NSHM_directory_list_i = [NSHM_directory_list_i[branch_index]]
+            else:
+                fault_branches += len(file_suffix_list_i) * 3  # For scaling
+
+            file_suffix_list.extend(file_suffix_list_i)
+            NSHM_directory_list.extend(NSHM_directory_list_i)
+
+        elif fault_type == "py":
+            file_suffix_list_i = ["_py_M5NQ"]
+            NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTMyNzM5NQ=="]
+
+            if single_branch:
+                branch_index = file_suffix_list_i.index(single_branch)
+                file_suffix_list_i = [file_suffix_list_i[branch_index]]
+                NSHM_directory_list_i = [NSHM_directory_list_i[branch_index]]
+            else:
+                fault_branches += len(file_suffix_list_i) * 3  # For scaling
+
+            file_suffix_list.extend(file_suffix_list_i)
+            NSHM_directory_list.extend(NSHM_directory_list_i)
         n_branches.append(fault_branches)
 
     return NSHM_directory_list, file_suffix_list, n_branches
