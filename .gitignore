@@ -6,6 +6,7 @@ data/nz_bathy*
 data/coastline/
 sites/
 QGIS/
+pcdhm/
 
 # Output directories
 results/
@@ -30,3 +31,5 @@ docs/
 *png
 *.geojson
 *.qgz
+testing.ipynb
+subduction/plot_greensFunctions.ipynb
