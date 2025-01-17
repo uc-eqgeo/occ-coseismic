@@ -1,4 +1,5 @@
 .. include:: ../README.rst
+.. include:: ../README.md
 
 Our Changing Coast: Probabilistic cOseismic diSplacemenT hAazard modeL (POSTAL)
 ===================================
@@ -13,9 +14,6 @@ It is developed as part of the Te Ao Horihuri: Te Ao Hou | Our Changing Coast pr
 Initially designed for use with the outputs of the New Zealand National Seismic Hazard Model, it can be used with any fault rupture sets provided in an OpenSHA format.
 
 
-Check out the :doc:`usage` section for further information, including
-how to :ref:`installation` the project.
-
 .. note::
 
    This project is under active development.
@@ -26,7 +24,5 @@ Contents
 .. toctree::
 
    Home <self>
-   usage
-   api
    preprocessing
    POSTAL
