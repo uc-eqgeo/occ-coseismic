@@ -1,7 +1,7 @@
 Our Changing Coast: Probabilistic Coseismic Displacement Hazard Model (POSTAL)
 ==============================================================================
 
-The **P**robailistic c **o**seismic di**s**placemen**t** h**a**azard mode**l** (POSTAL) can provided hazard estimates for vertical land motion due to coseismic rupture.
+The **P**robailistic c **o**seismic di **s**placemen **t** h **a**zard mode **l** (POSTAL) can provided hazard estimates for vertical land motion due to coseismic rupture.
 POSTAL is an expansion of the proof of concept described in Delano et al. (2025), but optimised to work at national scales.
 It is developed as part of the Te Ao Horihuri: Te Ao Hou | Our Changing Coast project to assess the hazard faced by coastal communites in New Zealand (Coastal POSTAL).
 Initially designed for use with the outputs of the New Zealand National Seismic Hazard Model, it can be used with any fault rupture sets provided in an OpenSHA format.
@@ -16,7 +16,8 @@ Fault and NSHM data must be in the 'Data' Folder
     - branch_weight_data.xlsx : Spreadsheet, with different sheets for each fault model. Must contain columns containing N, b, C, S, def_model, time_dependence, and total weight RN
     - NSHM fault stuff
 
-Site data \\
+Site data
+
 - ./{sites}.csv : CSV containing points of every site to be processed
 
 
