@@ -28,3 +28,10 @@ docs/_build/
 docs/_static/
 docs/_templates/
 docs/save
+*.qgz
+testing.ipynb
+crustal/discretised_*
+pcdhm/*
+sites/
+subduction/discretised*
+subduction/plot_greensFunctions.ipynb
