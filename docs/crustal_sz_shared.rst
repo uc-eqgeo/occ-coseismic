@@ -1,0 +1,1 @@
+.. include:: ../crustal_sz_shared_scripts/README.md
