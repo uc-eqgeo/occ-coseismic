@@ -1,5 +1,5 @@
 Our Changing Coast: Probabilistic Coseismic Displacement Hazard Model (POSTAL)
-=======================================
+==============================================================================
 
 The Probailistic cOseismic diSplacemenT hAazard modeL (POSTAL) can provided hazard estimates for vertical land motion due to coseismic rupture.
 POSTAL is an expansion of the proof of concept described in Delano et al. (2025), but optimised to work at national scales.

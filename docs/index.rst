@@ -1,5 +1,4 @@
 .. include:: ../README.rst
-.. include:: ../README.md
 
 Our Changing Coast: Probabilistic cOseismic diSplacemenT hAazard modeL (POSTAL)
 ===================================
