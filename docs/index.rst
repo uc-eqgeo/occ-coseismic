@@ -3,15 +3,18 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Our Changing Coast Probabilistic Coseismic Displacement Hazard Model
+Our Changing Coast: Probabilistic cOseismic diSplacemenT hAazard modeL (POSTAL)
 ===================================
 
 Add your content using ``reStructuredText`` syntax. See the
 `reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
 documentation for details.
 
-This repository allows the use of the New Zealand National Seismic Hazard Model (NZ NSHM22) for creating a national Probabilistic Coseismc Displacement Hazard Model (PCDHM).
-It is an expansion of the proof of concept decribed in Delano et al. (In Prep).
+The Probailistic cOseismic diSplacemenT hAazard modeL (POSTAL) can provided hazard estiamtes for vertical land motion due to coseismic rupture.
+POSTAL is an expansion of the proof of concept described in Delano et al. (2025), but optimised to work at national scales.
+It is developed as part of the Te Ao Horihuri: Te Ao Hou | Our Changing Coast project to assess the hazard faced by coastal communites in New Zealand (Coastal POSTAL). 
+Initially designed for use with the outputs of the New Zealand National Seismic Hazard Model, it can be used with any fault rupture sets provided in an OpenSHA format.
+
 
 Check out the :doc:`usage` section for further information, including
 how to :ref:`installation` the project.
@@ -27,4 +30,12 @@ Contents
    :maxdepth: 2
    :caption: Contents:
 
-   useage
+   Preprocessing
+      Selecting Sites
+      Discretising Faults
+         Crustal
+         Subduction
+   Running POSTAL
+   Postprocessing
+      Visualising Results
+      Interpreting Results
