@@ -1,11 +1,7 @@
 .. include:: ../README.rst
 
-Our Changing Coast: Probabilistic cOseismic diSplacemenT hAazard modeL (POSTAL)
-===================================
-
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
+Our Changing Coast: Probabilistic cOseismic diSplacemenT hAazard modeL (POSTAL)  Title 2
+========================================================================================
 
 The Probailistic cOseismic diSplacemenT hAazard modeL (POSTAL) can provided hazard estiamtes for vertical land motion due to coseismic rupture.
 POSTAL is an expansion of the proof of concept described in Delano et al. (2025), but optimised to work at national scales.
