@@ -1,4 +1,4 @@
-Preparing Crustal
-=================
+Fault Discretisation
+====================
 
 .. include:: ../crustal/README.md
