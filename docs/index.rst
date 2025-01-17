@@ -31,11 +31,3 @@ Contents
    :caption: Contents:
 
    Preprocessing
-      Selecting Sites
-      Discretising Faults
-         Crustal
-         Subduction
-   Running POSTAL
-   Postprocessing
-      Visualising Results
-      Interpreting Results
