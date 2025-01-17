@@ -1,4 +1,3 @@
-# searise-coseismic
 First attempt at calculating uplift for the national seismic hazard model. Requires Wellington area fault mesh files.
 
 ## Scripts

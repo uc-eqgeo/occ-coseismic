@@ -1,4 +1,5 @@
 ## OCC Coseismic
+THIS IS THE MARKDOWN
 This software is designed to generate a Probabilistic Coseismic Displacement Hazard Model (PCDHM) using the outputs of the New Zealand National Seismic Hazard Model (NZ NSHM). 
 This is a national scaling of the Wellington case study (Delano et al., In Prep).
 Seismicity rates are based off different fault models (crustal faults, hikurangi-kermadec subduction interface, puysegur subduction interface).
