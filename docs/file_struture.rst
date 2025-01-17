@@ -1,4 +1,4 @@
-Inputs
+file_structure
 ======
 
 Input Data
