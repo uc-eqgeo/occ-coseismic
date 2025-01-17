@@ -1,3 +1,3 @@
-Crustal-sz shared
-=================
+Running POSTAL
+==============
 .. include:: ../crustal_sz_shared_scripts/README.md

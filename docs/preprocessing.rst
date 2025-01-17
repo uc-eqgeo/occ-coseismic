@@ -1,12 +1,21 @@
 Preprocessing
 =============
 
-Is the the real life
---------------------
-Is this just fantasy
+Preprocessing is basically the same for both fault types
 
-.. include:: ../README.rst
+You've got to start by selecting the site data that you want
+------------------------------------------------------------
 
-Caught in a landslide
----------------------
-No escape from reality
+Which is easy to do iwth my lovely QGIS scripts
+
+But then you move to the crustal scripts
+----------------------------------------
+.. include:: ../crustal/README.md
+
+And also the subduction scripts
+-------------------------------
+Which should be straightforwards
+
+.. include:: ../subduction/README.rst
+
+Until you are ready for the POSTAL scripts
