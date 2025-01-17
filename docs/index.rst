@@ -1,4 +1,4 @@
-.. include:: ../README.md
+.. include:: ../README.rst
 
 .. note::
 
@@ -10,8 +10,9 @@ Contents
 .. toctree::
 
    Home <self>
-   preprocessing
-   POSTAL
-   crustal
-   subduction
-   crustal_sz_shared_scripts
+   installation
+   file_structure
+   site_selection
+   fault_preparation
+   postal
+   visualisation
