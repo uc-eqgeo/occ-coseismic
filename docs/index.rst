@@ -1,7 +1,4 @@
-.. occ-coseismic documentation master file, created by
-   sphinx-quickstart on Tue Aug 20 13:25:16 2024.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+.. include:: ../README.rst
 
 Our Changing Coast: Probabilistic cOseismic diSplacemenT hAazard modeL (POSTAL)
 ===================================
@@ -27,7 +24,8 @@ Contents
 --------
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
 
-   Preprocessing
+   Home <self>
+   preprocessing
+   POSTAL
+   visualisation
