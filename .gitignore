@@ -21,7 +21,7 @@ QGIS/
 *.csv
 FaultSectionsTesting.qgz
 for_jaime.zip
-.vscode/launch.json
+.vscode/
 *qmd
 
 docs/_build/
