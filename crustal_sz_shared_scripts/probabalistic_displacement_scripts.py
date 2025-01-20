@@ -2339,13 +2339,16 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
     if weighted:
         h5_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict{extension1}{taper_extension}.h5"
         outfile_directory = f"../{model_version_results_directory}/weighted_mean_xarray"
+        print("Saving data arrays for weighted mean displacements...")
     elif single_branch != '':
         branch_suffix = '_'.join(single_branch.split('_')[6:])
         h5_file = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/{single_branch}_cumu_PPE.h5"
         outfile_directory = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/probability_grids"
+        print(f"Saving data arrays for sites_{branch_suffix}...")
     else:
         h5_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob{extension1}{taper_extension}.h5"
         outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
+        print(f"Saving data arrays for {model_version_results_directory}...")
     
     PPEh5 = h5.File(h5_file, 'r')
 
