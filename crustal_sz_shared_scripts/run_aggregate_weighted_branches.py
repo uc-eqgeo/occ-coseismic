@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
-from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, \
+from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, plot_single_branch_haz_curves, \
     make_sz_crustal_paired_PPE_dict, make_fault_model_PPE_dict, get_weighted_mean_PPE_dict, \
     save_disp_prob_xarrays
 from helper_scripts import get_NSHM_directories, get_rupture_disp_dict
@@ -23,21 +23,21 @@ sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerk", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
-testing = False   # Impacts number of samples runs, job time etc
-fakequakes = False  # Use fakequakes for the subduction zone (applied only to hikkerk)
+testing = True   # Impacts number of samples runs, job time etc
+fakequakes = True  # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
-single_branch = "_sz_NzEx"          # Do you want to calculate PPEs for a single branch? Either "None" or the suffix of the branch you want to use
+single_branch = "_sz_fq_3nub110"          # Do you want to calculate PPEs for a single branch? Either "None" or the suffix of the branch you want to use
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = False            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
 remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
-save_arrays = True         # Do you want to save the displacement and probability arrays?
-default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
-make_hazcurves = False     # Do you want to make hazard curves?
-plot_order_csv = "../national_10km_grid_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
+save_arrays = False         # Do you want to save the displacement and probability arrays?
+default_plot_order = False       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
+make_hazcurves = True     # Do you want to make hazard curves?
+plot_order_csv = "../sites/EastCoastNI_5km_transect_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
 
 # Processing Parameters
@@ -408,6 +408,8 @@ if paired_crustal_sz:
         site_names_title += f"{sub}{sz_site_names} and "
     site_names_title = site_names_title[:-5]
 else:
+    if not isinstance(fault_type, list): 
+        fault_type = [fault_type]
     site_names_title = f"{fault_type[0]}{site_names_list[0]}"
 
 if default_plot_order:
@@ -421,8 +423,20 @@ else:
 
 if make_hazcurves:
     print(f"\nMaking hazard curves...")
-    print(f"Output Directory: {out_version_results_directory}/weighted_mean_figures...")
-    plot_weighted_mean_haz_curves(
-        weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
-        model_version_title=site_names_title, exceed_type_list=["up", "down", "total_abs"],
-        out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)
+    if single_branch:
+        out_dir = f"{out_version_results_directory}/sites{single_branch}/hazard_curves{outfile_extension}"
+        PPE_filepath = f"../{out_version_results_directory}/sites{single_branch}/{branch_key}_cumu_PPE.h5"
+    else:
+        out_dir =  f"{out_version_results_directory}/weighted_mean_figures"
+    print(f"Output Directory: {out_dir}")
+    if single_branch:
+         plot_single_branch_haz_curves(
+             PPE_dictionary=PPE_filepath, model_version_title=site_names_title,
+             exceed_type_list=["up", "down", "total_abs"], out_directory=out_dir,
+             file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)   
+    else:
+        plot_weighted_mean_haz_curves(
+            weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
+            model_version_title=site_names_title, exceed_type_list=["up", "down", "total_abs"],
+            out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)
+    
