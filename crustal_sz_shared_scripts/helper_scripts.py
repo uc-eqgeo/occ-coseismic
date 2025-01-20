@@ -698,7 +698,7 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
 
         elif fault_type == "sz":
             if fakequakes:
-                file_suffix_list_i = ["_sz_fq_b124", "_sz_fq_b110", "_sz_fq_b095", "_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nb110", "_sz_fq_pnb110", "_sz_fq_3lb110", "_sz_fq_plb110"]
+                file_suffix_list_i = ["_sz_fq_b124", "_sz_fq_b110", "_sz_fq_b095", "_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nhb110", "_sz_fq_pnhb110", "_sz_fq_3lhb110", "_sz_fq_plhb110"]
                 NSHM_directory_list_i = ["sz_solutions/FakeQuakes_sz_n5000_S10_N1_GR500_b1-24_N27-9_nIt1000000_narchi10",
                                          "sz_solutions/FakeQuakes_sz_n5000_S10_N1_GR500_b1-1_N21-5_nIt1000000_narchi10",
                                          "sz_solutions/FakeQuakes_sz_n5000_S10_N1_GR500_b0-95_N16-5_nIt1000000_narchi10",
