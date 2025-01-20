@@ -11,14 +11,14 @@ try:
     import geopandas as gpd
 except ImportError:
     print("Running on NESI. Site geojsons won't be output....")
-os.chdir(os.path.dirname(__file__))
+
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
 crustal_site_names = "_JDE_sites"   # Name of the sites geojson
-sz_site_names = ["_EastCoastNI_5km", "_SouthIsland_10km"]       # Name of the sites geojson
+sz_site_names = ["_EastCoastNI_5km_transect", "_SouthIsland_10km"]       # Name of the sites geojson
 sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerk", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
