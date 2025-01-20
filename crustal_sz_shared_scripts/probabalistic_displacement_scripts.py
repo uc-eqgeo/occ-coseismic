@@ -187,9 +187,9 @@ if numba_flag:
             # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
             # across all of the 100 yr scenarios
             # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
-            n_exceedances_total_abs[tix, :] = np.sum(np.abs(cumulative_disp_scenarios) > threshold)
-            n_exceedances_up[tix, :] = np.sum(cumulative_disp_scenarios > threshold)
-            n_exceedances_down[tix, :] = np.sum(cumulative_disp_scenarios < -threshold)
+            n_exceedances_total_abs[tix, :] = np.sum(np.abs(cumulative_disp_scenarios) > threshold, axis=1)
+            n_exceedances_up[tix, :] = np.sum(cumulative_disp_scenarios > threshold, axis=1)
+            n_exceedances_down[tix, :] = np.sum(cumulative_disp_scenarios < -threshold, axis=1)
 
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 else:
