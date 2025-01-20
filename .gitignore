@@ -17,7 +17,7 @@ crustal/discretised*
 
 # __pycache__ and vscode directories
 */__pycache__/
-./.vscode/
+.vscode/
 
 # Other files
 mesh_corrections.csv
