@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
-from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, \
+from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, plot_single_branch_haz_curves, \
     make_sz_crustal_paired_PPE_dict, make_fault_model_PPE_dict, get_weighted_mean_PPE_dict, \
     save_disp_prob_xarrays
 from helper_scripts import get_NSHM_directories, get_rupture_disp_dict
@@ -409,6 +409,8 @@ if paired_crustal_sz:
         site_names_title += f"{sub}{sz_site_names} and "
     site_names_title = site_names_title[:-5]
 else:
+    if not isinstance(fault_type, list): 
+        fault_type = [fault_type]
     site_names_title = f"{fault_type[0]}{site_names_list[0]}"
 
 if default_plot_order:
@@ -422,8 +424,20 @@ else:
 
 if make_hazcurves:
     print(f"\nMaking hazard curves...")
-    print(f"Output Directory: {out_version_results_directory}/weighted_mean_figures...")
-    plot_weighted_mean_haz_curves(
-        weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
-        model_version_title=site_names_title, exceed_type_list=["up", "down", "total_abs"],
-        out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)
+    if single_branch:
+        out_dir = f"{out_version_results_directory}/sites{single_branch}/hazard_curves{outfile_extension}"
+        PPE_filepath = f"../{out_version_results_directory}/sites{single_branch}/{branch_key}_cumu_PPE.h5"
+    else:
+        out_dir =  f"{out_version_results_directory}/weighted_mean_figures"
+    print(f"Output Directory: {out_dir}")
+    if single_branch:
+         plot_single_branch_haz_curves(
+             PPE_dictionary=PPE_filepath, model_version_title=site_names_title,
+             exceed_type_list=["up", "down", "total_abs"], out_directory=out_dir,
+             file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)   
+    else:
+        plot_weighted_mean_haz_curves(
+            weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
+            model_version_title=site_names_title, exceed_type_list=["up", "down", "total_abs"],
+            out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)
+    

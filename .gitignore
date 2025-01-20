@@ -18,7 +18,7 @@ crustal/discretised*
 
 # __pycache__ and vscode directories
 */__pycache__/
-./.vscode/
+.vscode/
 
 # Other files
 mesh_corrections.csv
@@ -31,5 +31,6 @@ docs/
 *png
 *.geojson
 *.qgz
+pcdhm/
 testing.ipynb
 subduction/plot_greensFunctions.ipynb
