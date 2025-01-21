@@ -464,7 +464,7 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
 #                     f"{type}", dpi=300)
 
 def map_and_plot_probabilities(PPE_path, plot_name, title, outfile_directory, plot_order, threshold=0.2,
-                                 labels_on=True, file_type_list=["png"], exceed_type="down", colorbar_max=None):
+                                 labels_on=True, file_type_list=["png"], exceed_type="down", colorbar_max=None, transect=False):
     """Makes a two-part plot with probability of exceeding a threshold on the left and a map of sites, colored by
     probability, on the right"""
 
@@ -472,10 +472,10 @@ def map_and_plot_probabilities(PPE_path, plot_name, title, outfile_directory, pl
     PPE_dict = h5.File(PPE_path, "r")
 
     # set x-axis plot order info for probability subplot
-    probability_x_vals = np.arange(len(plot_order))  # the site label locations
+    probability_x_vals = plot_order[:, 1].astype(float)  # the site label locations
 
     # load data from PPE dictionary
-    site_coords = [PPE_dict[site]["site_coords"] for site in plot_order]
+    site_coords = [PPE_dict[site]["site_coords"] for site in plot_order[:, 0]]
     map_x_data = [coords[0] for coords in site_coords]
     # Load other map data
     coastline = gpd.read_file("../data/coastline/nz_coastline.geojson")
@@ -501,7 +501,7 @@ def map_and_plot_probabilities(PPE_path, plot_name, title, outfile_directory, pl
     # find the maximum y value for error bars so that the plot can be scaled correctly
     mean_probs, errs_plus, errs_minus = \
         get_mean_prob_plot_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
-                                threshold=threshold, site_list=plot_order)
+                                threshold=threshold, site_list=plot_order[:, 0])
     max_errs_y = 0.02 + max([mean_probs[j] + errs_plus[j] for j in range(len(mean_probs))])
     if colorbar_max is None:
         max_prob_color_val = round(max(mean_probs), 2) + 0.01
@@ -532,7 +532,7 @@ def map_and_plot_probabilities(PPE_path, plot_name, title, outfile_directory, pl
     # this adds a 0.03 offset to the y value of the label so that it doesn't overlap with the point
     label_y_vals = [prob + 0.03 for prob in mean_probs]
     if labels_on:
-        for site, q in enumerate(probability_x_vals):
+        for q, _ in enumerate(probability_x_vals):
             axs[0].text(x=probability_x_vals[q], y=label_y_vals[q], s=labels[q],
                         horizontalalignment='center', fontsize=6, fontweight='bold')
 
@@ -545,7 +545,8 @@ def map_and_plot_probabilities(PPE_path, plot_name, title, outfile_directory, pl
     axs[0].tick_params(axis='y', labelsize=labelsize)
     axs[0].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
     axs[0].yaxis.set_major_locator(mticker.MultipleLocator(0.1))
-    axs[0].set_xticks(probability_x_vals, plot_order, va='top', ha='center')
+    if not transect:
+        axs[0].set_xticks(probability_x_vals, plot_order[:, 0], va='top', ha='center')
     axs[0].set_ylabel("Probabilty", fontsize=fontsize)
     axs[0].set_title(f"Probability of exceeding {threshold} m uplift", fontsize=fontsize)
 

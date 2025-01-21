@@ -9,7 +9,7 @@ from matplotlib.patches import Rectangle
 from single_branch_plotting import get_mean_prob_plot_data, get_mean_disp_barchart_data
 
 def compare_faultmodel_prob_plot(PPE_paths, plot_name, title, pretty_names, outfile_directory, plot_order,
-                                 labels_on=True, file_type_list=["png"], threshold=0.2):
+                                 labels_on=True, file_type_list=["png"], threshold=0.2, transect=False):
     """ """
 
     exceed_type_list = ["up", "down"]
@@ -20,13 +20,13 @@ def compare_faultmodel_prob_plot(PPE_paths, plot_name, title, pretty_names, outf
 
     # set up custom color scheme
     #orange, teal, purple
-    colors = [(235 / 255, 97 / 255, 35 / 255), (64 / 255, 176 / 255, 166 / 255), (116 / 255, 43 / 255, 140 / 255)]
-    point_sizes = [35, 30, 30]
-    point_shapes = ["^", "o", "s"]
+    colors = [(235 / 255, 97 / 255, 35 / 255), (64 / 255, 176 / 255, 166 / 255), (116 / 255, 43 / 255, 140 / 255), 'cyan', 'forestgreen', 'fuchsia']
+    point_sizes = [35, 30, 30] * np.ceil(len(PPE_paths) / 3).astype(int)
+    point_shapes = ["^", "o", "s"] * np.ceil(len(PPE_paths) / 3).astype(int)
 
     # set up figure and subplots
     fig, axs = plt.subplots(1, 2, figsize=(7, 3.5))
-    x = np.arange(len(plot_order))  # the site label locations
+    x = plot_order[:, 1].astype(float)  # the site label locations
 
     for p, PPE_dict in enumerate(PPE_dicts):
         # find the maximum y value for error bars so that the plot can be scaled correctly
@@ -35,7 +35,7 @@ def compare_faultmodel_prob_plot(PPE_paths, plot_name, title, pretty_names, outf
         for i, exceed_type in enumerate(exceed_type_list):
             mean_probs, errs_plus, errs_minus = \
                 get_mean_prob_plot_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
-                                            threshold=threshold, site_list=plot_order)
+                                            threshold=threshold, site_list=plot_order[:, 0])
 
             # add point and error bars to plot
             axs[i].errorbar(x, mean_probs, yerr=[errs_minus, errs_plus], fmt='none', ecolor=colors[p], capsize=4,
@@ -62,14 +62,15 @@ def compare_faultmodel_prob_plot(PPE_paths, plot_name, title, pretty_names, outf
             axs[i].tick_params(axis='y', labelsize=8)
             axs[i].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
             axs[i].yaxis.set_major_locator(mticker.MultipleLocator(0.1))
-            axs[i].set_xticks(x, plot_order, va='top', ha='center')
+            if not transect:
+                axs[i].set_xticks(x, plot_order[:, 0], va='top', ha='center')
 
     # set indidual subplot stuff
     fontsize = 8
     # I'm doing it this way instead of just using "pretty_names" because I want to make sure the legend is in the correct
     # order.
 
-    axs[0].legend(pretty_names, loc="upper left", title="Fault models", title_fontsize=fontsize, fontsize=fontsize)
+    axs[0].legend(pretty_names, title="Fault models", title_fontsize=fontsize, fontsize=fontsize)
 
     axs[0].set_ylabel("Probabilty", fontsize=8)
     axs[1].tick_params(axis='y', labelleft=False)
@@ -88,7 +89,7 @@ def compare_faultmodel_prob_plot(PPE_paths, plot_name, title, pretty_names, outf
 
 def compare_disps_chart(PPE_paths, plot_name, title, pretty_names, outfile_directory, plot_order,
                         labels_on=True, file_type_list=["png"],
-                        disp_type_list=["up", "down"]):
+                        disp_type_list=["up", "down"], transect=False):
     """ makes bar charts of the displacement value at the 10% and 2% probability of exceence thresholds for each site
 
     """
@@ -100,10 +101,10 @@ def compare_disps_chart(PPE_paths, plot_name, title, pretty_names, outfile_direc
     # errbar_colors = [(235 / 255, 97 / 255, 35 / 255), (64 / 255, 176 / 255, 166 / 255),
     #                  (255 / 255, 190 / 255, 106 / 255)]
     # orange, teal, purple
-    errbar_colors = [(235 / 255, 97 / 255, 35 / 255), (64 / 255, 176 / 255, 166 / 255), (116 / 255, 43 / 255, 140 / 255)]
-    point_sizes = [7, 6, 6]
-    point_shapes = ["^", "o", "s"]
-    alpha_list = [1, 0.5, 0.3]
+    errbar_colors = [(235 / 255, 97 / 255, 35 / 255), (64 / 255, 176 / 255, 166 / 255), (116 / 255, 43 / 255, 140 / 255), 'cyan', 'forestgreen', 'fuchsia']
+    point_sizes = [7, 6, 6] * np.ceil(len(PPE_paths) / 3).astype(int)
+    point_shapes = ["^", "o", "s"] * np.ceil(len(PPE_paths) / 3).astype(int)
+    alpha_list = list(np.linspace(0.3, 1, len(PPE_paths)))[::-1]
 
     PPE_dicts = []
     for PPE_path in PPE_paths:
@@ -111,10 +112,12 @@ def compare_disps_chart(PPE_paths, plot_name, title, pretty_names, outfile_direc
 
     plt.close("all")
     fig, axs = plt.subplots(1, 2, figsize=(7, 3.4))
-    x = np.arange(len(plot_order))  # the site label locations
+    x = plot_order[:, 1].astype(float)  # the site label locations
 
     if len(PPE_dicts) == 1:
         bar_width = 0.5
+    elif transect:
+        bar_width = float(plot_order[-1, 1]) / plot_order.shape[0] / len(PPE_dicts)
     else:
         bar_width = 0.2
 
@@ -125,13 +128,13 @@ def compare_disps_chart(PPE_paths, plot_name, title, pretty_names, outfile_direc
         for i, probability in enumerate(probability_list):
             disps_up, errs_up_plus, errs_up_minus = \
                 get_mean_disp_barchart_data(site_PPE_dictionary=PPE_dict, exceed_type="up",
-                                        site_list=plot_order, probability=probability)
+                                        site_list=plot_order[:, 0], probability=probability)
             disps_down, errs_down_plus, errs_down_minus = \
                 get_mean_disp_barchart_data(site_PPE_dictionary=PPE_dict, exceed_type="down",
-                                         site_list=plot_order, probability=probability)
+                                         site_list=plot_order[:, 0], probability=probability)
             disps_total_abs, errs_total_abs_plus, errs_total_abs_minus = \
                 get_mean_disp_barchart_data(site_PPE_dictionary=PPE_dict, exceed_type="total_abs",
-                                            site_list=plot_order, probability=probability)
+                                            site_list=plot_order[:, 0], probability=probability)
 
             max_min_y_vals.append(max(disps_up))
             max_min_y_vals.append(min(disps_down))
@@ -191,7 +194,8 @@ def compare_disps_chart(PPE_paths, plot_name, title, pretty_names, outfile_direc
             axs[i].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
             # set tick labels to be every 0.2
             axs[i].yaxis.set_major_locator(mticker.MultipleLocator(0.5))
-            axs[i].set_xticks(x, plot_order)
+            if not transect:
+                axs[i].set_xticks(x, plot_order[:, 0])
 
     # set indidual subplot stuff
 
@@ -203,8 +207,13 @@ def compare_disps_chart(PPE_paths, plot_name, title, pretty_names, outfile_direc
 
     # manually make legend with rectangles and text
     swatch_width, swatch_height = bar_width, plot_ymax / 20
-    swatch_minx, swatch_miny = -1 * (len(plot_order) / 30), plot_ymax - (swatch_height * 2)
+    swatch_minx, swatch_miny = -1 * (len(plot_order[:, 0]) / 30), plot_ymax - (swatch_height * 2)
+    if transect:
+        swatch_width = float(plot_order[-1, 1]) / 50
     for q in range(len(PPE_dicts)):
+        axs[0].add_patch(Rectangle((swatch_minx - swatch_width, swatch_miny - q * swatch_height * 2),
+                                   swatch_width, swatch_height,
+                                   facecolor=errbar_colors[q], edgecolor=None, alpha=alpha_list[0]))
         axs[0].add_patch(Rectangle((swatch_minx, swatch_miny - q * swatch_height * 2),
                                    swatch_width, swatch_height,
                                    facecolor=color_up, edgecolor=None, alpha=alpha_list[q]))
@@ -228,7 +237,7 @@ def compare_disps_chart(PPE_paths, plot_name, title, pretty_names, outfile_direc
         fig.savefig(f"../{outfile_directory}/10_2_disps_{plot_name}.{file_type}", dpi=300)
 
 def compare_disps_with_net(PPE_paths, plot_name, title, pretty_names, outfile_directory, sites, site_dists = [],
-                           file_type_list=["png"]):
+                           file_type_list=["png"], transect=False):
     """ makes bar charts of the displacement value at the 10% and 2% probability of exceence thresholds for each site
     adds a lines that is the "net displacement" (i.e., the sum of the up and down displacements)
 
@@ -237,7 +246,7 @@ def compare_disps_with_net(PPE_paths, plot_name, title, pretty_names, outfile_di
     #sites = ["South Coast", "Petone", "Eastbourne", "Turakirae Head", "Lake Ferry", "Cape Palliser"]
     #site_dists = [15, 24.3, 32.5, 43.6, 54.9, 78.9]
 
-    if site_dists == []:
+    if len(site_dists) == 0:
         # Calculates distance assuming all sites are in a straight line. May cause issues if sites are scattered, e.g. on coasts
         site_coords = np.array([(float(x), float(y)) for site in sites for x, y in [site.split('_')]])
         site_coords -= site_coords[0, :]
@@ -247,8 +256,8 @@ def compare_disps_with_net(PPE_paths, plot_name, title, pretty_names, outfile_di
     probability_list = [0.1, 0.02]
     color_up, color_down = (189 / 255, 0, 0), (15 / 255, 72 / 255, 186 / 255)
     # orange, teal, purple
-    errbar_colors = [(235 / 255, 97 / 255, 35 / 255), (64 / 255, 176 / 255, 166 / 255), (116 / 255, 43 / 255, 140 / 255)]
-    alpha_list = [1, 0.5, 0.3]
+    errbar_colors = [(235 / 255, 97 / 255, 35 / 255), (64 / 255, 176 / 255, 166 / 255), (116 / 255, 43 / 255, 140 / 255), 'cyan', 'forestgreen', 'fuchsia']
+    alpha_list = list(np.linspace(0.3, 1, len(PPE_paths)))[::-1]
 
     PPE_dicts = []
     for PPE_path in PPE_paths:
@@ -257,7 +266,7 @@ def compare_disps_with_net(PPE_paths, plot_name, title, pretty_names, outfile_di
     plt.close("all")
     fig, axs = plt.subplots(1, 2, figsize=(7, 3.4))
     # x = np.arange(len(sites))  # the site label locations
-    bar_width = max(site_dists) / 40
+    bar_width = site_dists.max() / site_dists.shape[0] / len(PPE_dicts)
     x2 = [site_dist + bar_width for site_dist in site_dists]
     x3 = [site_dist + 2*bar_width for site_dist in site_dists]
     exes = [site_dists, x2, x3]
@@ -268,10 +277,10 @@ def compare_disps_with_net(PPE_paths, plot_name, title, pretty_names, outfile_di
         for i, probability in enumerate(probability_list):
             disps_up, errs_up_plus, errs_up_minus = \
                 get_mean_disp_barchart_data(site_PPE_dictionary=PPE_dict, exceed_type="up",
-                                        site_list=sites, probability=probability)
+                                        site_list=sites[:, 0], probability=probability)
             disps_down, errs_down_plus, errs_down_minus = \
                 get_mean_disp_barchart_data(site_PPE_dictionary=PPE_dict, exceed_type="down",
-                                         site_list=sites, probability=probability)
+                                         site_list=sites[:, 0], probability=probability)
             disps_net = [disps_up[j] + disps_down[j] for j in range(len(disps_up))]
 
             max_min_y_vals.append(max(disps_up))
@@ -315,7 +324,8 @@ def compare_disps_with_net(PPE_paths, plot_name, title, pretty_names, outfile_di
             axs[i].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
             # set tick labels to be every 0.2
             axs[i].yaxis.set_major_locator(mticker.MultipleLocator(0.5))
-            axs[i].set_xticks(site_dists, sites)
+            if not transect:
+                axs[i].set_xticks(site_dists, sites[:, 0])
 
     # set indidual subplot stuff
     axs[0].set_ylabel("Minimum displacement (m)", fontsize=8)
@@ -327,7 +337,12 @@ def compare_disps_with_net(PPE_paths, plot_name, title, pretty_names, outfile_di
 
     swatch_width, swatch_height = bar_width, plot_ymax / 20
     swatch_minx, swatch_miny = site_dists[0], plot_ymax - (swatch_height * 2)
+    if transect:
+        swatch_width = site_dists.max() / 50
     for q in range(len(PPE_dicts)):
+        axs[0].add_patch(Rectangle((swatch_minx - swatch_width, swatch_miny - q * swatch_height * 2),
+                                   swatch_width, swatch_height,
+                                   facecolor=errbar_colors[q], edgecolor=None, alpha=alpha_list[0]))
         axs[0].add_patch(Rectangle((swatch_minx, swatch_miny - q * swatch_height * 2),
                                    swatch_width, swatch_height,
                                    facecolor=color_up, edgecolor=None, alpha=alpha_list[q]))
@@ -364,13 +379,13 @@ def compare_mean_hazcurves(PPE_paths, plot_name, outfile_directory, title, prett
     # orange, teal, yellow
     #colors = [(235/255, 97/255, 35/255), (64/255, 176/255, 166/255), (255/255, 190/255, 106/255)]
     #orange, teal, purple
-    colors = [(235/255, 97/255, 35/255), (64/255, 176/255, 166/255), (116/255, 43/255, 140/255)]
+    colors = [(235 / 255, 97 / 255, 35 / 255), (64 / 255, 176 / 255, 166 / 255), (116 / 255, 43 / 255, 140 / 255), 'cyan', 'forestgreen', 'fuchsia']
 
     for p, PPE_dict in enumerate(PPE_dicts):
         color = colors[p]
 
         # shade the region between the max and min value of all the curves at each site
-        for i, site in enumerate(plot_order):
+        for i, site in enumerate(plot_order[:, 0]):
             # ax = plt.subplot(nrows, ncols, i + 1)
             ax = axs.flatten()[i]
 

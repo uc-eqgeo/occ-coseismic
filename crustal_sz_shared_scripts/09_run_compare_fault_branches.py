@@ -1,12 +1,11 @@
 
 import os
-import h5py as h5
 import pandas as pd
+import numpy as np
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import matplotlib
-from helper_scripts import get_NSHM_directories
-from weighted_mean_plotting import map_and_plot_probabilities
+from single_branch_plotting import map_and_plot_probabilities
 from compare_fault_model import compare_faultmodel_prob_plot, compare_disps_chart, compare_mean_hazcurves, \
     compare_disps_with_net
 
@@ -15,6 +14,7 @@ plot_order_name = "from_csv"                 # "JDE sites", "from_csv", or "defa
 results_directory = "results"
 exceed_type = "down"                     # "down", "up", or "total_abs"
 slip_taper = False
+transect = True  # Whether to assume that all points are in order along a transect, and that a distance should be calculated rather than site names labeled
 
 # Choose what models to compare. These names should be in the results folder already.
 model_subdirectory_dict = {"fq_hikkerk" : ["sz_fq_3nub110", "sz_fq_3nhb110", "sz_fq_3lhb110"]}
@@ -27,11 +27,11 @@ for key in model_subdirectory_dict.keys():
     pretty_names += model_subdirectory_dict[key]
 
 file_type_list = ["png"]     # generally png and/or pdf
-probability_plot = False             # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
-displacement_chart = False           # plots the displacement at the 10% and 2% probability of exceedance thresholds
+probability_plot = True            # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
+displacement_chart = True          # plots the displacement at the 10% and 2% probability of exceedance thresholds
 compare_hazcurves = False        # plots the different hazard curves on the same plot
-make_map = True
 disps_net = True
+make_map = False
 labels_on = False                # displacement number labels for bar charts and probability plots
 
 plot_order_csv = "../sites/EastCoastNI_5km_transect_points.csv"  # csv file with site order
@@ -145,19 +145,35 @@ elif plot_order_name == "JDE sites":
                    "Seaview", "Eastbourne", "Turakirae Head", "Lake Ferry", "Cape Palliser", "Flat Point"]
 
 
+# Calculate distances along the transect.
+# Assumptions:
+# 1. The first site is the starting point of the transect.
+# 2. The transect is a straight line.
+# 3. SiteIds are coordinates in UTM, rounded to km
+if transect:
+    lonlat = np.array([[float(lon), float(lat)] for lon, lat in (siteId.split('_') for siteId in plot_order)])
+    lonlat -= lonlat[0, :]
+    distance = np.round(np.sqrt(np.sum(lonlat**2, axis=1))) * 1e-3
+    plot_ix = np.argsort(distance)
+    plot_order = np.vstack(([plot_order[ix] for ix in plot_ix], distance[plot_ix])).T
+else:
+    plot_order = np.vstack((plot_order, np.arange(len(plot_order)))).T
+
 if probability_plot:
     compare_faultmodel_prob_plot(PPE_paths=PPE_path_list, plot_name=file_name,
                                  outfile_directory=outfile_directory, title=title, pretty_names=pretty_names,
                                  plot_order=plot_order,
                                  labels_on=labels_on,
                                  file_type_list=file_type_list,
-                                 threshold=0.2)
+                                 threshold=0.2,
+                                 transect=transect)
 
 if displacement_chart:
     compare_disps_chart(PPE_paths=PPE_path_list, plot_name=file_name, outfile_directory=outfile_directory,
                         title=title, pretty_names=pretty_names,
                         plot_order=plot_order,
-                        labels_on=labels_on, file_type_list=file_type_list)
+                        labels_on=labels_on, file_type_list=file_type_list,
+                        transect=transect)
 
 if compare_hazcurves:
     compare_mean_hazcurves(PPE_paths=PPE_path_list, plot_name=file_name, outfile_directory=outfile_directory,
@@ -166,20 +182,22 @@ if compare_hazcurves:
                            file_type_list=file_type_list)
 
 if disps_net:
+    site_dists = plot_order[:, 1].astype(float) if transect else []
     compare_disps_with_net(PPE_paths=PPE_path_list, plot_name=file_name, outfile_directory=outfile_directory,
-                           title=title, pretty_names=pretty_names,
-                           file_type_list=file_type_list, sites=plot_order)
+                           title=title, pretty_names=pretty_names, site_dists = site_dists,
+                           file_type_list=file_type_list, sites=plot_order, transect=transect)
 if make_map:
     PPE_dicts = []
     for PPE_path in PPE_path_list:
         for disp in displacement_threshold_list:
             map_and_plot_probabilities(PPE_path=PPE_path,
-                                       plot_name=file_name,
+                                       plot_name=PPE_path.split("/")[-2],
                                        exceed_type=exceed_type,
                                        title=title,
                                        outfile_directory=outfile_directory,
                                        plot_order=plot_order,
-                                       labels_on=True,
+                                       labels_on=labels_on,
                                        file_type_list=file_type_list,
                                        threshold=disp,
-                                       colorbar_max=0.3)
+                                       colorbar_max=0.3,
+                                       transect=transect)

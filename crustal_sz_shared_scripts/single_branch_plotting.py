@@ -377,107 +377,8 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
 
 
 
-# def map_and_plot_probabilities(weighted_mean_PPE_dictionary, exceed_type, model_version_title, out_directory,
-#                            file_type_list,
-#                        slip_taper, file_name, skipped_sites=None, probability=0.1, grid=False):
-#
-#     """ plots the displacement threshold value (m) for x% probability of exceedance in 100 years
-#     CAVEATS/choices:
-#     - currently set up with two subplots, a 10% and 2% probability of exceedance
-#     - exeed_type is a list of ["total_abs", "up", "down"]
-#     - fault_type can be "crustal" or "sz"
-#
-#     use grid=True if you want to plot the gridded data as an image rather than a set of scatter points"""
-#
-#     plot_order = get_plot_order_list(weighted_mean_PPE_dictionary, skipped_sites=skipped_sites)
-#
-#     if slip_taper is True:
-#         taper_extension = "_tapered"
-#     else:
-#         taper_extension = "_uniform"
-#
-#     # load data
-#     site_coords = [weighted_mean_PPE_dictionary[site]["site_coords"] for site in plot_order]
-#     x_data = [coords[0] for coords in site_coords]
-#     y_data = [coords[1] for coords in site_coords]
-#
-#     map = gpd.read_file("../data/coastline/nz_coastline.geojson")
-#     wellington_boundary = gpd.read_file("../data/wellington_region_boundary.geojson")
-#     plate_boundary = gpd.read_file("../data/coastline/plate_boundary.geojson")
-#
-#     # get plot bounds (set for Wellington Region at the moment)
-#     plot_xmin, plot_ymin, plot_xmax, plot_ymax, \
-#         xmin_tick, xmax_tick, ymin_tick, ymax_tick, tick_separation \
-#         = get_figure_bounds(extent="Wellington close")
-#
-#     plt.close("all")
-#     # two part figure, plot on the left and map on the right
-#     fig, axs = plt.subplots(1, 2, figsize=(6.5, 3.5))
-#
-#     colors = make_qualitative_colormap("custom", len(plot_order))
-#
-#
-#     ##### plot disps on the left
-#     disps, errs_plus, errs_minus = \
-#         get_mean_disp_barchart_data(site_PPE_dictionary=weighted_mean_PPE_dictionary, exceed_type=exceed_type,
-#                                     site_list=plot_order, probability=probability)
-#     bar_width = 0.6
-#
-#     # plot bars and error bars
-#     x = np.arange(len(plot_order))
-#     bars = axs[0].bar(x, disps, bar_width, color=colors, linewidth=0.5)
-#     axs[0].errorbar(x, disps, yerr=[errs_minus, errs_plus], fmt='none', ecolor='0.6', capsize=3,
-#                     linewidth=1, markeredgewidth=1)
-#
-#     # add zero line
-#     axs[0].axhline(y=0, color="k", linewidth=0.5)
-#
-#     # add value labels to bars
-#     label_offset = 3 * 0.05
-#     label_size = 6
-#     # add value labels to bars
-#     for bar in bars:
-#         bar_color = bar.get_facecolor()
-#         axs[0].text(x=(bar.get_x() + bar.get_width() * 0.6), y=bar.get_height() + label_offset,
-#                     s=round(bar.get_height(), 1), ha='left',
-#                     va='center', color=bar_color, fontsize=label_size, fontweight='bold')
-#     axs[0].set_ylim(0.0, 3.0)
-#     axs[0].set_ylabel("Displacement (m)", fontsize=8)
-#     axs[0].tick_params(axis='y', labelrotation=90, labelsize=6)
-#     axs[0].tick_params(axis='x', labelrotation=90, labelsize=6)
-#     axs[0].set_xticks(x, plot_order)
-#
-#     #### Format map subplot
-#     map.plot(ax=axs[1], color="k", linewidth=0.5)
-#     plate_boundary.plot(ax=axs[1], color="0.75", linewidth=1.0)
-#     axs[1].set_xticks(np.arange(xmin_tick, xmax_tick, tick_separation))
-#     axs[1].xaxis.set_major_formatter(mticker.FormatStrFormatter('%.f mE'))
-#     axs[1].set_yticks(np.arange(ymin_tick, ymax_tick, tick_separation))
-#     axs[1].yaxis.set_major_formatter(mticker.FormatStrFormatter('%.f mN'))
-#     plt.setp(axs[1].get_yticklabels(), rotation=90, ha="center", rotation_mode="anchor")
-#     axs[1].tick_params(axis="both", which='major', labelsize=6)
-#     axs[1].set_xlim(plot_xmin, plot_xmax)
-#     axs[1].set_ylim(plot_ymin, plot_ymax)
-#     axs[1].set_aspect("equal")
-#
-#     # add site points
-#     axs[1].scatter(x_data, y_data, s=20, c=colors, edgecolors='black', linewidth=0.5, zorder=2)
-#
-#     # set titles and stuff
-#     probability_string = str(int(100 * probability))
-#     fig.suptitle(f"Displacement at {probability_string}%\n{model_version_title} {exceed_type} (100 yrs)")
-#     fig.tight_layout()
-#
-#     # make directory for hazard map if it doesn't exist
-#     if not os.path.exists(f"../{out_directory}/weighted_mean_figures"):
-#         os.mkdir(f"../{out_directory}/weighted_mean_figures")
-#
-#     for type in file_type_list:
-#         fig.savefig(f"../{out_directory}/weighted_mean_figures/disp{probability_string}_plot_hazard_map_{file_name}."
-#                     f"{type}", dpi=300)
-
 def map_and_plot_probabilities(PPE_path, plot_name, title, outfile_directory, plot_order, threshold=0.2,
-                                 labels_on=True, file_type_list=["png"], exceed_type="down", colorbar_max=None):
+                                 labels_on=True, file_type_list=["png"], exceed_type="down", colorbar_max=None, transect=False):
     """Makes a two-part plot with probability of exceeding a threshold on the left and a map of sites, colored by
     probability, on the right"""
 
@@ -485,10 +386,10 @@ def map_and_plot_probabilities(PPE_path, plot_name, title, outfile_directory, pl
     PPE_dict = h5.File(PPE_path, "r")
 
     # set x-axis plot order info for probability subplot
-    probability_x_vals = np.arange(len(plot_order))  # the site label locations
+    probability_x_vals = plot_order[:, 1].astype(float)  # the site label locations
 
     # load data from PPE dictionary
-    site_coords = [PPE_dict[site]["site_coords"] for site in plot_order]
+    site_coords = [PPE_dict[site]["site_coords"] for site in plot_order[:, 0]]
     map_x_data = [coords[0] for coords in site_coords]
     # Load other map data
     coastline = gpd.read_file("../data/coastline/nz_coastline.geojson")
@@ -514,7 +415,7 @@ def map_and_plot_probabilities(PPE_path, plot_name, title, outfile_directory, pl
     # find the maximum y value for error bars so that the plot can be scaled correctly
     mean_probs, errs_plus, errs_minus = \
         get_mean_prob_plot_data(site_PPE_dictionary=PPE_dict, exceed_type=exceed_type,
-                                threshold=threshold, site_list=plot_order)
+                                threshold=threshold, site_list=plot_order[:, 0])
     max_errs_y = 0.02 + max([mean_probs[j] + errs_plus[j] for j in range(len(mean_probs))])
     if colorbar_max is None:
         max_prob_color_val = round(max(mean_probs), 2) + 0.01
@@ -545,7 +446,7 @@ def map_and_plot_probabilities(PPE_path, plot_name, title, outfile_directory, pl
     # this adds a 0.03 offset to the y value of the label so that it doesn't overlap with the point
     label_y_vals = [prob + 0.03 for prob in mean_probs]
     if labels_on:
-        for site, q in enumerate(probability_x_vals):
+        for q, _ in enumerate(probability_x_vals):
             axs[0].text(x=probability_x_vals[q], y=label_y_vals[q], s=labels[q],
                         horizontalalignment='center', fontsize=6, fontweight='bold')
 
@@ -558,7 +459,8 @@ def map_and_plot_probabilities(PPE_path, plot_name, title, outfile_directory, pl
     axs[0].tick_params(axis='y', labelsize=labelsize)
     axs[0].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
     axs[0].yaxis.set_major_locator(mticker.MultipleLocator(0.1))
-    axs[0].set_xticks(probability_x_vals, plot_order, va='top', ha='center')
+    if not transect:
+        axs[0].set_xticks(probability_x_vals, plot_order[:, 0], va='top', ha='center')
     axs[0].set_ylabel("Probabilty", fontsize=fontsize)
     axs[0].set_title(f"Probability of exceeding {threshold} m uplift", fontsize=fontsize)
 
@@ -598,4 +500,3 @@ def map_and_plot_probabilities(PPE_path, plot_name, title, outfile_directory, pl
 
     for file_type in file_type_list:
         fig.savefig(f"../{outfile_directory}/map_prob_{plot_name}.{file_type}", dpi=300)
-
