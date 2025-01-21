@@ -28,7 +28,7 @@ fakequakes = True  # Use fakequakes for the subduction zone (applied only to hik
 
 # Processing Flags (True/False)
 #["_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nb110", "_sz_fq_pnb110", "_sz_fq_3lb110", "_sz_fq_plb110"]
-single_branch = "_sz_fq_3nub110"          # Do you want to calculate PPEs for a single branch? Either "None" or the suffix of the branch you want to use
+single_branch = None         # Do you want to calculate PPEs for a single branch? Either "None" or the suffix of the branch you want to use
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
