@@ -13,12 +13,12 @@ except ImportError:
     print("Running on NESI. Site geojsons won't be output....")
 
 
-#### USER INPUTS   #####
+#### USER INPUTS #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
 crustal_site_names = "_JDE_sites"   # Name of the sites geojson
-sz_site_names = ["_EastCoastNI_5km", "_SouthIsland_10km"]       # Name of the sites geojson
+sz_site_names = ["_EastCoastNI_5km_transect", "_SouthIsland_10km"]       # Name of the sites geojson
 sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerk", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
@@ -27,7 +27,8 @@ testing = True   # Impacts number of samples runs, job time etc
 fakequakes = True  # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
-single_branch = "_sz_fq_3nub110"          # Do you want to calculate PPEs for a single branch? Either "None" or the suffix of the branch you want to use
+single_branch = ["_sz_fq_3nub110", "_sz_fq_3nhb110", "_sz_fq_3lhb110"] # Allows you to specifically select which branches to calculate PPEs for. If None, all branches will be calculated
+rate_scaling = False           # Do you want to calculate PPEs for a single branch with different rate scalings?
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
@@ -36,7 +37,7 @@ calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate P
 remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 save_arrays = False         # Do you want to save the displacement and probability arrays?
 default_plot_order = False       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
-make_hazcurves = True     # Do you want to make hazard curves?
+make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../sites/EastCoastNI_5km_transect_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
 
@@ -127,6 +128,8 @@ else:
     fault_type = [fault_type]
 
 if single_branch is not None:
+    if isinstance(single_branch, str):
+        single_branch = [single_branch]
     if paired_crustal_sz:
         raise Exception("Can't have single branch and paired crustal sz")
     if calculate_weighted_mean_PPE:
@@ -249,13 +252,19 @@ if not paired_crustal_sz:
     for ii in range(len(fault_type)):
         fault_model_branch_weight_dict = fault_model_branch_weight_dict | branch_weight_dict_list[ii]
     
-    NSHM_directory_list, file_suffix_list, n_branches = get_NSHM_directories(fault_type, crustal_site_names, sz_site_names, deformation_model='geologic and geodetic', time_independent=True,
+    NSHM_directory_list, file_suffix_list, n_branches = get_NSHM_directories(fault_type, deformation_model='geologic and geodetic', time_independent=True,
                             time_dependent=True, single_branch=single_branch, fakequakes=fakequakes)
     
     if single_branch:
         branch_keys = list(fault_model_branch_weight_dict.keys())
-        branch_key = [key for key in branch_keys if any(["_S10_" in key, "_S1_" in key]) and file_suffix_list[0] in key][0]
-        fault_model_branch_weight_dict = {branch_key: fault_model_branch_weight_dict[branch_key]}
+        if rate_scaling:
+            branch_key = [key for key in branch_keys if any([suffix in key for suffix in file_suffix_list])]
+        else:
+            branch_key = [key for key in branch_keys if any(["_S10_" in key, "_S1_" in key]) and any([suffix in key for suffix in file_suffix_list])]
+        fault_model_single_branch_weight_dict = {}
+        for key in branch_key:
+            fault_model_single_branch_weight_dict = fault_model_single_branch_weight_dict | {key: fault_model_branch_weight_dict[key]}
+        fault_model_branch_weight_dict = fault_model_single_branch_weight_dict
 
     extension1_list = [gf_name + suffix for suffix in file_suffix_list]
     get_rupture_dict = False
@@ -277,7 +286,7 @@ if not paired_crustal_sz:
         ftype = [(jj, ftype) for jj, ftype in enumerate(fault_type) if '_' + ftype.replace('rustal', '') + '_' in extension1][0]
         all_rupture_disp_file = f"../{version_discretise_directory[ftype[0]]}/{extension1}/all_rupture_disps_{extension1}{taper_extension}_sites.pkl"
 
-        print(f"\n\tbranch {ix + 1} of {len(extension1_list)}")
+        print(f"\n\tbranch {ix + 1} of {len(extension1_list)}: {extension1}")
         if os.path.exists(all_rupture_disp_file):
             with open(all_rupture_disp_file, 'rb') as fid:
                 rupt = pkl.load(fid)
@@ -392,15 +401,15 @@ if not paired_crustal_sz and calculate_weighted_mean_PPE or not os.path.exists(w
 
 # plot hazard curves and save to file
 if save_arrays:
-    print('Saving data arrays...')
     if single_branch:
         weighted = False
     else:
         weighted = True
-        branch_key = ''
-    ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                        thresh_lims=[0, 3], thresh_step=0.05, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.01,
-                        output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=branch_key)
+        branch_key = ['']
+    for key in branch_key:
+        ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
+                            thresh_lims=[0, 3], thresh_step=0.05, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.01,
+                            output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key)
 
 if paired_crustal_sz:
     site_names_title = f"paired crustal{crustal_site_names} and "
@@ -412,16 +421,16 @@ else:
         fault_type = [fault_type]
     site_names_title = f"{fault_type[0]}{site_names_list[0]}"
 
-if default_plot_order:
-    site_gdf = gpd.read_file(site_geojson)
-    plot_order = site_gdf['siteId'].values.tolist()
-
-else:
-    print('Using custom plot order from', plot_order_csv)
-    plot_order = pd.read_csv(plot_order_csv)
-    plot_order = list(plot_order['siteId'])
-
 if make_hazcurves:
+    if default_plot_order:
+        site_gdf = gpd.read_file(site_geojson)
+        plot_order = site_gdf['siteId'].values.tolist()
+
+    else:
+        print('Using custom plot order from', plot_order_csv)
+        plot_order = pd.read_csv(plot_order_csv)
+        plot_order = list(plot_order['siteId'])
+
     print(f"\nMaking hazard curves...")
     if single_branch:
         out_dir = f"{out_version_results_directory}/sites{single_branch}/hazard_curves{outfile_extension}"

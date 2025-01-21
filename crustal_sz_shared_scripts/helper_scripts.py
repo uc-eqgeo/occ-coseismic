@@ -652,7 +652,7 @@ def maximum_displacement_plot(site_ids, branch_site_disp_dict, model_dir, branch
         fig.savefig(f"../{model_dir}/{branch_name}/{branch_name}_max_disp.png", dpi=300)
     plt.close(fig)
 
-def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_version, deformation_model='geologic and geodetic', time_independent=True,
+def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodetic', time_independent=True,
                          time_dependent=True, single_branch=False, fakequakes=False):
     # Set up which branches you want to calculate displacements and probabilities for
     # File suffixes and NSHM directories for each branch MUST be in the same order or you'll cause problems
@@ -715,9 +715,9 @@ def get_NSHM_directories(fault_type_list, crustal_model_extension, sz_model_vers
                                          "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
 
             if single_branch:
-                branch_index = file_suffix_list_i.index(single_branch)
-                file_suffix_list_i = [file_suffix_list_i[branch_index]]
-                NSHM_directory_list_i = [NSHM_directory_list_i[branch_index]]
+                branch_index = [file_suffix_list_i.index(branch) for branch in single_branch]
+                file_suffix_list_i = [file_suffix_list_i[index] for index in branch_index]
+                NSHM_directory_list_i = [NSHM_directory_list_i[index] for index in branch_index]
             else:
                 fault_branches += len(file_suffix_list_i) * 3  # For scaling
 
