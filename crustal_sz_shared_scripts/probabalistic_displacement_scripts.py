@@ -2,7 +2,6 @@ try:
     import geopandas as gpd
     import rasterio
     from rasterio.transform import Affine
-    from weighted_mean_plotting_scripts import get_mean_prob_barchart_data, get_mean_disp_barchart_data
 except:
     print("Running on NESI. Some functions won't work....")
 from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile, maximum_displacement_plot, dict_to_hdf5, hdf5_to_dict
@@ -444,7 +443,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             exceedance_errs_down = n_exceedances_down / error_chunking
 
             # Output errors
-            sigma_lims = [2.27, 15.865, 84.135, 97.725]
+            sigma_lims = [0, 2.27, 15.865, 84.135, 97.725, 100]  # Min/Max, 1 and 2 sigma
             error_abs = np.percentile(exceedance_errs_total_abs, sigma_lims, axis=1)
             error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
             error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
