@@ -110,7 +110,7 @@ if fakequakes and all([fault_type != 'all', fault_type != 'sz', ]):
 if not nesi and fakequakes:
     load_random = True
 
-if not default_plot_order and not os.path.exists(plot_order_csv):
+if not default_plot_order and not os.path.exists(plot_order_csv) and make_hazcurves:
     raise Exception("Manual plot order selected but no plot order csv found. Please create a csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId)")
 
 if paired_crustal_sz:

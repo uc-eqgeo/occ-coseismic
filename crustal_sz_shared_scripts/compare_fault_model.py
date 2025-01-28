@@ -269,7 +269,10 @@ def compare_disps_with_net(PPE_paths, plot_name, title, pretty_names, outfile_di
     bar_width = site_dists.max() / site_dists.shape[0] / len(PPE_dicts)
     x2 = [site_dist + bar_width for site_dist in site_dists]
     x3 = [site_dist + 2*bar_width for site_dist in site_dists]
-    exes = [site_dists, x2, x3]
+    x4 = [site_dist + 3*bar_width for site_dist in site_dists]
+    x5 = [site_dist + 4*bar_width for site_dist in site_dists]
+    x6 = [site_dist + 5*bar_width for site_dist in site_dists]
+    exes = [site_dists, x2, x3, x4, x5, x6]
 
     max_min_y_vals = []
     max_min_errs_y_val = []
