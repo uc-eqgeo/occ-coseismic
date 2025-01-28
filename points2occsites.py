@@ -10,8 +10,8 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 
-searise_csv = ['.\\sites\\SouthIsland_1km_grid.csv']
-
+searise_csv = ['.\\sites\\paper_sites.csv']
+data_format = 'qgis' # 'qgis' for qgis exports, 'searise' for searise exports, 'hamling' for Hamling VLM coast sites from paper
 out_csv_file = None  # If none, automatically set to the input file name with '_points' appended
 
 out_pd = pd.DataFrame(columns=['siteId', 'Lon', 'Lat', 'Height'])
@@ -19,12 +19,12 @@ out_pd = pd.DataFrame(columns=['siteId', 'Lon', 'Lat', 'Height'])
 for csv_file in searise_csv:
     data = pd.read_csv(csv_file)
 
-    if 'lon' in data.columns:  # For searise point exports
+    if data_format == 'searise':  # For searise point exports
         data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.lon, data.lat), crs='EPSG:4326')
         data.geometry = data.geometry.to_crs('EPSG:2193')  # Convert to NZTM
         coord_name = False
         sort_values = True
-    elif 'Lon' in data.columns:  # For Hamling VLM coast sites from paper
+    elif data_format == 'hamling':  # For Hamling VLM coast sites from paper
         data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.Lon, data.Lat), crs='EPSG:4326')
         data.rename(columns={'Site ID': 'siteId'}, inplace=True)
         data.geometry = data.geometry.to_crs('EPSG:2193')  # Convert to NZTM
