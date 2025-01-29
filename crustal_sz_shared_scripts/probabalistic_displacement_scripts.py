@@ -182,9 +182,9 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
 
 if numba_flag:
     @njit(parallel=True)
-    def calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=1):
+    def calc_thresholds(thresholds, cumulative_disp_scenarios):
         n_thresholds = len(thresholds)
-        _, n_scenarios = cumulative_disp_scenarios.shape
+        n_chunks, n_scenarios = cumulative_disp_scenarios.shape
         n_exceedances_total_abs = np.empty((n_thresholds, n_chunks), dtype=np.int32)
         n_exceedances_up = np.empty((n_thresholds, n_chunks), dtype=np.int32)
         n_exceedances_down = np.empty((n_thresholds, n_chunks), dtype=np.int32)
@@ -212,10 +212,12 @@ if numba_flag:
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
 else:
-    def calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=1):
-        n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
-        n_exceedances_up = np.zeros((len(thresholds), n_chunks))
-        n_exceedances_down = np.zeros((len(thresholds), n_chunks))
+    def calc_thresholds(thresholds, cumulative_disp_scenarios):
+        n_thresholds = len(thresholds)
+        n_chunks, n_scenarios = cumulative_disp_scenarios.shape
+        n_exceedances_total_abs = np.zeros((n_thresholds, n_chunks))
+        n_exceedances_up = np.zeros((n_thresholds, n_chunks))
+        n_exceedances_down = np.zeros((n_thresholds, n_chunks))
 
         abs_disp_scenarios = np.abs(cumulative_disp_scenarios)
         for tix, threshold in enumerate(thresholds):
@@ -457,25 +459,26 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             if benchmarking:
                 print(f"Exceedances written : {time() - lap:.15f} s")
             lap = time()
-            error_chunking = 1000
-            rand_scenario_ix = np.random.randint(0, n_samples, size=error_chunking*n_samples)
+            error_chunking = 100  # Now this is number of chunks to use
+            error_samples = int(n_samples / 1)  # Number of scenarios to use per chunk for error calculation (in case want to use less)
+            rand_scenario_ix = np.random.randint(0, n_samples, size=error_chunking * error_samples)
 
             if benchmarking:
                 print(f"Rand Scenario ix : {time() - lap:.15f} s")
             lap = time()
-            chunked_disp_scenarios = cumulative_disp_scenarios[0, rand_scenario_ix].reshape(error_chunking, n_samples)
+            chunked_disp_scenarios = cumulative_disp_scenarios[0, rand_scenario_ix].reshape(error_chunking, error_samples)
 
             if benchmarking:
                 print(f"Chunked Displacements : {time() - lap:.15f} s")
             lap = time()
-            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, chunked_disp_scenarios, n_chunks=error_chunking)
+            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, chunked_disp_scenarios)
 
             if benchmarking:
                 print(f"Error Exceedances Counted : {time() - lap:.15f} s\n")
             lap = time()
-            exceedance_errs_total_abs = n_exceedances_total_abs / error_chunking
-            exceedance_errs_up = n_exceedances_up / error_chunking
-            exceedance_errs_down = n_exceedances_down / error_chunking
+            exceedance_errs_total_abs = n_exceedances_total_abs / error_samples
+            exceedance_errs_up = n_exceedances_up / error_samples
+            exceedance_errs_down = n_exceedances_down / error_samples
 
             # Output errors
             sigma_lims = [0, 2.275, 15.865, 50, 84.135, 97.725, 100]  # Min/Max, 1 and 2 sigma
