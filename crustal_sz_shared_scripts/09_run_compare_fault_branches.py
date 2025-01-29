@@ -16,6 +16,7 @@ results_directory = "results"
 exceed_type = "down"                     # "down", "up", or "total_abs"
 slip_taper = False
 transect = False  # Whether to assume that all points are in order along a transect, and that a distance should be calculated rather than site names labeled
+sigma_lims = "1sig"   # "minmax", "2sig" or "1sig" for the error bars on the displacement chart
 
 # Choose what models to compare. These names should be in the results folder already.
 model_subdirectory_dict = {"fq_hikkerk" : ["sz_fq_3nub110", "sz_fq_pnub110", "sz_fq_3nhb110", "sz_fq_pnhb110", "sz_fq_3lhb110", "sz_fq_plhb110"],
@@ -30,10 +31,10 @@ for key in model_subdirectory_dict.keys():
     pretty_names += model_subdirectory_dict[key]
 
 file_type_list = ["png"]     # generally png and/or pdf
-probability_plot = True            # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
-displacement_chart = True          # plots the displacement at the 10% and 2% probability of exceedance thresholds
+probability_plot = False            # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
+displacement_chart = False          # plots the displacement at the 10% and 2% probability of exceedance thresholds
 compare_hazcurves = True        # plots the different hazard curves on the same plot
-disps_net = True
+disps_net = False
 make_map = False
 labels_on = False                # displacement number labels for bar charts and probability plots
 
@@ -122,8 +123,8 @@ matplotlib.rcParams['pdf.fonttype'] = 42
 displacement_threshold_list = [0.2]
 
 title = " vs ".join(pretty_names)
-file_name = "_".join(pretty_names)
-file_name = file_name.replace(" ", "_")
+dir_name = "_".join(pretty_names)
+dir_name = dir_name.replace(" ", "_")
 
 if slip_taper: slip_taper_extension = "_tapered"
 else: slip_taper_extension = "_uniform"
@@ -134,10 +135,10 @@ for name in model_subdirectory_dict.keys():
         mean_PPE_path_i = f"../{results_directory}/{name}/sites_{branch}/branch_site_disp_dict_sites_{branch}_S10.h5"
         mean_PPE_path_list.append(mean_PPE_path_i)
 
-outfile_directory = f"{results_directory}/compare_fault_models/{file_name}"
+outfile_directory = f"{results_directory}/compare_fault_models/{dir_name}"
 if not os.path.exists(f"../{outfile_directory}"):
         os.makedirs(f"../{outfile_directory}", exist_ok=True)
-
+file_name = sigma_lims
 
 pretty_site_names = []
 if plot_order_name == "from_csv":
@@ -174,20 +175,19 @@ if probability_plot:
                                  labels_on=labels_on,
                                  file_type_list=file_type_list,
                                  threshold=0.2,
-                                 transect=transect, site_names=pretty_site_names)
+                                 transect=transect, site_names=pretty_site_names, sigma=sigma_lims)
 
 if displacement_chart:
     compare_disps_chart(PPE_paths=PPE_path_list, plot_name=file_name, outfile_directory=outfile_directory,
                         title=title, pretty_names=pretty_names,
                         plot_order=plot_order,
                         labels_on=labels_on, file_type_list=file_type_list,
-                        transect=transect, site_names=pretty_site_names)
+                        transect=transect, site_names=pretty_site_names, plot_bars=False, sigma=sigma_lims)
 
 if compare_hazcurves:
     compare_mean_hazcurves(PPE_paths=PPE_path_list, plot_name=file_name, outfile_directory=outfile_directory,
-                           title=title, pretty_names=pretty_names, exceed_type=exceed_type,
-                           plot_order=plot_order,
-                           file_type_list=file_type_list, site_names=pretty_site_names)
+                           title=title, pretty_names=pretty_names, plot_order=plot_order,
+                           file_type_list=file_type_list, site_names=pretty_site_names, sigma=sigma_lims)
 
 if disps_net:
     site_dists = plot_order[:, 1].astype(float) if transect else []

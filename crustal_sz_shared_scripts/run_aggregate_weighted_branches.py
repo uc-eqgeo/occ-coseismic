@@ -262,9 +262,9 @@ if not paired_crustal_sz:
     if single_branch:
         branch_keys = list(fault_model_branch_weight_dict.keys())
         if rate_scaling:
-            branch_key = [key for key in branch_keys if any([suffix in key for suffix in file_suffix_list])]
+            branch_key = [key for key in branch_keys if any([suffix in key[-len(suffix):] for suffix in file_suffix_list])]
         else:
-            branch_key = [key for key in branch_keys if any(["_S10_" in key, "_S1_" in key]) and any([suffix in key for suffix in file_suffix_list])]
+            branch_key = [key for key in branch_keys if any(["_S10_" in key, "_S1_" in key]) and any([suffix in key[-len(suffix):] for suffix in file_suffix_list])]
         fault_model_single_branch_weight_dict = {}
         for key in branch_key:
             fault_model_single_branch_weight_dict = fault_model_single_branch_weight_dict | {key: fault_model_branch_weight_dict[key]}

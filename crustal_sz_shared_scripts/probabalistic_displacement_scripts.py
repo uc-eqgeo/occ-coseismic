@@ -443,7 +443,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             exceedance_errs_down = n_exceedances_down / error_chunking
 
             # Output errors
-            sigma_lims = [0, 2.27, 15.865, 84.135, 97.725, 100]  # Min/Max, 1 and 2 sigma
+            sigma_lims = [0, 2.275, 15.865, 50.0, 84.135, 97.725, 100]  # Min/Max, 1 and 2 sigma
             error_abs = np.percentile(exceedance_errs_total_abs, sigma_lims, axis=1)
             error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
             error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
@@ -703,7 +703,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     site_coords_dict = fault_model_PPE_dict['meta']['site_coords_dict']
 
     # Create variables
-    sigma_lims = [2.275, 15.865, 84.135, 97.725]
+    sigma_lims = [2.275, 15.865, 50, 84.135, 97.725]
     sigma_lims.sort()
     exceed_type_list = ["total_abs", "up", "down"]
 
@@ -923,7 +923,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
     # Create variables
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
-    sigma_lims = [2.275, 15.865, 84.135, 97.725]
+    sigma_lims = [2.275, 15.865, 50, 84.135, 97.725]
     sigma_lims.sort()
     exceed_type_list = ["total_abs", "up", "down"]
 
