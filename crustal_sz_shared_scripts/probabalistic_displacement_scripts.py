@@ -24,10 +24,15 @@ from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
 numba_flag = True
-try:
-    from numba import njit
-except:
-    numba_flag = False
+if numba_flag:
+    try:
+        from numba import njit, prange
+        print('Numba-ing')
+    except:
+        numba_flag = False
+        print('No numba found. Some functions will be slower.')
+if not numba_flag:
+    print('No numba found. Some functions will be slower.')
 
 matplotlib.rcParams['pdf.fonttype'] = 42
 
@@ -191,19 +196,26 @@ if numba_flag:
             n_exceedances_down[tix, :] = np.sum(cumulative_disp_scenarios < -threshold, axis=1)
 
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
+
 else:
     def calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=1):
         n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
         n_exceedances_up = np.zeros((len(thresholds), n_chunks))
         n_exceedances_down = np.zeros((len(thresholds), n_chunks))
 
+        abs_disp_scenarios = np.abs(cumulative_disp_scenarios)
         for tix, threshold in enumerate(thresholds):
             # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
             # across all of the 100 yr scenarios
             # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
-            n_exceedances_total_abs[tix, :] = np.sum(np.abs(cumulative_disp_scenarios) > threshold, axis=1)
+            n_exceedances_total_abs[tix, :] = np.sum(abs_disp_scenarios > threshold, axis=1)
             n_exceedances_up[tix, :] = np.sum(cumulative_disp_scenarios > threshold, axis=1)
             n_exceedances_down[tix, :] = np.sum(cumulative_disp_scenarios < -threshold, axis=1)
+            # Run check to see if displacement has maxed out (and therefore to stop calculating)
+            if np.sum(n_exceedances_total_abs[tix, :]) == 0:
+                # Double check that this isn't because up and down have cancelled out
+                if np.sum(n_exceedances_up[tix, :]) == 0:
+                    break
 
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
@@ -401,7 +413,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             # sum all displacement values at that site in that 100 yr interval
             cumulative_disp_scenarios = disp_scenarios.sum(axis=1)
             if benchmarking:
-                print(f"Calculated PPE: {time() - lap:.5f} s")
+                print(f"Calculated Displacements: {time() - lap:.5f} s")
             lap = time()    
 
         # sum all the displacements in the 100 year window that exceed threshold
@@ -411,7 +423,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         lap = time()
         n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
         if benchmarking:
-            print(f"Cumulative Displacements : {time() - lap:.15f} s")
+            print(f"Exceedances Counted : {time() - lap:.15f} s")
         lap = time()
 
         # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
@@ -428,25 +440,37 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
         # Save the rest of the data if this is a NSHM branch
         if NSHM_branch:
-            chunked_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)
+            if benchmarking:
+                print(f"Exceedances written : {time() - lap:.15f} s")
+            lap = time()
+            error_chunking = 1000
+            rand_scenario_ix = np.random.randint(0, n_samples, size=error_chunking*n_samples)
 
-            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, chunked_disp_scenarios, n_chunks=n_chunks)
+            if benchmarking:
+                print(f"Rand Scenario ix : {time() - lap:.15f} s")
+            lap = time()
+            chunked_disp_scenarios = cumulative_disp_scenarios[0, rand_scenario_ix].reshape(error_chunking, n_samples)
+
             if benchmarking:
                 print(f"Chunked Displacements : {time() - lap:.15f} s")
-
             lap = time()
-            # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
-            # quite high for low displacements (25%). Means there's a ~25% chance an earthquake will exceed 0 m in next 100
-            # years across all earthquakes in the catalogue (at that site).
+            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, chunked_disp_scenarios, n_chunks=error_chunking)
+
+            if benchmarking:
+                print(f"Error Exceedances Counted : {time() - lap:.15f} s\n")
+            lap = time()
             exceedance_errs_total_abs = n_exceedances_total_abs / error_chunking
             exceedance_errs_up = n_exceedances_up / error_chunking
             exceedance_errs_down = n_exceedances_down / error_chunking
 
             # Output errors
-            sigma_lims = [0, 2.275, 15.865, 50.0, 84.135, 97.725, 100]  # Min/Max, 1 and 2 sigma
+            sigma_lims = [0, 2.275, 15.865, 50, 84.135, 97.725, 100]  # Min/Max, 1 and 2 sigma
             error_abs = np.percentile(exceedance_errs_total_abs, sigma_lims, axis=1)
             error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
             error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
+            if benchmarking:
+                print(f"Error Percentiles : {time() - lap:.15f} s")
+            lap = time()
 
             site_PPE_dict[site_of_interest].update({"scenario_displacements": cumulative_disp_scenarios[0, slip_scenarios],
                                                     "slip_scenarios_ix": slip_scenarios,
