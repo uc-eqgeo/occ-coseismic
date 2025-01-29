@@ -27,12 +27,9 @@ numba_flag = True
 if numba_flag:
     try:
         from numba import njit, prange
-        print('Numba-ing')
     except:
         numba_flag = False
         print('No numba found. Some functions will be slower.')
-if not numba_flag:
-    print('No numba found. Some functions will be slower.')
 
 matplotlib.rcParams['pdf.fonttype'] = 42
 
@@ -185,29 +182,27 @@ if numba_flag:
     def calc_thresholds(thresholds, cumulative_disp_scenarios):
         n_thresholds = len(thresholds)
         n_chunks, n_scenarios = cumulative_disp_scenarios.shape
-        n_exceedances_total_abs = np.empty((n_thresholds, n_chunks), dtype=np.int32)
-        n_exceedances_up = np.empty((n_thresholds, n_chunks), dtype=np.int32)
-        n_exceedances_down = np.empty((n_thresholds, n_chunks), dtype=np.int32)
+        n_exceedances_total_abs = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
+        n_exceedances_up = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
+        n_exceedances_down = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
 
         abs_disp_scenarios = np.abs(cumulative_disp_scenarios)
-        stop_idx = n_thresholds  # Track where we stop due to the break condition
-        
         for tix in prange(n_thresholds):
             threshold = thresholds[tix]
 
-            count_total_abs = np.sum(abs_disp_scenarios > threshold, axis=1)
-            count_up = np.sum(cumulative_disp_scenarios > threshold, axis=1)
-            count_down = np.sum(cumulative_disp_scenarios < -threshold, axis=1)
+            for i in range(n_chunks):
+                count_total_abs, count_up, count_down = 0, 0, 0
+                for j in range(n_scenarios):
+                    if abs_disp_scenarios[i, j] > threshold:
+                        count_total_abs += 1
+                    if cumulative_disp_scenarios[i, j] > threshold:
+                        count_up += 1
+                    if cumulative_disp_scenarios[i, j] < -threshold:
+                        count_down += 1
 
-            n_exceedances_total_abs[tix, :] = count_total_abs
-            n_exceedances_up[tix, :] = count_up
-            n_exceedances_down[tix, :] = count_down
-
-        # Ensure unused values are set to zero
-        for tix in prange(stop_idx, n_thresholds):
-            n_exceedances_total_abs[tix, :] = 0
-            n_exceedances_up[tix, :] = 0
-            n_exceedances_down[tix, :] = 0
+                n_exceedances_total_abs[tix, i] = count_total_abs
+                n_exceedances_up[tix, i] = count_up
+                n_exceedances_down[tix, i] = count_down
 
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
@@ -249,15 +244,16 @@ def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_
 
         n_ruptures = rates.shape[0]
         scenarios = rng.poisson(time_interval * rates, size=(int(n_samples), n_ruptures))
-        disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
         with open(f"{randdir}/scenarios.pkl", "wb") as fid:
             pkl.dump(scenarios, fid)
+        del scenarios
+        disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
         with open(f"{randdir}/disp_uncertainty.pkl", "wb") as fid:
             pkl.dump(disp_uncertainty, fid)
 
 
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
-                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling='', load_random=False,
+                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=10000, scaling='', load_random=False,
                  thresh_lims=[0, 3], thresh_step=0.01, plot_maximum_displacement=False, array_process=False,
                  crustal_model_dir="", subduction_model_dirs="", NSHM_branch=True, pair_unique_id=None):
     """
@@ -290,8 +286,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         taper_extension = "_uniform"
 
     n_chunks = int(n_samples / error_chunking)
-    if n_chunks < 10:
-        error_chunking = int(n_samples / 10)
+    if n_chunks < 100:
+        error_chunking = int(n_samples / 100)
         print(f'Too few chunks for accurate error estimation. Decreasing error_chunking to {error_chunking}')
 
     if not NSHM_branch:  # If making a PPE for a paired branch, not a NSHM branch, load pre-made cumu_PPE dicts
@@ -400,7 +396,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 sample_shift = np.random.randint(-all_uncertainty.shape[0], all_uncertainty.shape[0])
                 rupture_shift = np.random.randint(-all_uncertainty.shape[1], all_uncertainty.shape[1])
                 disp_uncertainty = np.roll(all_uncertainty, (sample_shift, rupture_shift))[:, :lambdas.size]
-                # Leave scenarios alone - no point rolling sample order, and can't shift sideways as can't appy one rupture's distribution
+                # Leave scenarios alone - no point rolling sample order, and can't shift sideways as can't apply one rupture's distribution
                 # to another
                 if site_dict_i["disps_ix"].shape[0] > 0:
                     scenarios = all_scenarios[:, site_dict_i["disps_ix"]]
@@ -454,21 +450,23 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "exceedance_probs_up": exceedance_probs_up[exceedance_probs_up != 0],
                                            "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
 
+        if benchmarking:
+            print(f"Exceedances written : {time() - lap:.15f} s")
+        lap = time()
         # Save the rest of the data if this is a NSHM branch
         if NSHM_branch:
-            if benchmarking:
-                print(f"Exceedances written : {time() - lap:.15f} s")
-            lap = time()
             ## Reverting back to the old method of subsampling the scenarios right now
             ## This results in a divergence as you get to increasingly low probabilities (i.e. large displacement events are captured in the full scenario set,
             ## but not in most of the sub-samples), but offers some more useful error envelopes at higher probabilities
+            ## The other limit here is this places a lowest % error you can calculate and error for (i.e error_chunking = 1000 can only calculate to 0.1%)
+            ## Increasing the number of scenarios included in each chunk would allow for lower probabilities to be calculated, but then leads to the same issue as
+            ## for the newer method (overly tight error envelope due to little variation between the error scenarios)
             ## The newer method of trying to recreate 100,000 samples from the full set using randowm permutations with replacement basically just recreates the
             ## full set, so is not useful - although they contain the low probability events, becuase you're just using the same scenarios over and over again
             ## the error envelope is so tight around the mean haz curve it's not useful.
             ## It could be that when the branches are combined and weighted together, then this stops being an issue as you can take the relative variations between
             ## the branches as you form the error envelope.
             chunked_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)  # Create chunked displacement scenario (old method)
-
             # error_chunking = 1000  # Now this is number of chunks to use in the new method, rather than the number of samples per chunk (old method)
             # error_samples = int(n_samples / 1)  # Number of scenarios to use per chunk for error calculation (new method)
             # rand_scenario_ix = np.random.randint(0, n_samples, size=error_chunking * error_samples)  # Random permutation to select which scenarios to use in each chunk (new method)
