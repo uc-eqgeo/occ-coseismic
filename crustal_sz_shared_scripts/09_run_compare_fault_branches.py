@@ -16,10 +16,11 @@ results_directory = "results"
 exceed_type = "down"                     # "down", "up", or "total_abs"
 slip_taper = False
 transect = False  # Whether to assume that all points are in order along a transect, and that a distance should be calculated rather than site names labeled
-sigma_lims = "1sig"   # "minmax", "2sig" or "1sig" for the error bars on the displacement chart
+sigma_lims = "2sig"   # "minmax", "2sig" or "1sig" for the error bars on the displacement chart
+file_id = 'numba_empty'
 
 # Choose what models to compare. These names should be in the results folder already.
-model_subdirectory_dict = {"fq_hikkerk" : ["sz_fq_3nub110", "sz_fq_pnub110", "sz_fq_3nhb110", "sz_fq_pnhb110", "sz_fq_3lhb110", "sz_fq_plhb110"],
+model_subdirectory_dict = {#"fq_hikkerk" : ["sz_fq_3nub110", "sz_fq_pnub110", "sz_fq_3nhb110", "sz_fq_pnhb110", "sz_fq_3lhb110", "sz_fq_plhb110"],
 #                                           "sz_fq_3lhb110C1", "sz_fq_3lhb110C100", "sz_fq_3lhb110C1000", "sz_fq_3nhb110C1", "sz_fq_3nhb110C100"],
                            "hikkerk" : ["sz_NzEx"]}
 #model_subdirectory_names = ["crustal_CFM","crustal_Model1", "crustal_Model2"]
@@ -138,7 +139,7 @@ for name in model_subdirectory_dict.keys():
 outfile_directory = f"{results_directory}/compare_fault_models/{dir_name}"
 if not os.path.exists(f"../{outfile_directory}"):
         os.makedirs(f"../{outfile_directory}", exist_ok=True)
-file_name = sigma_lims
+file_name = file_id + '_' + sigma_lims
 
 pretty_site_names = []
 if plot_order_name == "from_csv":
