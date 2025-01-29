@@ -78,10 +78,6 @@ def get_mean_prob_plot_data(site_PPE_dictionary, threshold, exceed_type, site_li
     probs = []
     errs_plus = []
     errs_minus = []
-    good=0
-    err=0
-    last_was = 'good'
-    old_len = len(probs)
     for ix, site in enumerate(site_list):
         t_min, t_max, t_step = site_PPE_dictionary[site]['thresh_para'][:]
         threshold_vals = list(np.round(np.arange(t_min, t_max + t_step, t_step), 4))

@@ -9,15 +9,18 @@ from single_branch_plotting import map_and_plot_probabilities
 from compare_fault_model import compare_faultmodel_prob_plot, compare_disps_chart, compare_mean_hazcurves, \
     compare_disps_with_net
 
+os.chdir(os.path.dirname(__file__))
 ########## USER INPUTS #######################
 plot_order_name = "from_csv"                 # "JDE sites", "from_csv", or "default"
 results_directory = "results"
 exceed_type = "down"                     # "down", "up", or "total_abs"
 slip_taper = False
-transect = True  # Whether to assume that all points are in order along a transect, and that a distance should be calculated rather than site names labeled
+transect = False  # Whether to assume that all points are in order along a transect, and that a distance should be calculated rather than site names labeled
 
 # Choose what models to compare. These names should be in the results folder already.
-model_subdirectory_dict = {"fq_hikkerk" : ["sz_fq_3nub110", "sz_fq_3nhb110", "sz_fq_3lhb110"]}
+model_subdirectory_dict = {"fq_hikkerk" : ["sz_fq_3nub110", "sz_fq_pnub110", "sz_fq_3nhb110", "sz_fq_pnhb110", "sz_fq_3lhb110", "sz_fq_plhb110"],
+#                                           "sz_fq_3lhb110C1", "sz_fq_3lhb110C100", "sz_fq_3lhb110C1000", "sz_fq_3nhb110C1", "sz_fq_3nhb110C100"],
+                           "hikkerk" : ["sz_NzEx"]}
 #model_subdirectory_names = ["crustal_CFM","crustal_Model1", "crustal_Model2"]
 
 # used for plot labels/titles. must be in same order as model_subdirectory_names
@@ -29,12 +32,12 @@ for key in model_subdirectory_dict.keys():
 file_type_list = ["png"]     # generally png and/or pdf
 probability_plot = True            # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
 displacement_chart = True          # plots the displacement at the 10% and 2% probability of exceedance thresholds
-compare_hazcurves = False        # plots the different hazard curves on the same plot
+compare_hazcurves = True        # plots the different hazard curves on the same plot
 disps_net = True
 make_map = False
 labels_on = False                # displacement number labels for bar charts and probability plots
 
-plot_order_csv = "../sites/EastCoastNI_5km_transect_points.csv"  # csv file with site order
+plot_order_csv = "../sites/paper_sites_points.csv"  # csv file with site order
 
 #### script ###################
 crustal_sheet_name = "crustal_weights_4_2"
@@ -93,21 +96,21 @@ def make_branch_weight_dict(branch_weight_file_path, sheet_name):
 
     return branch_weight_dict
 
-branch_weight_dict_list = []
+branch_weight_dict = {}
 branch_weight_file_path = os.path.relpath(os.path.join(os.path.dirname(__file__), f"../data/branch_weight_data.xlsx"))
 for sheet in sheet_list:
-    branch_weight_dict_list.append(make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
-                                                            sheet_name=sheet))
+    branch_weight_dict = branch_weight_dict | make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
+                                                                      sheet_name=sheet)
 
 file_suffix_list = []
 model_dict_list = []
 for key in model_subdirectory_dict.keys():
     file_suffix_list += model_subdirectory_dict[key]
     model_dict_list += [key] * len(model_subdirectory_dict[key])
-branch_key = [key for key in branch_weight_dict_list[0].keys() if any(["_S10_" in key, "_S1_" in key]) and any([suffix in key for suffix in file_suffix_list])]
+branch_key = [key for key in branch_weight_dict.keys() if any(["_S10_" in key, "_S1_" in key]) and any([suffix in key for suffix in file_suffix_list])]
 branch_label_dict = {}
 for key in branch_key:
-    branch_label_dict[branch_weight_dict_list[0][key]["file_suffix"].strip('_')] = key
+    branch_label_dict[branch_weight_dict[key]["file_suffix"].strip('_')] = key
 
 PPE_path_list = []
 for ix, suffix in enumerate(file_suffix_list):
@@ -136,10 +139,14 @@ if not os.path.exists(f"../{outfile_directory}"):
         os.makedirs(f"../{outfile_directory}", exist_ok=True)
 
 
+pretty_site_names = []
 if plot_order_name == "from_csv":
     print('Using custom plot order from', plot_order_csv)
     plot_order = pd.read_csv(plot_order_csv)
+    if 'Pretty Name' in plot_order.columns:
+        pretty_site_names = list(plot_order['Pretty Name'])
     plot_order = list(plot_order['siteId'])
+
 elif plot_order_name == "JDE sites":
     plot_order = ["Paraparaumu", "Porirua CBD north", "South Coast", "Wellington Airport", "Wellington CBD", "Petone",
                    "Seaview", "Eastbourne", "Turakirae Head", "Lake Ferry", "Cape Palliser", "Flat Point"]
@@ -156,6 +163,7 @@ if transect:
     distance = np.round(np.sqrt(np.sum(lonlat**2, axis=1))) * 1e-3
     plot_ix = np.argsort(distance)
     plot_order = np.vstack(([plot_order[ix] for ix in plot_ix], distance[plot_ix])).T
+    labels_on = False
 else:
     plot_order = np.vstack((plot_order, np.arange(len(plot_order)))).T
 
@@ -166,26 +174,26 @@ if probability_plot:
                                  labels_on=labels_on,
                                  file_type_list=file_type_list,
                                  threshold=0.2,
-                                 transect=transect)
+                                 transect=transect, site_names=pretty_site_names)
 
 if displacement_chart:
     compare_disps_chart(PPE_paths=PPE_path_list, plot_name=file_name, outfile_directory=outfile_directory,
                         title=title, pretty_names=pretty_names,
                         plot_order=plot_order,
                         labels_on=labels_on, file_type_list=file_type_list,
-                        transect=transect)
+                        transect=transect, site_names=pretty_site_names)
 
 if compare_hazcurves:
     compare_mean_hazcurves(PPE_paths=PPE_path_list, plot_name=file_name, outfile_directory=outfile_directory,
                            title=title, pretty_names=pretty_names, exceed_type=exceed_type,
                            plot_order=plot_order,
-                           file_type_list=file_type_list)
+                           file_type_list=file_type_list, site_names=pretty_site_names)
 
 if disps_net:
     site_dists = plot_order[:, 1].astype(float) if transect else []
     compare_disps_with_net(PPE_paths=PPE_path_list, plot_name=file_name, outfile_directory=outfile_directory,
                            title=title, pretty_names=pretty_names, site_dists = site_dists,
-                           file_type_list=file_type_list, sites=plot_order, transect=transect)
+                           file_type_list=file_type_list, sites=plot_order, transect=transect, site_names=pretty_site_names)
 if make_map:
     PPE_dicts = []
     for PPE_path in PPE_path_list:

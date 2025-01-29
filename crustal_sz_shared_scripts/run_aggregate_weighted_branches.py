@@ -11,14 +11,14 @@ try:
     import geopandas as gpd
 except ImportError:
     print("Running on NESI. Site geojsons won't be output....")
-
+os.chdir(os.path.dirname(__file__))
 
 #### USER INPUTS   #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
 crustal_site_names = "_JDE_sites"   # Name of the sites geojson
-sz_site_names = ["_EastCoastNI_5km_transect", "_SouthIsland_10km"]       # Name of the sites geojson
+sz_site_names = ["_EastCoastNI_5km", "_SouthIsland_10km"]       # Name of the sites geojson
 sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerk", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
@@ -27,7 +27,9 @@ testing = False   # Impacts number of samples runs, job time etc
 fakequakes = True  # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
-single_branch = ["_sz_fq_3nub110", "_sz_fq_3nhb110", "_sz_fq_3lhb110"] # Allows you to specifically select which branches to calculate PPEs for. If None, all branches will be calculated
+single_branch = ["_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nhb110", "_sz_fq_pnhb110", "_sz_fq_3lhb110", "_sz_fq_plhb110",
+                 "_sz_fq_3lhb110C1", "_sz_fq_3lhb110C100", "_sz_fq_3lhb110C1000", "_sz_fq_3nhb110C1", "_sz_fq_3nhb110C100"] # Allows you to specifically select which branches to calculate PPEs for. If None, all branches will be calculated
+#single_branch = ["_sz_NzEx"]
 rate_scaling = False           # Do you want to calculate PPEs for a single branch with different rate scalings?
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
@@ -110,7 +112,7 @@ if fakequakes and all([fault_type != 'all', fault_type != 'sz', ]):
 if not nesi and fakequakes:
     load_random = True
 
-if not default_plot_order and not os.path.exists(plot_order_csv):
+if not default_plot_order and not os.path.exists(plot_order_csv) and make_hazcurves:
     raise Exception("Manual plot order selected but no plot order csv found. Please create a csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId)")
 
 if paired_crustal_sz:
@@ -192,6 +194,8 @@ if not paired_crustal_sz:
             sz_ix = sz_list_order.index(fault_type[0])
             sz_site_names = [sz_site_names[sz_ix]]
             sz_disc_version = [f"{sz_names[sz_list_order.index(fault_type[0])]}"]
+        else:
+            sz_disc_version = sz_names
         if fakequakes and sz_site_names[0][:3] != "_fq":
             sz_disc_version = ["fq_" + sz_disc_version[0]]
         site_names_list = [sz_site_names[0]]
@@ -408,7 +412,7 @@ if save_arrays:
         branch_key = ['']
     for key in branch_key:
         ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                            thresh_lims=[0, 3], thresh_step=0.05, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.01,
+                            thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True, probs_lims = [0.02, 0.10], probs_step=0.08,
                             output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key)
 
 if paired_crustal_sz:
