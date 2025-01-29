@@ -13,7 +13,7 @@ except ImportError:
     print("Running on NESI. Site geojsons won't be output....")
 
 
-#### USER INPUTS   #####
+#### USER INPUTS #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
@@ -412,7 +412,7 @@ if save_arrays:
         branch_key = ['']
     for key in branch_key:
         ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                            thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True, probs_lims = [0.02, 0.10], probs_step=0.08,
+                            thresh_lims=[0, 3], thresh_step=0.05, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.01,
                             output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key)
 
 if paired_crustal_sz:
