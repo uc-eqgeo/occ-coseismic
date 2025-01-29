@@ -40,10 +40,11 @@ def profile_windows(n_sites, thresholds, n_windows, chunksize, cumu_disp, sigma_
 
     return exceedance_probs_up, exceedance_probs_down, exceedance_probs_abs, err_exceedance_up, err_exceedance_down, err_exceedance_abs
 
-procDir = 'C:/Users/jmc753/Work/RSQSim/Aotearoa/whole_nz_rsqsim'
+procDir = 'C:/Users/jmc753/Work/RSQSim/Aotearoa/hikurangi_only/laura_hughes_results'
 siteCSV = '../sites/EastCoastNI_5km_grid_points.csv'
-grdDir = 'grds_5km'
-catalogue = 'whole_nz_Mw6_5-10_0.csv'
+run_name = 'hik_kerm_adjusted_creep'
+grdDir = run_name + '_grds_5km'
+catalogue = run_name + '_Mw6_5-10_0.csv'
 geoTiff = True
 timeSpan = 100.  # Window length in years for mini catalogues
 t0 = 1e4   # Burnin time in years
@@ -52,10 +53,10 @@ thresholds = '0/3/0.05'   # Dislacement thresholds to use for exceedance probabi
 chunksize = 100 # Number of windows to include in each subset for error calculation (pseudo-bootstrapping)
 
 recalculate_displacements = False
-reload_displacements = False
+reload_displacements = True
 
-events_h5file = os.path.join(procDir, os.path.basename(siteCSV).replace('.csv', f'_events_{tlen:.0e}.h5'.replace('+','')))
-probs_h5_file = os.path.join(procDir, os.path.basename(siteCSV).replace('.csv', f'_PPE_{tlen:.0e}.h5'.replace('+','')))
+events_h5file = os.path.join(procDir, run_name + '_' + os.path.basename(siteCSV).replace('.csv', f'_events_{tlen:.0e}.h5'.replace('+','')))
+probs_h5_file = os.path.join(procDir, run_name + '_' + os.path.basename(siteCSV).replace('.csv', f'_PPE_{tlen:.0e}.h5'.replace('+','')))
 
 if not os.path.exists(events_h5file):
     recalculate_displacements = True
@@ -110,7 +111,7 @@ if recalculate_displacements:
                 not_found += 1
                 # Many missing events will be because they are in the Kermadecs, and therefore displacement grids were not generated for them
                 printProgressBar(0, n_events, prefix=f"0/{n_events}",
-                                 suffix=f'\tEvent {event} not found in grid directory ({not_found} (missing [{(not_found / ix) * 100:.02f}%])', decimals=1, length=100, fill='█', printEnd="\r")
+                                 suffix=f'\tEvent {event} not found in grid directory ({not_found} (missing [{(not_found / (ix + 1)) * 100:.02f}%])', decimals=1, length=100, fill='█', printEnd="\r")
                 continue
             interp = RegularGridInterpolator((inlat, inlon), data, bounds_error=False, fill_value=None)
             disp_array[:, ix] = interp((sites_lat, sites_lon))
