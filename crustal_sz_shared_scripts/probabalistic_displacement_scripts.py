@@ -181,19 +181,33 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
     return all_branches_site_disp_dict
 
 if numba_flag:
-    @njit()
+    @njit(parallel=True)
     def calc_thresholds(thresholds, cumulative_disp_scenarios, n_chunks=1):
-        n_exceedances_total_abs = np.zeros((len(thresholds), n_chunks))
-        n_exceedances_up = np.zeros((len(thresholds), n_chunks))
-        n_exceedances_down = np.zeros((len(thresholds), n_chunks))
+        n_thresholds = len(thresholds)
+        _, n_scenarios = cumulative_disp_scenarios.shape
+        n_exceedances_total_abs = np.empty((n_thresholds, n_chunks), dtype=np.int32)
+        n_exceedances_up = np.empty((n_thresholds, n_chunks), dtype=np.int32)
+        n_exceedances_down = np.empty((n_thresholds, n_chunks), dtype=np.int32)
 
-        for tix, threshold in enumerate(thresholds):
-            # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
-            # across all of the 100 yr scenarios
-            # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
-            n_exceedances_total_abs[tix, :] = np.sum(np.abs(cumulative_disp_scenarios) > threshold, axis=1)
-            n_exceedances_up[tix, :] = np.sum(cumulative_disp_scenarios > threshold, axis=1)
-            n_exceedances_down[tix, :] = np.sum(cumulative_disp_scenarios < -threshold, axis=1)
+        abs_disp_scenarios = np.abs(cumulative_disp_scenarios)
+        stop_idx = n_thresholds  # Track where we stop due to the break condition
+        
+        for tix in prange(n_thresholds):
+            threshold = thresholds[tix]
+
+            count_total_abs = np.sum(abs_disp_scenarios > threshold, axis=1)
+            count_up = np.sum(cumulative_disp_scenarios > threshold, axis=1)
+            count_down = np.sum(cumulative_disp_scenarios < -threshold, axis=1)
+
+            n_exceedances_total_abs[tix, :] = count_total_abs
+            n_exceedances_up[tix, :] = count_up
+            n_exceedances_down[tix, :] = count_down
+
+        # Ensure unused values are set to zero
+        for tix in prange(stop_idx, n_thresholds):
+            n_exceedances_total_abs[tix, :] = 0
+            n_exceedances_up[tix, :] = 0
+            n_exceedances_down[tix, :] = 0
 
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
