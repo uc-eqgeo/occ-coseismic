@@ -11,14 +11,14 @@ try:
     import geopandas as gpd
 except ImportError:
     print("Running on NESI. Site geojsons won't be output....")
-os.chdir(os.path.dirname(__file__))
 
-#### USER INPUTS   #####
+
+#### USER INPUTS #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
 crustal_site_names = "_JDE_sites"   # Name of the sites geojson
-sz_site_names = ["_EastCoastNI_5km", "_SouthIsland_10km"]       # Name of the sites geojson
+sz_site_names = ["_EastCoastNI_5km_transect", "_SouthIsland_10km"]       # Name of the sites geojson
 sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerk", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
@@ -37,7 +37,7 @@ calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each bran
 remake_PPE = False            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
 remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
-save_arrays = True         # Do you want to save the displacement and probability arrays?
+save_arrays = False         # Do you want to save the displacement and probability arrays?
 default_plot_order = False       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../sites/EastCoastNI_5km_transect_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
@@ -262,9 +262,9 @@ if not paired_crustal_sz:
     if single_branch:
         branch_keys = list(fault_model_branch_weight_dict.keys())
         if rate_scaling:
-            branch_key = [key for key in branch_keys if any([suffix in key for suffix in file_suffix_list])]
+            branch_key = [key for key in branch_keys if any([suffix in key[-len(suffix):] for suffix in file_suffix_list])]
         else:
-            branch_key = [key for key in branch_keys if any(["_S10_" in key, "_S1_" in key]) and any([suffix in key for suffix in file_suffix_list])]
+            branch_key = [key for key in branch_keys if any(["_S10_" in key, "_S1_" in key]) and any([suffix in key[-len(suffix):] for suffix in file_suffix_list])]
         fault_model_single_branch_weight_dict = {}
         for key in branch_key:
             fault_model_single_branch_weight_dict = fault_model_single_branch_weight_dict | {key: fault_model_branch_weight_dict[key]}
@@ -412,7 +412,7 @@ if save_arrays:
         branch_key = ['']
     for key in branch_key:
         ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                            thresh_lims=[0, 3], thresh_step=0.25, output_thresh=True, probs_lims = [0.02, 0.10], probs_step=0.08,
+                            thresh_lims=[0, 3], thresh_step=0.05, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.01,
                             output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key)
 
 if paired_crustal_sz:

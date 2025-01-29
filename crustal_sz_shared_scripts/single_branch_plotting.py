@@ -12,7 +12,32 @@ from pcdhm.shared_helper import get_probability_color, get_plot_order_list
 
 ##############
 
-def get_mean_disp_barchart_data(site_PPE_dictionary, probability, exceed_type, site_list):
+def get_sigma_lims(sigmas, sig_lim='minmax'):
+    if sig_lim == 'minmax':
+        smin, smax = 0, 100
+    elif sig_lim == '2sig':
+        smin, smax = 2.3, 97.7
+    elif sig_lim == '1sig':
+        smin, smax = 15.9, 84.1
+    
+    sigmas = list(sigmas.round(1))  # Rounding as in an early version, my 2 sigmas were 2.27 and 97.725...
+
+    try:
+        smin = sigmas.index(smin)
+        smax = sigmas.index(smax)
+    except ValueError:
+        print(f"Can't find sigma limits {sig_lim} in {sigmas}. Reverting to min/max")
+        smin, smax = 0, -1
+    
+    try:
+        s50 = sigmas.index(50)
+    except ValueError:
+        s50 = smin    
+   
+    return smin, smax, s50
+
+
+def get_mean_disp_barchart_data(site_PPE_dictionary, probability, exceed_type, site_list, sig_lim='minmax'):
     """returns displacements at the X% probabilities of exceedance for each site
     This is effectively " find the X value for the desired Y"
     :param exceed_type: Options are "total_abs", "up", "down"
@@ -32,8 +57,9 @@ def get_mean_disp_barchart_data(site_PPE_dictionary, probability, exceed_type, s
 
         # probability values at each threshold
         site_mean_probs = site_PPE_dictionary[site][f"exceedance_probs_{exceed_type}"]
-        max_probs = site_PPE_dictionary[site][f"error_{exceed_type}"][-1, :]
-        min_probs = site_PPE_dictionary[site][f"error_{exceed_type}"][0, :]
+        smin, smax = get_sigma_lims(site_PPE_dictionary[site]['sigma_lims'][:], sig_lim=sig_lim)
+        max_probs = site_PPE_dictionary[site][f"error_{exceed_type}"][smax, :]
+        min_probs = site_PPE_dictionary[site][f"error_{exceed_type}"][smin, :]
 
         # get first index (x-value) for the probability (y-value) that is *just* < prob% (ideally we would interpolate
         # for exact value but don't have a function for that)
@@ -60,7 +86,7 @@ def get_mean_disp_barchart_data(site_PPE_dictionary, probability, exceed_type, s
 
     return disps, errs_plus, errs_minus
 
-def get_mean_prob_plot_data(site_PPE_dictionary, threshold, exceed_type, site_list):
+def get_mean_prob_plot_data(site_PPE_dictionary, threshold, exceed_type, site_list, sig_lim='minmax'):
     """ function that finds the probability at each site for the specified displacement threshold on the hazard curve
         Inputs:
         :param: site_PPE_dictionary, dictionary of exceedance probabilities for each site (key = site)
@@ -92,16 +118,16 @@ def get_mean_prob_plot_data(site_PPE_dictionary, threshold, exceed_type, site_li
         except IndexError:
             probs.append(0)
 
+        smin, smax = get_sigma_lims(site_PPE_dictionary[site]['sigma_lims'][:], sig_lim=sig_lim)
         try:
-            #max_prob = site_PPE_dictionary[site][f"{exceed_type}_max_vals"][probs_index]
-            #min_prob = site_PPE_dictionary[site][f"{exceed_type}_min_vals"][probs_index]
-            max_prob = site_PPE_dictionary[site][f"error_{exceed_type}"][-1, probs_index]
-            min_prob = site_PPE_dictionary[site][f"error_{exceed_type}"][0, probs_index]
+            max_prob = site_PPE_dictionary[site][f"error_{exceed_type}"][smax, probs_index]
+            min_prob = site_PPE_dictionary[site][f"error_{exceed_type}"][smin, probs_index]
         except IndexError:
             mean_prob, max_prob, min_prob = 0, 0, 0
 
         err_plus = max_prob - mean_prob
         err_minus = mean_prob - min_prob
+        err_plus = 0 if err_plus < 0 else err_plus
         err_minus = 0 if err_minus < 0 else err_minus
         errs_plus.append(err_plus)
         errs_minus.append(err_minus)
