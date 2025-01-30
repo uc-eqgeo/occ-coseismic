@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
+from scipy.sparse import csc_array
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
 numba_flag = True
@@ -231,25 +232,21 @@ else:
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
 
-def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples, sd):
-        print('\tPreparing random arrays...')
-        branch_site_disp_dict = h5.File(branch_site_disp_dict_file, "r")
-        rng = np.random.default_rng()
-        if "scaled_rates" not in branch_site_disp_dict.keys():
-            # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
-            rates = np.array(branch_site_disp_dict["rates"])
-        else:
-            rates = np.array(branch_site_disp_dict["scaled_rates"])
-        branch_site_disp_dict.close()
+def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples):
+        with h5.File(branch_site_disp_dict_file, "r") as branch_site_disp_dict:
+            if "scaled_rates" not in branch_site_disp_dict.keys():
+                # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
+                rates = np.array(branch_site_disp_dict["rates"])
+            else:
+                rates = np.array(branch_site_disp_dict["scaled_rates"])
+        n_ruptures = rates.shape[0]     
 
-        n_ruptures = rates.shape[0]
-        scenarios = rng.poisson(time_interval * rates, size=(int(n_samples), n_ruptures))
+        print(f'\tPreparing {n_samples} Poissonian Scenarios for {n_ruptures} ruptures...')
+        rng = np.random.default_rng()   
+        scenarios = csc_array(rng.poisson(time_interval * rates, size=(int(n_samples), n_ruptures)))
+
         with open(f"{randdir}/scenarios.pkl", "wb") as fid:
             pkl.dump(scenarios, fid)
-        del scenarios
-        disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
-        with open(f"{randdir}/disp_uncertainty.pkl", "wb") as fid:
-            pkl.dump(disp_uncertainty, fid)
 
 
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
