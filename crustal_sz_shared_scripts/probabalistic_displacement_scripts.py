@@ -1115,9 +1115,9 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
             site_max_probs = site_probabilities_df.max(axis=1)
             site_min_probs = site_probabilities_df.min(axis=1)
 
-            site_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs, compression=compression)
-            site_h5.create_dataset(f"{exceed_type}_max_vals", data=site_max_probs, compression=compression)
-            site_h5.create_dataset(f"{exceed_type}_min_vals", data=site_min_probs, compression=compression)
+            site_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs[branch_weighted_mean_probs > 0], compression=compression)
+            site_h5.create_dataset(f"{exceed_type}_max_vals", data=site_max_probs[site_max_probs > 0], compression=compression)
+            site_h5.create_dataset(f"{exceed_type}_min_vals", data=site_min_probs[site_min_probs > 0], compression=compression)
             site_h5.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy(), compression='gzip', compression_opts=6)
             site_h5[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = pair_id_list
 
