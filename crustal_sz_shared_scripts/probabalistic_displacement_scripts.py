@@ -315,26 +315,20 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
     if load_random:
         # Load array of random samples rather than regenerating them
-        lap = time()
+        randomdir = f"{procdir}/{model_version_results_directory}/{extension1}"
         if array_process:
-            randomdir = f"{procdir}/{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}"
-        else:
-            randomdir = f"{procdir}/{model_version_results_directory}/{extension1}"
-
+            randomdir = os.path.join(randomdir, f"site_cumu_exceed{scaling}")
         with open(f"{randomdir}/scenarios.pkl", 'rb') as f:
             all_scenarios = pkl.load(f)
-        with open(f"{randomdir}/disp_uncertainty.pkl", 'rb') as f:
-            all_uncertainty = pkl.load(f)
 
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
 
-    # get displacement thresholds for calculating exceedance (hazard curve x axis)
+    # get displacement thresholds for calculating exceedance (hazard curve x-axis)
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
 
-    #site_PPE_dict["thresholds"] = thresholds
+    benchmarking = True
     start = time()
-    benchmarking = False
     if not benchmarking:
         printProgressBar(0, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix='Complete 00:00:00 (00:00s/site)', length=50)
     for i, site_of_interest in enumerate(site_ids):
@@ -445,9 +439,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "exceedance_probs_up": exceedance_probs_up[exceedance_probs_up != 0],
                                            "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
 
-        if benchmarking:
-            print(f"Exceedances written : {time() - lap:.15f} s")
-        lap = time()
         # Save the rest of the data if this is a NSHM branch
         if NSHM_branch:
             ## Reverting back to the old method of subsampling the scenarios right now
@@ -470,9 +461,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             # lap = time()
             # chunked_disp_scenarios = cumulative_disp_scenarios[0, rand_scenario_ix].reshape(error_chunking, error_samples)  # Create chunked displacement scenario (new method)
 
-            if benchmarking:
-                print(f"Chunked Displacements : {time() - lap:.15f} s")
-            lap = time()
             n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, chunked_disp_scenarios)
 
             if benchmarking:
@@ -487,9 +475,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             error_abs = np.percentile(exceedance_errs_total_abs, sigma_lims, axis=1)
             error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
             error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
-            if benchmarking:
-                print(f"Error Percentiles : {time() - lap:.15f} s")
-            lap = time()
 
             site_PPE_dict[site_of_interest].update({"scenario_displacements": cumulative_disp_scenarios[0, slip_scenarios],
                                                     "slip_scenarios_ix": slip_scenarios,
@@ -606,10 +591,6 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                     if all([True if key in branch_PPEh5[site].keys() else False for key in ['n_samples', 'thresh_para']]):
                         if branch_PPEh5[site]['n_samples'][()] >= n_samples:
                             well_processed_sites.append(site)
-                #             # Check previous processing had required threshold limits  # Might be redundant, unless you want to plot only the single branch
-                #             proc_thresholds = np.round(np.arange(branch_PPEh5[site]['thresh_para'][0], branch_PPEh5[site]['thresh_para'][1] + branch_PPEh5[site]['thresh_para'][2], branch_PPEh5[site]['thresh_para'][2]), 4)
-                #             if np.in1d(thresholds, proc_thresholds).all():
-                #                 well_processed_sites.append(site)
 
             prep_list = [site for site in inv_sites if site not in well_processed_sites]
         else:
@@ -629,7 +610,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             if nesi_step == 'prep':
                 if load_random:
                     randdir = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}"
-                    prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples, sd)
+                    prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples)
 
                 print(f"\tPrepping for NESI....")
                 prep_nesi_site_list(model_version_results_directory, prep_list, extension1, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
@@ -652,7 +633,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             else:
                 if load_random:
                     randdir = f"../{model_version_results_directory}"
-                    prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples, sd)
+                    prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples)
 
                 branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict_file,
                                                     site_ids=prep_list, slip_taper=slip_taper, load_random=load_random,
