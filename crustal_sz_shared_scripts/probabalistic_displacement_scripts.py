@@ -389,31 +389,29 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             lambdas = investigation_time * np.array(scaled_rates)
 
             if load_random:
-                # As a concession to not regenerating random samples and scenarios, randomly shift the loaded uncertainty arrays
-                sample_shift = np.random.randint(-all_uncertainty.shape[0], all_uncertainty.shape[0])
-                rupture_shift = np.random.randint(-all_uncertainty.shape[1], all_uncertainty.shape[1])
-                disp_uncertainty = np.roll(all_uncertainty, (sample_shift, rupture_shift))[:, :lambdas.size]
-                # Leave scenarios alone - no point rolling sample order, and can't shift sideways as can't apply one rupture's distribution
-                # to another
+                # Load in scenarios from csc array, or create empty array if no ruptures impact this site
                 if site_dict_i["disps_ix"].shape[0] > 0:
                     scenarios = all_scenarios[:, site_dict_i["disps_ix"]]
                 else:
-                    scenarios = np.zeros((int(n_samples), 1))
+                    scenarios = csc_array(np.zeros((int(n_samples), 1)))
                 if benchmarking:
-                    print(f"Time taken to prep random samples: {time() - begin:.5f} s")
+                    print(f"Time taken to load scenarios: {time() - lap:.5f} s")
                     lap = time()
             else:
                 # Generate n_samples of possible earthquake ruptures for random 100 year intervals
-                # returns boolean array where 0 means "no event" and 1 means "event". rows = 100 yr window, columns = earthquake
-                # rupture
-                scenarios = rng.poisson(lambdas, size=(int(n_samples), lambdas.size))
-
-                # assigns a normal distribution with a mean of 1 and a standard deviation of sd
-                # effectively a multiplier for the displacement value
-                disp_uncertainty = rng.normal(1., sd, size=(int(n_samples), lambdas.size))
+                # returns boolean array where 0 means "no event" and 1 means "event". rows = 100 yr window, 
+                # columns = earthquake rupture
+                # Save as csc array to save memory
+                scenarios = csc_array(rng.poisson(lambdas, size=(int(n_samples), lambdas.size)))
                 if benchmarking:
-                    print(f"Time taken to generate random samples: {time() - begin:.5f} s")
+                    print(f"Time taken to generate scenarios: {time() - begin:.5f} s")
                     lap = time()
+
+            # Calculate uncertainty for each scenario that ruptures
+            # assigns a normal distribution with a mean of 1 and a standard deviation of sd
+            # effectively the multiplier for the displacement value               
+            disp_uncertainty = scenarios.copy()
+            disp_uncertainty.data = rng.normal(1, sd, size=scenarios.data.shape[0])
 
             # for each 100 yr scenario, get displacements from EQs that happened
             disp_scenarios = scenarios * disps
