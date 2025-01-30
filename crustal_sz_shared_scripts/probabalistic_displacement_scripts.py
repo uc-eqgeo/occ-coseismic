@@ -327,7 +327,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     # get displacement thresholds for calculating exceedance (hazard curve x-axis)
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
 
-    benchmarking = True
+    benchmarking = False
     start = time()
     if not benchmarking:
         printProgressBar(0, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix='Complete 00:00:00 (00:00s/site)', length=50)
