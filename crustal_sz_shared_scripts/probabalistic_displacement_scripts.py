@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
+from scipy.sparse import csc_array
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
 numba_flag = True
@@ -231,29 +232,25 @@ else:
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
 
-def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples, sd):
-        print('\tPreparing random arrays...')
-        branch_site_disp_dict = h5.File(branch_site_disp_dict_file, "r")
-        rng = np.random.default_rng()
-        if "scaled_rates" not in branch_site_disp_dict.keys():
-            # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
-            rates = np.array(branch_site_disp_dict["rates"])
-        else:
-            rates = np.array(branch_site_disp_dict["scaled_rates"])
-        branch_site_disp_dict.close()
+def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples):
+        with h5.File(branch_site_disp_dict_file, "r") as branch_site_disp_dict:
+            if "scaled_rates" not in branch_site_disp_dict.keys():
+                # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
+                rates = np.array(branch_site_disp_dict["rates"])
+            else:
+                rates = np.array(branch_site_disp_dict["scaled_rates"])
+        n_ruptures = rates.shape[0]     
 
-        n_ruptures = rates.shape[0]
-        scenarios = rng.poisson(time_interval * rates, size=(int(n_samples), n_ruptures))
+        print(f'\tPreparing {n_samples} Poissonian Scenarios for {n_ruptures} ruptures...')
+        rng = np.random.default_rng()   
+        scenarios = csc_array(rng.poisson(time_interval * rates, size=(int(n_samples), n_ruptures)))
+
         with open(f"{randdir}/scenarios.pkl", "wb") as fid:
             pkl.dump(scenarios, fid)
-        del scenarios
-        disp_uncertainty = rng.normal(1, sd, size=(int(n_samples), n_ruptures))
-        with open(f"{randdir}/disp_uncertainty.pkl", "wb") as fid:
-            pkl.dump(disp_uncertainty, fid)
 
 
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
-                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=10000, scaling='', load_random=False,
+                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling='', load_random=False,
                  thresh_lims=[0, 3], thresh_step=0.01, plot_maximum_displacement=False, array_process=False,
                  crustal_model_dir="", subduction_model_dirs="", NSHM_branch=True, pair_unique_id=None):
     """
@@ -318,26 +315,20 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
     if load_random:
         # Load array of random samples rather than regenerating them
-        lap = time()
+        randomdir = f"{procdir}/{model_version_results_directory}/{extension1}"
         if array_process:
-            randomdir = f"{procdir}/{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}"
-        else:
-            randomdir = f"{procdir}/{model_version_results_directory}/{extension1}"
-
+            randomdir = os.path.join(randomdir, f"site_cumu_exceed{scaling}")
         with open(f"{randomdir}/scenarios.pkl", 'rb') as f:
             all_scenarios = pkl.load(f)
-        with open(f"{randomdir}/disp_uncertainty.pkl", 'rb') as f:
-            all_uncertainty = pkl.load(f)
 
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
 
-    # get displacement thresholds for calculating exceedance (hazard curve x axis)
+    # get displacement thresholds for calculating exceedance (hazard curve x-axis)
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
 
-    #site_PPE_dict["thresholds"] = thresholds
-    start = time()
     benchmarking = False
+    start = time()
     if not benchmarking:
         printProgressBar(0, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix='Complete 00:00:00 (00:00s/site)', length=50)
     for i, site_of_interest in enumerate(site_ids):
@@ -392,31 +383,29 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             lambdas = investigation_time * np.array(scaled_rates)
 
             if load_random:
-                # As a concession to not regenerating random samples and scenarios, randomly shift the loaded uncertainty arrays
-                sample_shift = np.random.randint(-all_uncertainty.shape[0], all_uncertainty.shape[0])
-                rupture_shift = np.random.randint(-all_uncertainty.shape[1], all_uncertainty.shape[1])
-                disp_uncertainty = np.roll(all_uncertainty, (sample_shift, rupture_shift))[:, :lambdas.size]
-                # Leave scenarios alone - no point rolling sample order, and can't shift sideways as can't apply one rupture's distribution
-                # to another
+                # Load in scenarios from csc array, or create empty array if no ruptures impact this site
                 if site_dict_i["disps_ix"].shape[0] > 0:
                     scenarios = all_scenarios[:, site_dict_i["disps_ix"]]
                 else:
-                    scenarios = np.zeros((int(n_samples), 1))
+                    scenarios = csc_array(np.zeros((int(n_samples), 1)))
                 if benchmarking:
-                    print(f"Time taken to prep random samples: {time() - begin:.5f} s")
+                    print(f"Time taken to load scenarios: {time() - lap:.5f} s")
                     lap = time()
             else:
                 # Generate n_samples of possible earthquake ruptures for random 100 year intervals
-                # returns boolean array where 0 means "no event" and 1 means "event". rows = 100 yr window, columns = earthquake
-                # rupture
-                scenarios = rng.poisson(lambdas, size=(int(n_samples), lambdas.size))
-
-                # assigns a normal distribution with a mean of 1 and a standard deviation of sd
-                # effectively a multiplier for the displacement value
-                disp_uncertainty = rng.normal(1., sd, size=(int(n_samples), lambdas.size))
+                # returns boolean array where 0 means "no event" and 1 means "event". rows = 100 yr window, 
+                # columns = earthquake rupture
+                # Save as csc array to save memory
+                scenarios = csc_array(rng.poisson(lambdas, size=(int(n_samples), lambdas.size)))
                 if benchmarking:
-                    print(f"Time taken to generate random samples: {time() - begin:.5f} s")
+                    print(f"Time taken to generate scenarios: {time() - begin:.5f} s")
                     lap = time()
+
+            # Calculate uncertainty for each scenario that ruptures
+            # assigns a normal distribution with a mean of 1 and a standard deviation of sd
+            # effectively the multiplier for the displacement value               
+            disp_uncertainty = scenarios.copy()
+            disp_uncertainty.data = rng.normal(1, sd, size=scenarios.data.shape[0])
 
             # for each 100 yr scenario, get displacements from EQs that happened
             disp_scenarios = scenarios * disps
@@ -450,9 +439,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                            "exceedance_probs_up": exceedance_probs_up[exceedance_probs_up != 0],
                                            "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
 
-        if benchmarking:
-            print(f"Exceedances written : {time() - lap:.15f} s")
-        lap = time()
         # Save the rest of the data if this is a NSHM branch
         if NSHM_branch:
             ## Reverting back to the old method of subsampling the scenarios right now
@@ -475,9 +461,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             # lap = time()
             # chunked_disp_scenarios = cumulative_disp_scenarios[0, rand_scenario_ix].reshape(error_chunking, error_samples)  # Create chunked displacement scenario (new method)
 
-            if benchmarking:
-                print(f"Chunked Displacements : {time() - lap:.15f} s")
-            lap = time()
             n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, chunked_disp_scenarios)
 
             if benchmarking:
@@ -492,9 +475,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             error_abs = np.percentile(exceedance_errs_total_abs, sigma_lims, axis=1)
             error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
             error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
-            if benchmarking:
-                print(f"Error Percentiles : {time() - lap:.15f} s")
-            lap = time()
 
             site_PPE_dict[site_of_interest].update({"scenario_displacements": cumulative_disp_scenarios[0, slip_scenarios],
                                                     "slip_scenarios_ix": slip_scenarios,
@@ -611,10 +591,6 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                     if all([True if key in branch_PPEh5[site].keys() else False for key in ['n_samples', 'thresh_para']]):
                         if branch_PPEh5[site]['n_samples'][()] >= n_samples:
                             well_processed_sites.append(site)
-                #             # Check previous processing had required threshold limits  # Might be redundant, unless you want to plot only the single branch
-                #             proc_thresholds = np.round(np.arange(branch_PPEh5[site]['thresh_para'][0], branch_PPEh5[site]['thresh_para'][1] + branch_PPEh5[site]['thresh_para'][2], branch_PPEh5[site]['thresh_para'][2]), 4)
-                #             if np.in1d(thresholds, proc_thresholds).all():
-                #                 well_processed_sites.append(site)
 
             prep_list = [site for site in inv_sites if site not in well_processed_sites]
         else:
@@ -634,7 +610,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             if nesi_step == 'prep':
                 if load_random:
                     randdir = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}"
-                    prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples, sd)
+                    prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples)
 
                 print(f"\tPrepping for NESI....")
                 prep_nesi_site_list(model_version_results_directory, prep_list, extension1, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
@@ -657,7 +633,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             else:
                 if load_random:
                     randdir = f"../{model_version_results_directory}"
-                    prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples, sd)
+                    prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples)
 
                 branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict_file,
                                                     site_ids=prep_list, slip_taper=slip_taper, load_random=load_random,
@@ -751,7 +727,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     site_coords_dict = fault_model_PPE_dict['meta']['site_coords_dict']
 
     # Create variables
-    sigma_lims = [2.275, 15.865, 50, 84.135, 97.725]
+    sigma_lims = [0, 2.275, 15.865, 50, 84.135, 97.725, 100]
     sigma_lims.sort()
     exceed_type_list = ["total_abs", "up", "down"]
 
@@ -971,7 +947,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
     # Create variables
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
-    sigma_lims = [2.275, 15.865, 50, 84.135, 97.725]
+    sigma_lims = [0, 2.275, 15.865, 50, 84.135, 97.725, 100]
     sigma_lims.sort()
     exceed_type_list = ["total_abs", "up", "down"]
 
@@ -1117,12 +1093,8 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
             # collapse each row into a weighted mean value
             branch_weighted_mean_probs = site_probabilities_df.apply(
                 lambda x: np.average(x, weights=branch_weights), axis=1)
-            site_max_probs = site_probabilities_df.max(axis=1)
-            site_min_probs = site_probabilities_df.min(axis=1)
 
-            site_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs, compression=compression)
-            site_h5.create_dataset(f"{exceed_type}_max_vals", data=site_max_probs, compression=compression)
-            site_h5.create_dataset(f"{exceed_type}_min_vals", data=site_min_probs, compression=compression)
+            site_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs[branch_weighted_mean_probs > 0], compression=compression)
             site_h5.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy(), compression='gzip', compression_opts=6)
             site_h5[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = pair_id_list
 
@@ -1430,10 +1402,6 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 ax = plt.subplot(n_rows, n_cols, i + 1)
 
                 # plots all three types of exceedance (total_abs, up, down) on the same plot
-                max_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_max_vals"][:]
-                min_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_min_vals"][:]
-                max_probs = max_probs[1:]
-                min_probs = min_probs[1:]
 
                 # Shade based on max-min
                 #ax.fill_between(thresholds, max_probs, min_probs, color='0.9')
@@ -1453,7 +1421,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                     #ax.plot(thresholds, site_exceedance_probs, color=[weights[weight_order[k]] / max_weight, 1-(weights[weight_order[k]] / max_weight), 0],
                     #        linewidth=0.1)
                     if weight_colouring:
-                        ax.plot(thresholds, site_exceedance_probs, color=colours[kk], linewidth=0.2, alpha=0.5)
+                        ax.plot(thresholds, site_exceedance_probs, color=colours[kk], linewidth=0.2, alpha=0.8)
                     else:
                         ax.plot(thresholds, site_exceedance_probs, color='grey', linewidth=0.2, alpha=0.5)
 
@@ -1464,6 +1432,8 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
 
                 # plots all three types of exceedance (total_abs, up, down) on the same plot
                 weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:]
+                weighted_mean_exceedance_zeros = np.zeros_like(thresholds)
+                weighted_mean_exceedance_zeros[:len(weighted_mean_exceedance_probs)] = weighted_mean_exceedance_probs
 
                 line_color = get_probability_color(exceed_type)
                
@@ -1481,7 +1451,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][0,1:], color='black', linewidth=0.75, linestyle='-.')
                 ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][-1,1:], color='black', linewidth=0.75, linestyle='-.')
 
-                ax.plot(thresholds, weighted_mean_exceedance_probs, color=line_color, linewidth=1.5)
+                ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=1.5)
 
                 # Uncertainty weighted mean
                 #ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"], color='black', linewidth=1)
@@ -1535,7 +1505,9 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 for exceed_type in exceed_type_list:
                     line_color = get_probability_color(exceed_type)
                     weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:]
-                    ax.plot(thresholds, weighted_mean_exceedance_probs, color=line_color, linewidth=2)
+                    weighted_mean_exceedance_zeros = np.zeros_like(thresholds)
+                    weighted_mean_exceedance_zeros[:len(weighted_mean_exceedance_probs)] = weighted_mean_exceedance_probs
+                    ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=2)
 
                 # add 10% and 2% lines
                 ax.axhline(y=0.02, color="g", linestyle='dashed')
