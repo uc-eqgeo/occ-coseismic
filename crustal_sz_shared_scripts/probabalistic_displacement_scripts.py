@@ -250,7 +250,7 @@ def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_
 
 
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
-                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=10000, scaling='', load_random=False,
+                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling='', load_random=False,
                  thresh_lims=[0, 3], thresh_step=0.01, plot_maximum_displacement=False, array_process=False,
                  crustal_model_dir="", subduction_model_dirs="", NSHM_branch=True, pair_unique_id=None):
     """

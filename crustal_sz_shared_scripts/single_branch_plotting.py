@@ -57,7 +57,7 @@ def get_mean_disp_barchart_data(site_PPE_dictionary, probability, exceed_type, s
 
         # probability values at each threshold
         site_mean_probs = site_PPE_dictionary[site][f"exceedance_probs_{exceed_type}"]
-        smin, smax = get_sigma_lims(site_PPE_dictionary[site]['sigma_lims'][:], sig_lim=sig_lim)
+        smin, smax, _ = get_sigma_lims(site_PPE_dictionary[site]['sigma_lims'][:], sig_lim=sig_lim)
         max_probs = site_PPE_dictionary[site][f"error_{exceed_type}"][smax, :]
         min_probs = site_PPE_dictionary[site][f"error_{exceed_type}"][smin, :]
 
@@ -118,7 +118,7 @@ def get_mean_prob_plot_data(site_PPE_dictionary, threshold, exceed_type, site_li
         except IndexError:
             probs.append(0)
 
-        smin, smax = get_sigma_lims(site_PPE_dictionary[site]['sigma_lims'][:], sig_lim=sig_lim)
+        smin, smax, _ = get_sigma_lims(site_PPE_dictionary[site]['sigma_lims'][:], sig_lim=sig_lim)
         try:
             max_prob = site_PPE_dictionary[site][f"error_{exceed_type}"][smax, probs_index]
             min_prob = site_PPE_dictionary[site][f"error_{exceed_type}"][smin, probs_index]

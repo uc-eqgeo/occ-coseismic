@@ -139,7 +139,7 @@ for name in model_subdirectory_dict.keys():
 outfile_directory = f"{results_directory}/compare_fault_models/{dir_name}"
 if not os.path.exists(f"../{outfile_directory}"):
         os.makedirs(f"../{outfile_directory}", exist_ok=True)
-file_name = file_id + '_' + sigma_lims
+file_name = (file_id + '_' + sigma_lims).strip('_')
 
 pretty_site_names = []
 if plot_order_name == "from_csv":

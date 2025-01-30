@@ -73,7 +73,7 @@ if testing:
     job_time = 1    # Amount of time to allocate per site in the cumu_PPE task array
     mem = 1    # Memory allocation for cumu_PPE task array
 else:
-    n_samples = 1e5   # Number of scenarios to run
+    n_samples = 1e6   # Number of scenarios to run
     job_time = 3    # Amount of time to allocate per site in the cumu_PPE task array
     mem = 3    # Memory allocation for cumu_PPE task array
 
