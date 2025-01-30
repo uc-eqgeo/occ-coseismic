@@ -727,7 +727,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     site_coords_dict = fault_model_PPE_dict['meta']['site_coords_dict']
 
     # Create variables
-    sigma_lims = [2.275, 15.865, 50, 84.135, 97.725]
+    sigma_lims = [0, 2.275, 15.865, 50, 84.135, 97.725, 100]
     sigma_lims.sort()
     exceed_type_list = ["total_abs", "up", "down"]
 
@@ -947,7 +947,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
     # Create variables
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
-    sigma_lims = [2.275, 15.865, 50, 84.135, 97.725]
+    sigma_lims = [0, 2.275, 15.865, 50, 84.135, 97.725, 100]
     sigma_lims.sort()
     exceed_type_list = ["total_abs", "up", "down"]
 
@@ -1093,12 +1093,8 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
             # collapse each row into a weighted mean value
             branch_weighted_mean_probs = site_probabilities_df.apply(
                 lambda x: np.average(x, weights=branch_weights), axis=1)
-            site_max_probs = site_probabilities_df.max(axis=1)
-            site_min_probs = site_probabilities_df.min(axis=1)
 
             site_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs[branch_weighted_mean_probs > 0], compression=compression)
-            site_h5.create_dataset(f"{exceed_type}_max_vals", data=site_max_probs[site_max_probs > 0], compression=compression)
-            site_h5.create_dataset(f"{exceed_type}_min_vals", data=site_min_probs[site_min_probs > 0], compression=compression)
             site_h5.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy(), compression='gzip', compression_opts=6)
             site_h5[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = pair_id_list
 
@@ -1406,10 +1402,6 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 ax = plt.subplot(n_rows, n_cols, i + 1)
 
                 # plots all three types of exceedance (total_abs, up, down) on the same plot
-                max_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_max_vals"][:]
-                min_probs = weighted_mean_PPE_dictionary[site][f"{exceed_type}_min_vals"][:]
-                max_probs = max_probs[1:]
-                min_probs = min_probs[1:]
 
                 # Shade based on max-min
                 #ax.fill_between(thresholds, max_probs, min_probs, color='0.9')
@@ -1429,7 +1421,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                     #ax.plot(thresholds, site_exceedance_probs, color=[weights[weight_order[k]] / max_weight, 1-(weights[weight_order[k]] / max_weight), 0],
                     #        linewidth=0.1)
                     if weight_colouring:
-                        ax.plot(thresholds, site_exceedance_probs, color=colours[kk], linewidth=0.2, alpha=0.5)
+                        ax.plot(thresholds, site_exceedance_probs, color=colours[kk], linewidth=0.2, alpha=0.8)
                     else:
                         ax.plot(thresholds, site_exceedance_probs, color='grey', linewidth=0.2, alpha=0.5)
 
@@ -1440,6 +1432,8 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
 
                 # plots all three types of exceedance (total_abs, up, down) on the same plot
                 weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:]
+                weighted_mean_exceedance_zeros = np.zeros_like(thresholds)
+                weighted_mean_exceedance_zeros[:len(weighted_mean_exceedance_probs)] = weighted_mean_exceedance_probs
 
                 line_color = get_probability_color(exceed_type)
                
@@ -1457,7 +1451,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][0,1:], color='black', linewidth=0.75, linestyle='-.')
                 ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][-1,1:], color='black', linewidth=0.75, linestyle='-.')
 
-                ax.plot(thresholds, weighted_mean_exceedance_probs, color=line_color, linewidth=1.5)
+                ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=1.5)
 
                 # Uncertainty weighted mean
                 #ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"], color='black', linewidth=1)
@@ -1511,7 +1505,9 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 for exceed_type in exceed_type_list:
                     line_color = get_probability_color(exceed_type)
                     weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:]
-                    ax.plot(thresholds, weighted_mean_exceedance_probs, color=line_color, linewidth=2)
+                    weighted_mean_exceedance_zeros = np.zeros_like(thresholds)
+                    weighted_mean_exceedance_zeros[:len(weighted_mean_exceedance_probs)] = weighted_mean_exceedance_probs
+                    ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=2)
 
                 # add 10% and 2% lines
                 ax.axhline(y=0.02, color="g", linestyle='dashed')
