@@ -12,7 +12,7 @@ try:
 except ImportError:
     print("Running on NESI. Site geojsons won't be output....")
 
-
+os.chdir(os.path.dirname(__file__))
 #### USER INPUTS #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
