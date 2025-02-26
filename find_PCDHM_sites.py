@@ -68,13 +68,14 @@ def split_cell(cell_dicts, parent_id, max_grid, min_grid, max_id, coastline, fau
 search_type = 'cube'  # 'grid', 'cube' or 'quad'
 
 # Resolution
-max_grid = 18000  # Default resolution
+max_grid = 5000  # Default resolution. Min grid will be adjusted to work with this
 min_grid = 3000  # Min grid is the highest resolution of the quad or cubetree. Must be reachable by halving or thirding max_grid 
 
 grid_width = 1000e3  # Width of the grid in meters
 grid_length = 1500e3 # Length of the grid in meters
 
-coastal_trim = True  # If True, removes any centroids that are not overland, even if polygon crosses the coast
+# Keep as false to make sure all of coast is covered, and therefore all OCC sites can be queried in datamesh
+coastal_trim = False  # If True, removes any centroids that are not overland, even if polygon crosses the coast
 
 fault_buffer = None
 
