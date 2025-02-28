@@ -26,7 +26,7 @@ def dict_to_hdf5(hdf5_group, dictionary, compression=None, compression_opts=None
             # Recursively create sub-groups
             if replace_groups and key in hdf5_group:
                 del hdf5_group[key]
-            sub_group = hdf5_group.create_group(key)
+            sub_group = hdf5_group.create_group(str(key))
             dict_to_hdf5(sub_group, value)
         else:
             # Create datasets for other data types
@@ -670,12 +670,16 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
                                              "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE1"
                                             ]
                     fault_branches += len(file_suffix_list_i)
+                    file_suffix_list.extend(file_suffix_list_i)
+                    NSHM_directory_list.extend(NSHM_directory_list_i)
                 if "geodetic" in deformation_model:
                     file_suffix_list_i = ["_c_MDE2", "_c_MDE5", "_c_MDI0"]
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE2",
                                              "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDE5",
                                              "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDI0"]
                     fault_branches += len(file_suffix_list_i)
+                    file_suffix_list.extend(file_suffix_list_i)
+                    NSHM_directory_list.extend(NSHM_directory_list_i)
             if time_dependent and not single_branch:
                 if "geologic" in deformation_model:
                     file_suffix_list_i = ["_c_NjE5", "_c_NjI2", "_c_NjI3"]
@@ -683,18 +687,22 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
                                              "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI2",
                                              "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI3"]
                     fault_branches += len(file_suffix_list_i)
+                    file_suffix_list.extend(file_suffix_list_i)
+                    NSHM_directory_list.extend(NSHM_directory_list_i)
                 if "geodetic" in deformation_model:
                     file_suffix_list_i = ["_c_NjI5", "_c_NjMy", "_c_NjM3"]
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjI5",
                                              "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjMy",
                                              "crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjM3"]
                     fault_branches += len(file_suffix_list_i)
+                    file_suffix_list.extend(file_suffix_list_i)
+                    NSHM_directory_list.extend(NSHM_directory_list_i)
             if single_branch:
                 print("\n\n********\nCAUTION: SINGLE BRANCH HARD CODED FOR CRUSTAL FAULTS. MANUALLY CHANGE IN HELPER SCRIPTS UNTIL I GET ROUND TO FIXING\n********\n\n")
                 file_suffix_list_i = ["_c_MDEw"]
                 NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEw"]
-            file_suffix_list.extend(file_suffix_list_i)
-            NSHM_directory_list.extend(NSHM_directory_list_i)
+                file_suffix_list.extend(file_suffix_list_i)
+                NSHM_directory_list.extend(NSHM_directory_list_i)
 
         elif fault_type == "sz":
             if fakequakes:
