@@ -118,7 +118,7 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
         f.write(f"--sd {sd} --nesi_job site_PPE {NSHM} --thresh_lims {thresh_lims[0]}/{thresh_lims[1]} --thresh_step {thresh_step}\n\n".encode())
 
 
-def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=None, thresholds=None):
+def combine_site_cumu_PPE(sites, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=None, thresholds=None):
     """
     Script to recompile all individual site PPE dictionaries into a single branch dictionary.
     For the sake of saving space, the individual site dictionaries are deleted after being combined into the branch dictionary.
@@ -484,7 +484,7 @@ if __name__ == "__main__":
             with h5.File(combine_dict[branch]['branch_site_disp_dict'], "r") as branch_h5:
                 site_list = [key for key in branch_h5.keys() if key not in ['rates', 'scaled_rates']]
             nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
-            compile_site_cumu_PPE(site_list, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
+            combine_site_cumu_PPE(site_list, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
                                 branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'],
                                 thresholds=combine_dict[branch]['thresholds'])
         print('\nAll branches combined!')
