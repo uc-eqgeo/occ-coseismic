@@ -772,6 +772,25 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
 
     model_directory = '/'.join(fault_model_PPE_dict[unique_id_list[0]].split('/')[1:-2])
 
+    # Check which sites already have been processed
+    well_processed_sites = []
+    for site in site_list:
+        if not remake_PPE:
+            # Check that the PPE has been processed for the required number of samples at each site. If so keep
+            print('\tChecking for existing PPE at each site...')
+            # if site in weighted_h5.keys():
+            #     if n
+            #     # Check keys
+
+
+
+
+
+
+
+
+
+
     n_sites = len(site_list)
     if not nesi:
         start = time()
