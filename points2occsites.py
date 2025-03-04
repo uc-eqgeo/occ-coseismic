@@ -10,7 +10,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 
-searise_csv = ['.\\sites\\paper_sites.csv']
+searise_csv = ['.\\sites\\validation_sites.csv']
 data_format = 'qgis' # 'qgis' for qgis exports, 'searise' for searise exports, 'hamling' for Hamling VLM coast sites from paper
 out_csv_file = None  # If none, automatically set to the input file name with '_points' appended
 
@@ -36,9 +36,15 @@ for csv_file in searise_csv:
         else:  # If the data is in Lat/Lon
             data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.X, data.Y), crs='EPSG:4326')
             data.geometry = data.geometry.to_crs('EPSG:2193')  # Convert to NZTM
-        data.rename(columns={'id': 'siteId'}, inplace=True)
-        coord_name = True
-        sort_values = True
+        if 'id' in data.columns:
+            data.rename(columns={'id': 'siteId'}, inplace=True)
+            coord_name = True
+            sort_values = True
+        else:
+            site_col = [col for col in data.columns if 'site' in col.lower()]
+            data.rename(columns={site_col[0]: 'siteId'}, inplace=True)
+            sort_values = False
+
 
     data['Lon'] = data.geometry.x
     data['Lat'] = data.geometry.y
