@@ -580,23 +580,25 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
         # Reduce site list to only those that have not been processed or not processed to the required number of samples
         thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
-        if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_PPE:
-            print('\tChecking for existing PPE at each site...')
-            with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r") as branch_PPEh5:
-                # Checks that sites have been processed
-                existing_sites = [site for site in branch_PPEh5.keys() if site not in ["branch_weight", "thresholds"]]
-                # Checks that previous processing had required sampling (i.e. wasn't a testing run)
-                well_processed_sites = []
-                for site in existing_sites:
-                    if all([True if key in branch_PPEh5[site].keys() else False for key in ['n_samples', 'thresh_para']]):
-                        if branch_PPEh5[site]['n_samples'][()] >= n_samples:
-                            well_processed_sites.append(site)
+        well_processed_sites = []
+        if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]):
+            if not remake_PPE:
+                # Check that the PPE has been processed for the required number of samples at each site. If so keep
+                print('\tChecking for existing PPE at each site...')
+                with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r") as branch_PPEh5:
+                    # Checks that sites have been processed
+                    existing_sites = [site for site in branch_PPEh5.keys() if site not in ["branch_weight", "thresholds"]]
+                    # Checks that previous processing had required sampling (i.e. wasn't a testing run)
+                    for site in existing_sites:
+                        if all([True if key in branch_PPEh5[site].keys() else False for key in ['n_samples', 'thresh_para']]):
+                            if branch_PPEh5[site]['n_samples'][()] >= n_samples:
+                                well_processed_sites.append(site)
 
-            prep_list = [site for site in inv_sites if site not in well_processed_sites]
         else:
             branch_PPEh5 = h5.File(fault_model_allbranch_PPE_dict[branch_id], "w")
             branch_PPEh5.close()
-            prep_list = inv_sites
+
+        prep_list = [site for site in inv_sites if site not in well_processed_sites]
         
         if len(prep_list) == 0:
             print(f"\tAll sites have been processed for {branch_id}. Skipping...")
@@ -619,7 +621,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 if sbatch:
                     print(f"\tPreparing NESI combination for {fault_model_allbranch_PPE_dict[branch_id]}....")
                     prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
-                                        taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1], thresholds=thresholds)
+                                        taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1], thresholds=thresholds, sites=prep_list)
                     combine_branches += 1
                     continue
                 else:
@@ -761,9 +763,9 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                             del weighted_h5[key]
                             weighted_h5.create_dataset(key, data=meta_dict[key])
                         else:
-                            raise Exception(f"Meta data for cannot match newly requested thresholds to those from previous runs....")
+                            raise Exception(f"Meta data for **{key}** cannot match newly requested thresholds to those from previous runs....")
                     else:
-                        print(f"Meta data for **{key}** does not match what was in the weighted.h5...")
+                        raise Exception(f"Meta data for **{key}** does not match what was in the weighted.h5...")
             else:
                 print(f"Meta data for **{key}** was not in the weighted.h5. Adding...")
                 weighted_h5.create_dataset(key, data=meta_dict[key])
@@ -830,12 +832,18 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             printProgressBar(0, len(site_list), prefix=f'\tAdding Site {site_list[0]}', suffix='Complete 00:00:00 (00:00s/site)', length=50)
             for ix, site in enumerate(site_list):
                 site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
+                if remake_PPE and site in weighted_h5.keys():
+                    del weighted_h5[site]
                 site_group = weighted_h5.create_group(site)
                 with h5.File(site_h5_file, 'r') as site_h5:
+                    # Take the data from the site_h5 and put it in the weighted_h5
                     site_group.create_dataset("site_coords", data=site_h5['site_coords'])
                     for exceed_type in exceed_type_list:
-                        for dataset in ['weighted_exceedance_probs_*-*', '*-*_max_vals', '*-*_min_vals', 'branch_exceedance_probs_*-*']:
-                            site_group.create_dataset(dataset.replace('*-*', exceed_type), data=site_h5[dataset.replace('*-*', exceed_type)], compression=None)
+                        site_group.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=site_h5[f'weighted_exceedance_probs_{exceed_type}'], compression=None)
+                        site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_h5[f'branch_exceedance_probs_{exceed_type}'], compression='gzip', compression_opts=6)
+                        site_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = [branch for branch in site_h5['branch_id_list'].asstr()]
+                        site_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=site_h5[f'{exceed_type}_weighted_percentile_error'], compression=None)
+
                 elapsed = time_elasped(time(), start, decimal=False)
                 printProgressBar(ix + 1, len(site_list), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
             weighted_h5.close()
