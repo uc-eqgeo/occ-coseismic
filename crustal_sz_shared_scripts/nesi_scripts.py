@@ -178,12 +178,13 @@ def combine_site_cumu_PPE(sites, model_version_results_directory, extension1, br
     return
 
 
-def prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=0, thresholds=None):
+def prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=0, thresholds=None, sites=[]):
 
     with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "rb") as f:
         combine_dict = pkl.load(f)
 
     combine_dict[os.path.basename(branch_h5file)] = {'branch_site_disp_dict': branch_site_disp_dict_file,
+                                                     'sites': sites,
                                                      'model_version_results_directory': model_version_results_directory,
                                                      'extension1': extension1,
                                                      'branch_h5file': branch_h5file,
@@ -481,8 +482,9 @@ if __name__ == "__main__":
             combine_dict = pkl.load(f)
        
         for branch in task_branches:
-            with h5.File(combine_dict[branch]['branch_site_disp_dict'], "r") as branch_h5:
-                site_list = [key for key in branch_h5.keys() if key not in ['rates', 'scaled_rates']]
+            site_list = combine_dict[branch]['sites']
+            # with h5.File(combine_dict[branch]['branch_site_disp_dict'], "r") as branch_h5:
+                # site_list = [key for key in branch_h5.keys() if key not in ['rates', 'scaled_rates']]
             nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
             combine_site_cumu_PPE(site_list, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
                                 branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'],
