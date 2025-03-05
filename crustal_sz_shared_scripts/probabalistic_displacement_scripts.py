@@ -180,26 +180,25 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
 
 if numba_flag:
     @njit(parallel=True)
-    def calc_thresholds(thresholds, cumulative_disp_scenarios):
+    def calc_thresholds(thresholds, cumulative_disp_scenarios, uix=0, dix=1, aix=2):
         n_thresholds = len(thresholds)
-        n_chunks, n_scenarios = cumulative_disp_scenarios.shape
+        _, n_chunks, n_scenarios = cumulative_disp_scenarios.shape
         n_exceedances_total_abs = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
         n_exceedances_up = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
         n_exceedances_down = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
 
-        abs_disp_scenarios = np.abs(cumulative_disp_scenarios)
         for tix in prange(n_thresholds):
             threshold = thresholds[tix]
 
             for i in range(n_chunks):
                 count_total_abs, count_up, count_down = 0, 0, 0
                 for j in range(n_scenarios):
-                    if abs_disp_scenarios[i, j] > threshold:
-                        count_total_abs += 1
-                    if cumulative_disp_scenarios[i, j] > threshold:
+                    if cumulative_disp_scenarios[uix, i, j] > threshold:
                         count_up += 1
-                    if cumulative_disp_scenarios[i, j] < -threshold:
+                    if cumulative_disp_scenarios[dix, i, j] < -threshold:
                         count_down += 1
+                    if cumulative_disp_scenarios[aix, i, j] > threshold:
+                        count_total_abs += 1
 
                 n_exceedances_total_abs[tix, i] = count_total_abs
                 n_exceedances_up[tix, i] = count_up
@@ -210,19 +209,19 @@ if numba_flag:
 else:
     def calc_thresholds(thresholds, cumulative_disp_scenarios):
         n_thresholds = len(thresholds)
-        n_chunks, n_scenarios = cumulative_disp_scenarios.shape
+        _, n_chunks, n_scenarios = cumulative_disp_scenarios.shape
         n_exceedances_total_abs = np.zeros((n_thresholds, n_chunks))
         n_exceedances_up = np.zeros((n_thresholds, n_chunks))
         n_exceedances_down = np.zeros((n_thresholds, n_chunks))
 
-        abs_disp_scenarios = np.abs(cumulative_disp_scenarios)
+        abs_disp_scenarios = np.abs(cumulative_disp_scenarios[2, :, :])
         for tix, threshold in enumerate(thresholds):
             # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
             # across all of the 100 yr scenarios
             # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
             n_exceedances_total_abs[tix, :] = np.sum(abs_disp_scenarios > threshold, axis=1)
-            n_exceedances_up[tix, :] = np.sum(cumulative_disp_scenarios > threshold, axis=1)
-            n_exceedances_down[tix, :] = np.sum(cumulative_disp_scenarios < -threshold, axis=1)
+            n_exceedances_up[tix, :] = np.sum(cumulative_disp_scenarios[0, :, :] > threshold, axis=1)
+            n_exceedances_down[tix, :] = np.sum(cumulative_disp_scenarios[1, :, :] < -threshold, axis=1)
             # Run check to see if displacement has maxed out (and therefore to stop calculating)
             if np.sum(n_exceedances_total_abs[tix, :]) == 0:
                 # Double check that this isn't because up and down have cancelled out
@@ -272,7 +271,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     procdir = os.path.relpath(os.path.dirname(__file__) + '/..')
 
     if numba_flag:
-        _ = calc_thresholds(np.arange(0,1,1), np.ones((1, 100)))
+        _ = calc_thresholds(np.arange(0,1,1), np.ones((3, 1, 100)))
 
     # use random number generator to initialise monte carlo sampling
     rng = np.random.default_rng()
@@ -404,26 +403,39 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                         print(f"Time taken to generate scenarios: {time() - begin:.5f} s")
                         lap = time()
 
-                # Calculate uncertainty for each scenario that ruptures
-                # assigns a normal distribution with a mean of 1 and a standard deviation of sd
-                # effectively the multiplier for the displacement value               
-                disp_uncertainty = scenarios.copy()
-                disp_uncertainty.data = rng.normal(1, sd, size=scenarios.data.shape[0])
+            # Calculate uncertainty for each scenario that ruptures
+            # assigns a normal distribution with a mean of 1 and a standard deviation of sd
+            # effectively the multiplier for the displacement value               
+            disp_uncertainty = scenarios.copy()
+            disp_uncertainty.data = rng.normal(1, sd, size=scenarios.data.shape[0])
 
-                # for each 100 yr scenario, get displacements from EQs that happened
-                disp_scenarios = scenarios * disps
-                # multiplies displacement by the uncertainty multiplier
-                disp_scenarios = disp_scenarios * disp_uncertainty
-                # sum all displacement values at that site in that 100 yr interval
-                cumulative_disp_scenarios = disp_scenarios.sum(axis=1)
-                if benchmarking:
-                    print(f"Calculated Displacements: {time() - lap:.5f} s")
-                lap = time()    
+            # for each 100 yr scenario, get displacements from EQs that happened
+            disp_scenarios = scenarios * disps
+            # multiplies displacement by the uncertainty multiplier
+            disp_scenarios = disp_scenarios * disp_uncertainty
+            # sum all displacement values at that site in that 100 yr interval
+            up_scenarios = disp_scenarios.copy()
+            down_scenarios = disp_scenarios.copy()
+            abs_scenarios = disp_scenarios.copy()
+            up_scenarios.data = np.where(disp_scenarios.data > 0, disp_scenarios.data, 0)
+            down_scenarios.data = np.where(disp_scenarios.data < 0, disp_scenarios.data, 0)
+            abs_scenarios.data = np.abs(disp_scenarios.data)
+            if benchmarking:
+                print(f"Exceed Type Scenarios: {time() - lap:.5f} s")
+            lap = time()   
 
-            # sum all the displacements in the 100 year window that exceed threshold
-            cumulative_disp_scenarios = cumulative_disp_scenarios.reshape(1, len(cumulative_disp_scenarios))   
+            cumulative_up_scenarios = up_scenarios.sum(axis=1).reshape(1, n_samples)
+            cumulative_down_scenarios = down_scenarios.sum(axis=1).reshape(1, n_samples)
+            cumulative_abs_scenarios = abs_scenarios.sum(axis=1).reshape(1, n_samples)
+            cumulative_disp_scenarios = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios, cumulative_abs_scenarios]).reshape(3, 1, n_samples)
+            if benchmarking:
+                print(f"Calculated Displacements: {time() - lap:.5f} s")
+            lap = time()    
+
             # Find indexes of scenarios where slip occurred
-            slip_scenarios = np.where(cumulative_disp_scenarios != 0)[1]    
+            up_slip_scenarios = np.where(cumulative_disp_scenarios[0, 0, :] != 0)[0]
+            down_slip_scenarios = np.where(cumulative_disp_scenarios[1, 0, :] != 0)[0]
+            abs_slip_scenarios = np.where(cumulative_disp_scenarios[2, 0, :] != 0)[0]    
             lap = time()
             n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
             if benchmarking:
@@ -455,7 +467,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 ## the error envelope is so tight around the mean haz curve it's not useful.
                 ## It could be that when the branches are combined and weighted together, then this stops being an issue as you can take the relative variations between
                 ## the branches as you form the error envelope.
-                chunked_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)  # Create chunked displacement scenario (old method)
+                chunked_disp_scenarios = cumulative_disp_scenarios[:, 0, :(n_chunks * error_chunking)].reshape(3, n_chunks, error_chunking)  # Create chunked displacement scenario (old method)
                 # error_chunking = 1000  # Now this is number of chunks to use in the new method, rather than the number of samples per chunk (old method)
                 # error_samples = int(n_samples / 1)  # Number of scenarios to use per chunk for error calculation (new method)
                 # rand_scenario_ix = np.random.randint(0, n_samples, size=error_chunking * error_samples)  # Random permutation to select which scenarios to use in each chunk (new method)
@@ -479,15 +491,20 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
                 error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
 
-                site_PPE_dict[site_of_interest][investigation_time].update({"scenario_displacements": cumulative_disp_scenarios[0, slip_scenarios],
-                                                                            "slip_scenarios_ix": slip_scenarios,
-                                                                            "standard_deviation": sd,
-                                                                            "error_total_abs": error_abs[:, error_abs.sum(axis=0) != 0],
-                                                                            "error_up": error_up[:, error_up.sum(axis=0) != 0],
-                                                                            "error_down": error_down[:, error_down.sum(axis=0) != 0],
-                                                                            "sigma_lims": sigma_lims,
-                                                                            "n_samples": n_samples,
-                                                                            "thresh_para": np.hstack([thresh_lims, thresh_step])})
+
+                scenario_displacements = {'up': {'displacements': cumulative_disp_scenarios[0, 0, up_slip_scenarios], 'scenario_ix': up_slip_scenarios},
+                                        'down': {'displacements': cumulative_disp_scenarios[1, 0, down_slip_scenarios], 'scenario_ix': down_slip_scenarios},
+                                        'total_abs': {'displacements': cumulative_disp_scenarios[2, 0, abs_slip_scenarios], 'scenario_ix': abs_slip_scenarios}}
+
+                site_PPE_dict[site_of_interest].update({"scenario_displacements": scenario_displacements,
+                                                                    "site_coords": site_dict_i["site_coords"],
+                                                                    "standard_deviation": sd,
+                                                                    "error_total_abs": error_abs[:, error_abs.sum(axis=0) != 0],
+                                                                    "error_up": error_up[:, error_up.sum(axis=0) != 0],
+                                                                    "error_down": error_down[:, error_down.sum(axis=0) != 0],
+                                                                    "sigma_lims": sigma_lims,
+                                                                    "n_samples": n_samples,
+                                                                    "thresh_para": np.hstack([thresh_lims, thresh_step])})
         site_PPE_dict[site_of_interest].update({"site_coords": site_dict_i["site_coords"]})
 
         elapsed = time_elasped(time(), start)
@@ -1072,7 +1089,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
         for interval in intervals:
             interval_h5 = site_h5.create_group(interval)
             for pair_id in pair_id_list:
-                cumulative_disp_scenarios = np.zeros(n_samples)
+                cumulative_disp_scenarios = np.zeros((3, 1, n_samples))
                 for branch in pair_id.split('_-_'):
                     fault_tag = branch.split('_')[-2]
                     branch_tag = branch.split('_')[-1]
@@ -1086,21 +1103,25 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                         fault_type += '_fq'
                         sz_name = 'fq_' + sz_name
 
-                    if fault_tag == 'c':
-                        fault_type = fault_tag
-                        fault_dir = crustal_directory
-                    else:
-                        fault_dir = next((sz_dir for sz_dir in sz_directory_list if f'/{sz_name}' in sz_dir))
-                    NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
-                    with h5.File(NSHM_file, 'r') as NSHM_h5:
-                        if site in NSHM_h5.keys():
-                            NSHM_displacements = NSHM_h5[site][interval]['scenario_displacements'][:]
-                            slip_scenarios = NSHM_h5[site][interval]['slip_scenarios_ix'][:]
-                            cumulative_disp_scenarios[slip_scenarios[np.where(slip_scenarios < n_samples)]] += NSHM_displacements[np.where(slip_scenarios < n_samples)].reshape(-1)
-                n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios.reshape(1, -1))
-                site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)
-                site_df_up[pair_id] = (n_exceedances_up / n_samples).reshape(-1)
-                site_df_down[pair_id] = (n_exceedances_down / n_samples).reshape(-1)
+                if fault_tag == 'c':
+                    fault_type = fault_tag
+                    fault_dir = crustal_directory
+                else:
+                    fault_dir = next((sz_dir for sz_dir in sz_directory_list if f'/{sz_name}' in sz_dir))
+                NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
+                with h5.File(NSHM_file, 'r') as NSHM_h5:
+                    if site in NSHM_h5.keys():
+                        NSHM_displacements = np.zeros((3, 1, n_samples))
+                        for ix, exceed_type in enumerate(['up', 'down', 'total_abs']):
+                            if exceed_type in exceed_type_list:
+                                slip_scenarios = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['scenario_ix'][:]
+                                NSHM_displacements = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['displacements'][:]
+                                cumulative_disp_scenarios[ix, 0, slip_scenarios] += NSHM_displacements.reshape(-1)
+
+            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
+            site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)
+            site_df_up[pair_id] = (n_exceedances_up / n_samples).reshape(-1)
+            site_df_down[pair_id] = (n_exceedances_down / n_samples).reshape(-1)
 
             site_df_dict = {"total_abs": site_df_abs, "up": site_df_up, "down": site_df_down}
             for exceed_type in exceed_type_list:
@@ -1389,13 +1410,17 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
 
     if 'sigma_lims' in weighted_mean_PPE_dictionary.keys():
         sigma_lims = weighted_mean_PPE_dictionary['sigma_lims'][:]
+        mid_ix = np.where(sigma_lims == 50)[0][0]
         if sigma == 2:
             sigma_ix = [ix for ix, sig in enumerate(sigma_lims) if sig in [2.275, 97.725]]
+            sig_lab = '2sig'
         elif sigma == 1:
             sigma_ix = [ix for ix, sig in enumerate(sigma_lims) if sig in [15.865, 84.135]]
+            sig_lab = '1sig'
         else:
             print("Can't find requested sigma values in weighted_mean_PPE. Defaulting to max and min")
             sigma_ix = [0, -1]
+            sig_lab = 'minmax'
 
     if weight_colouring:
         colouring = "_c"
@@ -1479,6 +1504,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][0,1:], color='black', linewidth=0.75, linestyle='-.')
                 ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][-1,1:], color='black', linewidth=0.75, linestyle='-.')
 
+                ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][mid_ix,1:], color=line_color, linewidth=1.5, linestyle=':')
                 ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=1.5)
 
                 # Uncertainty weighted mean
@@ -1487,8 +1513,8 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 ax.axhline(y=0.02, color="g", linestyle='dashed')
                 ax.axhline(y=0.1, color="g", linestyle='dotted')
 
-                xmin, xmax = 0.01, 10
-                ymin, ymax = 0.000005, 1
+                xmin, xmax = 0.01, 30
+                ymin, ymax = 0.000001, 1
                 ax.set_title(site)
                 ax.set_yscale('log'), ax.set_xscale('log')
                 ax.set_ylim([ymin, ymax])
@@ -1508,7 +1534,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
 
             for file_type in file_type_list:
                 plt.savefig(
-                    f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurve_{exceed_type}{taper_extension}_{plot_n}{colouring}.{file_type}", dpi=300)
+                    f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurve_{exceed_type}{taper_extension}_{plot_n}_{sig_lab}{colouring}.{file_type}", dpi=300)
             plt.close()
             printProgressBar(plot_n + 0.5, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
 
@@ -1544,7 +1570,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 # make axes pretty
                 ax.set_title(site)
                 ax.set_yscale('log'), ax.set_xscale('log')
-                ax.set_ylim([0.000005, 1]), ax.set_xlim([0.01, 3])
+                ax.set_ylim([ymin, ymax]), ax.set_xlim([xmin, xmax])
                 ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
                 ax.get_xaxis().set_major_formatter(ScalarFormatter())
                 ax.ticklabel_format(axis='x', style='plain')
@@ -1557,7 +1583,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
             plt.tight_layout()
 
             for file_type in file_type_list:
-                plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves{taper_extension}_{plot_n}"
+                plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves{taper_extension}_{plot_n}_{sig_lab}"
                             f".{file_type}", dpi=300)
             plt.close()
             printProgressBar(plot_n + 1, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
