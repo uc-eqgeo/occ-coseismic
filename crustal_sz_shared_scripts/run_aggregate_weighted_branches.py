@@ -453,5 +453,6 @@ if make_hazcurves:
         plot_weighted_mean_haz_curves(
             weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
             model_version_title=site_names_title, exceed_type_list=["up", "down", "total_abs"],
-            out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)
+            out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order,
+            sigma=2)
     
