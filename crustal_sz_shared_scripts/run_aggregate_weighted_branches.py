@@ -273,7 +273,6 @@ if not paired_crustal_sz:
         fault_model_branch_weight_dict = fault_model_single_branch_weight_dict
 
     extension1_list = [gf_name + suffix for suffix in file_suffix_list]
-    get_rupture_dict = False
 
     if "crustal" in fault_type:
         site_geojson = f"../crustal/discretised_{version_discretise_directory[0].split('/')[-1]}/{fault_type[0]}_site_locations{crustal_site_names}.geojson"
@@ -289,6 +288,7 @@ if not paired_crustal_sz:
         inv_sites = site_gdf['siteId'].values.tolist()
 
     for ix, extension1 in enumerate(extension1_list):
+        get_rupture_dict = False
         ftype = [(jj, ftype) for jj, ftype in enumerate(fault_type) if '_' + ftype.replace('rustal', '') + '_' in extension1][0]
         all_rupture_disp_file = f"../{version_discretise_directory[ftype[0]]}/{extension1}/all_rupture_disps_{extension1}{taper_extension}_sites.pkl"
 
