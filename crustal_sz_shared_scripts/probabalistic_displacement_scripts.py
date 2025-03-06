@@ -186,7 +186,12 @@ if numba_flag:
         n_exceedances_total_abs = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
         n_exceedances_up = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
         n_exceedances_down = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
-
+        
+        # Limit the thresholds counted to only those that dont exceed maximum displacement
+        max_disp = cumulative_disp_scenarios[aix, :, :].max()
+        if max_disp < thresholds[-1]:
+            n_thresholds = np.where(thresholds > max_disp)[0][0]
+        
         for tix in prange(n_thresholds):
             threshold = thresholds[tix]
 
@@ -1088,23 +1093,29 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
         site_df_abs = {}
         site_df_up = {}
         site_df_down = {}
+        benchmarking = False
+        if benchmarking:
+            print('')
+        start = time()
+        lap = time()
 
+
+        branch_list = list(set([branch for pair_id in pair_id_list for branch in pair_id.split('_-_')]))
         for interval in intervals:
             interval_h5 = site_h5.create_group(interval)
-            for pair_id in pair_id_list:
-                cumulative_disp_scenarios = np.zeros((3, 1, n_samples))
-                for branch in pair_id.split('_-_'):
-                    fault_tag = branch.split('_')[-2]
-                    branch_tag = branch.split('_')[-1]
-                    if '_sz_' in branch:
-                        fault_type = 'sz'
-                        sz_name = 'hikkerk'
-                    elif '_py_' in branch:
-                        fault_type = 'py'
-                        sz_name = 'puysegur'
-                    if fault_tag == 'fq':
-                        fault_type += '_fq'
-                        sz_name = 'fq_' + sz_name
+            branch_disp_dict = {}
+            for branch in branch_list:
+                fault_tag = branch.split('_')[-2]
+                branch_tag = branch.split('_')[-1]
+                if '_sz_' in branch:
+                    fault_type = 'sz'
+                    sz_name = 'hikkerk'
+                elif '_py_' in branch:
+                    fault_type = 'py'
+                    sz_name = 'puysegur'
+                if fault_tag == 'fq':
+                    fault_type += '_fq'
+                    sz_name = 'fq_' + sz_name
 
                 if fault_tag == 'c':
                     fault_type = fault_tag
@@ -1114,17 +1125,34 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
                 with h5.File(NSHM_file, 'r') as NSHM_h5:
                     if site in NSHM_h5.keys():
-                        NSHM_displacements = np.zeros((3, 1, n_samples))
+                        NSHM_displacements = np.zeros((3, n_samples))
                         for ix, exceed_type in enumerate(['up', 'down', 'total_abs']):
                             if exceed_type in exceed_type_list:
                                 slip_scenarios = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['scenario_ix'][:]
-                                NSHM_displacements = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['displacements'][:]
-                                cumulative_disp_scenarios[ix, 0, slip_scenarios] += NSHM_displacements.reshape(-1)
+                                NSHM_displacements[ix, slip_scenarios] = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['displacements'][:]
+                        branch_disp_dict[branch] = NSHM_displacements  
+            if benchmarking:
+                print(f'All displacements loaded: {time() - lap:.2f}s')
+                lap = time()
 
-                n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
+            cumulative_disp_scenarios = np.zeros((3, len(pair_id_list), n_samples))
+            for ix, pair_id in enumerate(pair_id_list):
+                for branch in pair_id.split('_-_'):
+                    cumulative_disp_scenarios[:, ix, :] += branch_disp_dict[branch]
+            if benchmarking:
+                print(f'Cumulative disp scenarios Created: {time() - lap:.2f}s')
+                lap = time()
+
+            for ix, pair_id in enumerate(pair_id_list):
+                cumulative_scenario = cumulative_disp_scenarios[:, ix:ix+1, :]
+                
+                n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_scenario)
                 site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)
                 site_df_up[pair_id] = (n_exceedances_up / n_samples).reshape(-1)
                 site_df_down[pair_id] = (n_exceedances_down / n_samples).reshape(-1)
+            if benchmarking:
+                    print(f'Exceedances Counted: {time() - lap:.2f}s\n')
+                    lap = time()
 
             site_df_dict = {"total_abs": site_df_abs, "up": site_df_up, "down": site_df_down}
             for exceed_type in exceed_type_list:
@@ -1147,6 +1175,10 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles_csc.data, compression='gzip', compression_opts=6)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indices", data=percentiles_csc.indices, compression='gzip', compression_opts=6)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indptr", data=percentiles_csc.indptr, compression='gzip', compression_opts=6)
+            if benchmarking:
+                    print(f'Weights made: {time() - lap:.2f}s')
+        if benchmarking:
+            print(f'Site complete: {time() - start:.2f}s\n')
 
 def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type, site_list, weighted=False, err_index=None, interval='100'):
     """returns displacements at the X% probabilities of exceedance for each site
