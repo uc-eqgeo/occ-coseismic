@@ -24,6 +24,9 @@ from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 from scipy.sparse import csc_array, csr_array
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+
 numba_flag = True
 if numba_flag:
     try:
@@ -1119,12 +1122,16 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     
     return
 
-def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None,
-                              intervals=['100']):    
-        site_df_abs = {}
-        site_df_up = {}
-        site_df_down = {}
-        benchmarking = False
+def process_pair(pair_id, branch_disp_dict):
+    parts = pair_id.split('_-_')
+    cumulative_value = branch_disp_dict[parts[0]]
+    for branch in parts[1:]:
+        cumulative_value += branch_disp_dict[branch]
+    return pair_id, cumulative_value
+
+def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None):    
+
+        benchmarking = True
         if benchmarking:
             print('')
         start = time()
@@ -1174,15 +1181,25 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 print(f'All displacements loaded: {time() - lap:.2f}s')
                 lap = time()
 
-            # Work out the cumulative displacement for all branch pairs
+        # Work out the cumulative displacement for all branch pairs
+        run_parallel = True
+        if run_parallel:
+            with ThreadPoolExecutor() as executor:
+                func = partial(process_pair, branch_disp_dict=branch_disp_dict)
+                results = executor.map(func, pair_id_list)
+            cumulative_pair_dict = dict(results)
+        else:
+            # Don't delete this yet as not tested as a nesi task array (paralleling it might kill it)
             cumulative_pair_dict = {}
             for ix, pair_id in enumerate(pair_id_list):
-                cumulative_pair_dict[pair_id] = branch_disp_dict[pair_id.split('_-_')[0]]
-                for branch in pair_id.split('_-_')[1:]:
-                    cumulative_pair_dict[pair_id] += branch_disp_dict[branch]
-            if benchmarking:
-                print(f'{len(pair_id_list)} cumulative disp scenarios created: {time() - lap:.2f}s')
-                lap = time()
+                _, cumulative_pair_dict[pair_id] = process_pair(pair_id, branch_disp_dict)
+                # cumulative_pair_dict[pair_id] = branch_disp_dict[pair_id.split('_-_')[0]]
+                # for branch in pair_id.split('_-_')[1:]:
+                #     cumulative_pair_dict[pair_id] += branch_disp_dict[branch]
+
+        if benchmarking:
+            print(f'{len(pair_id_list)} cumulative disp scenarios created: {time() - lap:.2f}s')
+            lap = time()
 
         # Work out the exceedances for each branch combination
             for ix, pair_id in enumerate(pair_id_list):
