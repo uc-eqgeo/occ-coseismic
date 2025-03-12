@@ -49,11 +49,12 @@ def split_cell(cell_dicts, parent_id, max_grid, min_grid, max_id, coastline, fau
         lat1 += cell_dicts[max_id]['resolution'] * fault_buffer
 
         poly = Polygon([(lon0, lat0), (lon1, lat0), (lon1, lat1), (lon0, lat1)])
+        # Decision if to stop splitting cell
         # Stop if no faults in the cell
         if not faults.within(poly).any():
-            # If cell does not intersect any faults
+            # Stop if cell does not intersect any faults
             if not faults.intersects(poly).any():
-                # If cell is acceptable resolution
+                # Stop if cell is acceptable resolution
                 if cell_dicts[max_id]['resolution'] <= max_grid:
                     # If an inland cell and hires coast not needed
                     if coastline.contains(poly).any() and hires_coast:
@@ -71,7 +72,7 @@ search_type = 'cube'  # 'grid', 'cube' or 'quad'
 
 # Resolution
 max_grid = 9000  # Default resolution. Min grid will be adjusted to work with this
-min_grid = 3000  # Min grid is the highest resolution of the quad or cubetree. Must be reachable by halving or thirding max_grid 
+min_grid = 1000  # Min grid is the highest resolution of the quad or cubetree. Must be reachable by halving or thirding max_grid 
 
 grid_width = 1000e3  # Width of the grid in meters
 grid_length = 1500e3 # Length of the grid in meters
@@ -81,6 +82,7 @@ hires_coast = True # If True, keep splitting cells that intersect the coast
 coastal_trim = False  # If True, removes any centroids that are not overland, even if polygon crosses the coast
 
 fault_buffer = 0
+min_slip_rate = 0 # Minimum slip rate for a fault to be included in the grid
 
 if search_type == 'quad':
     split_factor = 2  # How many times to split each cell
@@ -100,9 +102,15 @@ min_grid = int(max_grid / split_factor ** np.ceil(math.log(max_grid / min_grid, 
 coastline = gpd.read_file('QGIS\\nz-coastlines-and-islands-polygons-topo-1500k.gpkg')
 faults = gpd.read_file('C:\\Users\\jmc753\\Work\\NZ_CFM_v1_0\\Shapefiles\\NZ_CFM_v1_0.shp')
 
+# Remove faults with too low a slip rate
+faults = faults[faults.SR_pref > min_slip_rate]
+
 # Ensures the bottom left corner of the grid is based on the coastline file, rounded to 1km
-lon0 = np.round(coastline.bounds.minx.min(), -3) - min_grid / 2
-lat0 = np.round(coastline.bounds.miny.min(), -3) - min_grid / 2
+# Also ensures that the maximum grid resolution is also always centered on the same point
+# Does a better job of keeping everything centered at vairable resolutions IF THOSE ALL HAVE A COMMON FACTOR MIN GRID
+# (i.e. min 2km and 3km won't align, but max 9km and 27km will)
+lon0 = np.round(coastline.bounds.minx.min(), -3) - max_grid / 2
+lat0 = np.round(coastline.bounds.miny.min(), -3) - max_grid / 2
 
 lon1 = np.ceil(grid_width / max_grid) * max_grid + lon0
 lat1 = np.ceil(grid_length / max_grid) * max_grid + lat0
