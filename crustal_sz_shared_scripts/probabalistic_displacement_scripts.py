@@ -137,15 +137,23 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total: 
         print()
 
-def time_elasped(current_time, start_time, decimal=False):
+def time_elasped(current_time, start_time, site_num=None, decimal=False):
     elapsed_time = current_time - start_time
+    if site_num is not None:
+        per_site = elapsed_time / site_num
     hours, rem = divmod(elapsed_time, 3600)
     minutes, seconds = divmod(rem, 60)
     if not decimal:
-        return "{:0>2}:{:0>2}:{:0>2}".format(int(hours), int(minutes), int(seconds))
+        if site_num is not None:
+            return "{:0>2}:{:0>2}:{:0>2}".format(int(hours), int(minutes), int(seconds)), per_site
+        else:
+            return "{:0>2}:{:0>2}:{:0>2}".format(int(hours), int(minutes), int(seconds))
     else:
         seconds, rem = divmod(seconds, 1)
-        return "{:0>2}:{:0>2}:{:0>2}.{:.0f}".format(int(hours), int(minutes), int(seconds), rem * 10)
+        if site_num is not None:
+            return "{:0>2}:{:0>2}:{:0>2}.{:.0f}".format(int(hours), int(minutes), int(seconds), rem * 10), per_site
+        else:
+            return "{:0>2}:{:0>2}:{:0>2}.{:.0f}".format(int(hours), int(minutes), int(seconds), rem * 10)
 
 
 def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, model_version_results_directory):
@@ -1044,16 +1052,16 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     
     if not nesi:
         start = time()
+        elapsed, per_site = time_elasped(time(), start, 1, decimal=False)
         for ix, site in enumerate(site_names):
-            elapsed = time_elasped(time(), start, decimal=False)
-            printProgressBar(ix, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
+            printProgressBar(ix, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
             site_group = weighted_h5.create_group(site)
             with h5.File(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"], 'r') as branch_site_h5:
                 site_group.create_dataset("site_coords", data=branch_site_h5[site]["site_coords"])
             create_site_weighted_mean(site_group, site, n_samples, crustal_model_version_results_directory, sz_model_version_results_directory_list, gf_name, thresholds,
-                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list, intervals=time_interval)
-            elapsed = time_elasped(time(), start, decimal=False)
-            printProgressBar(ix + 1, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
+                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list)
+            elapsed, per_site = time_elasped(time(), start, ix + 1, decimal=False)
+        printProgressBar(ix + 1, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
         weighted_h5.close()
     
     else:
@@ -1131,7 +1139,7 @@ def process_pair(pair_id, branch_disp_dict):
 
 def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None):    
 
-        benchmarking = True
+        benchmarking = False
         if benchmarking:
             print('')
         start = time()
@@ -1178,7 +1186,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                                 NSHM_displacements[ix, slip_scenarios] = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['displacements'][:]
                         branch_disp_dict[branch] = csr_array(NSHM_displacements)   
             if benchmarking:
-                print(f'All displacements loaded: {time() - lap:.2f}s')
+                print(f'{len(branch_list)} branch displacements loaded: {time() - lap:.2f}s')
                 lap = time()
 
         # Work out the cumulative displacement for all branch pairs
