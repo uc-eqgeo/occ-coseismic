@@ -16,12 +16,12 @@ import h5py as h5
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_national_3km"
+mesh_version = "_EastCoastNI_10km"
 
 steeper_dip, gentler_dip = False, False
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'sites', 'national_3km_grid_points.csv')
+site_list_csv = os.path.join('..', 'sites', 'EastCoastNI_10km_grid_points.csv')
 sites_df = pd.read_csv(site_list_csv)
 
 gf_site_names = [str(site) for site in sites_df['siteId']]
