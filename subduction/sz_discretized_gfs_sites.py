@@ -14,7 +14,7 @@ If the sites listed in the CSV already have a greens function calculated, then t
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_EastCoastNI_5km"
+version_extension = "_validation_sites"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
@@ -22,7 +22,7 @@ steeper_dip, gentler_dip = False, False
 sz_zone = '_hikkerk'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-csvfile = 'EastCoastNI_5km_grid_points.csv'
+csvfile = 'validation_sites_points.csv'
 site_list_csv = os.path.join('..', 'sites', csvfile)
 sites_df = pd.read_csv(site_list_csv)
 
@@ -30,7 +30,7 @@ sites_df = pd.read_csv(site_list_csv)
 gf_site_names = [str(site) for site in sites_df['siteId']]
 gf_site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
 
-geojson_only = True  # True if you are generating gfs for a subset of sites that you have already prepared
+geojson_only = False  # True if you are generating gfs for a subset of sites that you have already prepared
 #############################################
 gf_type = "sites"
 
@@ -66,7 +66,9 @@ if "_fq_" in sz_zone and version_extension[:3] != "_fq":
 requested_site_coords = np.ascontiguousarray(np.array(sites_df[['Lon', 'Lat', 'Height']]))
 requested_site_names = sites_df['siteId'].values
 
-if not geojson_only:
+if geojson_only:
+    print(f"Generating geojson for {gf_type} only")
+else:
     # Load pre made_greens_functions
     gf_h5_file = f"discretised{sz_zone}/{prefix}_gf_dict_sites.h5"
     if not os.path.exists(gf_h5_file):
