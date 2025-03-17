@@ -27,7 +27,7 @@ sites_df = pd.read_csv(site_list_csv)
 gf_site_names = [str(site) for site in sites_df['siteId']]
 gf_site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
 
-geojson_only = False  # True if you are generating gfs for a subset of sites that you have already prepared
+geojson_only = True  # True if you are generating gfs for a subset of sites that you have already prepared
 #########################
 gf_type = "sites"
 
@@ -46,9 +46,7 @@ elif steeper_dip == True and gentler_dip == True:
 requested_site_coords = np.ascontiguousarray(np.array(sites_df[['Lon', 'Lat', 'Height']]))
 requested_site_names = sites_df['siteId'].values
 
-if geojson_only:
-    print(f"Generating geojson for {gf_type} only")
-else:
+if not geojson_only:
     # Load pre made_greens_functions
     gf_h5_file = f"discretised{discretise_version}/crustal_gf_dict_sites.h5"
     if not os.path.exists(gf_h5_file):
