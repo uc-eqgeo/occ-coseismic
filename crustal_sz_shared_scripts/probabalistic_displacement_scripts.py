@@ -784,11 +784,15 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                     if key == 'thresholds':
                         # Check to see if the previous run had the same threshold start and step, just a lower maximum limit
                         if np.array_equal(weighted_h5[key][:], meta_dict[key][:weighted_h5[key][:].shape[0]]):
-                            print(f"Previous threshold limits were different, but the same start and step. Extending the limits to match the new limits...")
+                            print(f"Previous threshold limits had lower maximum, but the same start and step. Extending the limits to match the new limits...")
                             del weighted_h5[key]
                             weighted_h5.create_dataset(key, data=meta_dict[key])
+                        elif np.array_equal(weighted_h5[key][:meta_dict[key][:].shape[0]], meta_dict[key]):
+                            print(f"Previous threshold limits had higher maximum, but the same start and step. Extending the new limits to match...")
+                            thresholds = np.round(np.arange(thresh_lims[0], weighted_h5[key][-1] + thresh_step, thresh_step), 4)
                         else:
-                            raise Exception(f"Meta data for cannot match newly requested thresholds to those from previous runs....")
+                            raise Exception(f"Meta data for cannot match newly requested thresholds ({thresh_lims[0]}/{thresh_lims[1]}/{thresh_step}) "
+                                            f"to those from previous runs ({weighted_h5[key][0]}/{weighted_h5[key][-1]}/{np.round(weighted_h5[key][1] - weighted_h5[key][0], 4)})....")
                     else:
                         print(f"Meta data for **{key}** does not match what was in the weighted.h5...")
             else:
@@ -1117,10 +1121,10 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                                 NSHM_displacements = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['displacements'][:]
                                 cumulative_disp_scenarios[ix, 0, slip_scenarios] += NSHM_displacements.reshape(-1)
 
-            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
-            site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)
-            site_df_up[pair_id] = (n_exceedances_up / n_samples).reshape(-1)
-            site_df_down[pair_id] = (n_exceedances_down / n_samples).reshape(-1)
+                n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
+                site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)
+                site_df_up[pair_id] = (n_exceedances_up / n_samples).reshape(-1)
+                site_df_down[pair_id] = (n_exceedances_down / n_samples).reshape(-1)
 
             site_df_dict = {"total_abs": site_df_abs, "up": site_df_up, "down": site_df_down}
             for exceed_type in exceed_type_list:
