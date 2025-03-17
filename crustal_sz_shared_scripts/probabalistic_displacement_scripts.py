@@ -451,8 +451,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
             # Minimum data needed for weighted_mean_PPE (done to reduce required storage, and if errors can be recalculated later if needed)
             site_PPE_dict[site_of_interest][investigation_time] = {"exceedance_probs_total_abs": exceedance_probs_total_abs[exceedance_probs_total_abs != 0],
-                                                                "exceedance_probs_up": exceedance_probs_up[exceedance_probs_up != 0],
-                                                                "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
+                                                                   "exceedance_probs_up": exceedance_probs_up[exceedance_probs_up != 0],
+                                                                   "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
 
             # Save the rest of the data if this is a NSHM branch
             if NSHM_branch:
@@ -493,18 +493,17 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
 
                 scenario_displacements = {'up': {'displacements': cumulative_disp_scenarios[0, 0, up_slip_scenarios], 'scenario_ix': up_slip_scenarios},
-                                        'down': {'displacements': cumulative_disp_scenarios[1, 0, down_slip_scenarios], 'scenario_ix': down_slip_scenarios},
-                                        'total_abs': {'displacements': cumulative_disp_scenarios[2, 0, abs_slip_scenarios], 'scenario_ix': abs_slip_scenarios}}
+                                          'down': {'displacements': cumulative_disp_scenarios[1, 0, down_slip_scenarios], 'scenario_ix': down_slip_scenarios},
+                                          'total_abs': {'displacements': cumulative_disp_scenarios[2, 0, abs_slip_scenarios], 'scenario_ix': abs_slip_scenarios}}
 
-                site_PPE_dict[site_of_interest].update({"scenario_displacements": scenario_displacements,
-                                                                    "site_coords": site_dict_i["site_coords"],
-                                                                    "standard_deviation": sd,
-                                                                    "error_total_abs": error_abs[:, error_abs.sum(axis=0) != 0],
-                                                                    "error_up": error_up[:, error_up.sum(axis=0) != 0],
-                                                                    "error_down": error_down[:, error_down.sum(axis=0) != 0],
-                                                                    "sigma_lims": sigma_lims,
-                                                                    "n_samples": n_samples,
-                                                                    "thresh_para": np.hstack([thresh_lims, thresh_step])})
+                site_PPE_dict[site_of_interest][investigation_time].update({"scenario_displacements": scenario_displacements,
+                                                                            "standard_deviation": sd,
+                                                                            "error_total_abs": error_abs[:, error_abs.sum(axis=0) != 0],
+                                                                            "error_up": error_up[:, error_up.sum(axis=0) != 0],
+                                                                            "error_down": error_down[:, error_down.sum(axis=0) != 0],
+                                                                            "sigma_lims": sigma_lims,
+                                                                            "n_samples": n_samples,
+                                                                            "thresh_para": np.hstack([thresh_lims, thresh_step])})
         site_PPE_dict[site_of_interest].update({"site_coords": site_dict_i["site_coords"]})
 
         elapsed = time_elasped(time(), start)
