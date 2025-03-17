@@ -701,8 +701,8 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
                 print("\n\n********\nCAUTION: SINGLE BRANCH HARD CODED FOR CRUSTAL FAULTS. MANUALLY CHANGE IN HELPER SCRIPTS UNTIL I GET ROUND TO FIXING\n********\n\n")
                 file_suffix_list_i = ["_c_MDEw"]
                 NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEw"]
-                file_suffix_list = file_suffix_list_i
-                NSHM_directory_list = NSHM_directory_list_i
+                file_suffix_list.extend(file_suffix_list_i)
+                NSHM_directory_list.extend(NSHM_directory_list_i)
 
         elif fault_type == "sz":
             if fakequakes:
