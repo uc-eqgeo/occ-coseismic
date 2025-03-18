@@ -230,27 +230,28 @@ if numba_flag:
         n_exceedances_up = np.zeros((n_thresholds, 1), dtype=np.int32)
         n_exceedances_down = np.zeros((n_thresholds, 1), dtype=np.int32)
         
-        # Limit the thresholds counted to only those that dont exceed maximum displacement
-        max_disp = cumulative_disp_scenarios.max()
-        if max_disp < thresholds[-1]:
-            n_thresholds = np.where(thresholds > max_disp)[0][0]
-        
-        for tix in prange(n_thresholds):
-            threshold = thresholds[tix]
-            count_total_abs, count_up, count_down = 0, 0, 0
-            for disp in cumulative_disp_scenarios[rows[0]:rows[1]]:
-                if disp > threshold:
-                    count_up += 1
-            for disp in cumulative_disp_scenarios[rows[1]:rows[2]]:
-                if disp < -threshold:
-                    count_down += 1
-            for disp in cumulative_disp_scenarios[rows[2]:rows[3]]:
-                if disp > threshold:
-                    count_total_abs += 1
+        if cumulative_disp_scenarios.shape[0] != 0:
+            # Limit the thresholds counted to only those that dont exceed maximum displacement
+            max_disp = cumulative_disp_scenarios.max()
+            if max_disp < thresholds[-1]:
+                n_thresholds = np.where(thresholds > max_disp)[0][0]
+            
+            for tix in prange(n_thresholds):
+                threshold = thresholds[tix]
+                count_total_abs, count_up, count_down = 0, 0, 0
+                for disp in cumulative_disp_scenarios[rows[0]:rows[1]]:
+                    if disp > threshold:
+                        count_up += 1
+                for disp in cumulative_disp_scenarios[rows[1]:rows[2]]:
+                    if disp < -threshold:
+                        count_down += 1
+                for disp in cumulative_disp_scenarios[rows[2]:rows[3]]:
+                    if disp > threshold:
+                        count_total_abs += 1
 
-            n_exceedances_total_abs[tix, 0] = count_total_abs
-            n_exceedances_up[tix, 0] = count_up
-            n_exceedances_down[tix, 0] = count_down
+                n_exceedances_total_abs[tix, 0] = count_total_abs
+                n_exceedances_up[tix, 0] = count_up
+                n_exceedances_down[tix, 0] = count_down
 
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
@@ -282,27 +283,28 @@ else:
         n_exceedances_up = np.zeros((n_thresholds, 1), dtype=np.int32)
         n_exceedances_down = np.zeros((n_thresholds, 1), dtype=np.int32)
         
-        # Limit the thresholds counted to only those that dont exceed maximum displacement
-        max_disp = cumulative_disp_scenarios.max()
-        if max_disp < thresholds[-1]:
-            n_thresholds = np.where(thresholds > max_disp)[0][0]
-        
-        for tix in prange(n_thresholds):
-            threshold = thresholds[tix]
-            count_total_abs, count_up, count_down = 0, 0, 0
-            for disp in cumulative_disp_scenarios[rows[0]:rows[1]]:
-                if disp > threshold:
-                    count_up += 1
-            for disp in cumulative_disp_scenarios[rows[1]:rows[2]]:
-                if disp < -threshold:
-                    count_down += 1
-            for disp in cumulative_disp_scenarios[rows[2]:rows[3]]:
-                if disp > threshold:
-                    count_total_abs += 1
+        if cumulative_disp_scenarios.shape[0] != 0:
+            # Limit the thresholds counted to only those that dont exceed maximum displacement
+            max_disp = cumulative_disp_scenarios.max()
+            if max_disp < thresholds[-1]:
+                n_thresholds = np.where(thresholds > max_disp)[0][0]
+            
+            for tix in prange(n_thresholds):
+                threshold = thresholds[tix]
+                count_total_abs, count_up, count_down = 0, 0, 0
+                for disp in cumulative_disp_scenarios[rows[0]:rows[1]]:
+                    if disp > threshold:
+                        count_up += 1
+                for disp in cumulative_disp_scenarios[rows[1]:rows[2]]:
+                    if disp < -threshold:
+                        count_down += 1
+                for disp in cumulative_disp_scenarios[rows[2]:rows[3]]:
+                    if disp > threshold:
+                        count_total_abs += 1
 
-            n_exceedances_total_abs[tix, 0] = count_total_abs
-            n_exceedances_up[tix, 0] = count_up
-            n_exceedances_down[tix, 0] = count_down
+                n_exceedances_total_abs[tix, 0] = count_total_abs
+                n_exceedances_up[tix, 0] = count_up
+                n_exceedances_down[tix, 0] = count_down
 
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
@@ -663,7 +665,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension, inv_sites=[],
                               nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
-                              time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=3, load_random=False,
+                              time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=3, load_random=True,
                               remake_PPE=True, sbatch=False, thresh_lims=[0, 3], thresh_step=0.01):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
