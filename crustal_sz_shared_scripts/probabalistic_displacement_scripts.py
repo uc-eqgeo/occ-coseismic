@@ -28,9 +28,6 @@ from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_sit
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
-from concurrent.futures import ThreadPoolExecutor
-from functools import partial
-
 numba_flag = True
 if numba_flag:
     try:
@@ -145,8 +142,6 @@ def time_elasped(current_time, start_time, site_num=None, decimal=False):
     elapsed_time = current_time - start_time
     if site_num is not None:
         per_site = elapsed_time / site_num
-    if site_num is not None:
-        per_site = elapsed_time / site_num
     hours, rem = divmod(elapsed_time, 3600)
     minutes, seconds = divmod(rem, 60)
     if not decimal:
@@ -154,16 +149,8 @@ def time_elasped(current_time, start_time, site_num=None, decimal=False):
             return "{:0>2}:{:0>2}:{:0>2}".format(int(hours), int(minutes), int(seconds)), per_site
         else:
             return "{:0>2}:{:0>2}:{:0>2}".format(int(hours), int(minutes), int(seconds))
-        if site_num is not None:
-            return "{:0>2}:{:0>2}:{:0>2}".format(int(hours), int(minutes), int(seconds)), per_site
-        else:
-            return "{:0>2}:{:0>2}:{:0>2}".format(int(hours), int(minutes), int(seconds))
     else:
         seconds, rem = divmod(seconds, 1)
-        if site_num is not None:
-            return "{:0>2}:{:0>2}:{:0>2}.{:.0f}".format(int(hours), int(minutes), int(seconds), rem * 10), per_site
-        else:
-            return "{:0>2}:{:0>2}:{:0>2}.{:.0f}".format(int(hours), int(minutes), int(seconds), rem * 10)
         if site_num is not None:
             return "{:0>2}:{:0>2}:{:0>2}.{:.0f}".format(int(hours), int(minutes), int(seconds), rem * 10), per_site
         else:
@@ -207,16 +194,9 @@ if numba_flag:
     def calc_thresholds(thresholds, cumulative_disp_scenarios, uix=0, dix=1, aix=2):
         n_thresholds = len(thresholds)
         _, n_chunks, n_scenarios = cumulative_disp_scenarios.shape
-        _, n_chunks, n_scenarios = cumulative_disp_scenarios.shape
         n_exceedances_total_abs = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
         n_exceedances_up = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
         n_exceedances_down = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
-        
-        # Limit the thresholds counted to only those that dont exceed maximum displacement
-        max_disp = cumulative_disp_scenarios[aix, :, :].max()
-        if max_disp < thresholds[-1]:
-            n_thresholds = np.where(thresholds > max_disp)[0][0]
-        
         
         # Limit the thresholds counted to only those that dont exceed maximum displacement
         max_disp = cumulative_disp_scenarios[aix, :, :].max()
@@ -239,39 +219,6 @@ if numba_flag:
                 n_exceedances_total_abs[tix, i] = count_total_abs
                 n_exceedances_up[tix, i] = count_up
                 n_exceedances_down[tix, i] = count_down
-
-        return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
-
-    @njit(parallel=True)
-    def sparse_thresholds(thresholds, cumulative_disp_scenarios, rows):
-        # Currently won't run on chuncked data, but given chunked data doesn't really work, it's not exactly a big problem
-        n_thresholds = len(thresholds)
-        n_exceedances_total_abs = np.zeros((n_thresholds, 1), dtype=np.int32)
-        n_exceedances_up = np.zeros((n_thresholds, 1), dtype=np.int32)
-        n_exceedances_down = np.zeros((n_thresholds, 1), dtype=np.int32)
-        
-        if cumulative_disp_scenarios.shape[0] != 0:
-            # Limit the thresholds counted to only those that dont exceed maximum displacement
-            max_disp = cumulative_disp_scenarios.max()
-            if max_disp < thresholds[-1]:
-                n_thresholds = np.where(thresholds > max_disp)[0][0]
-            
-            for tix in prange(n_thresholds):
-                threshold = thresholds[tix]
-                count_total_abs, count_up, count_down = 0, 0, 0
-                for disp in cumulative_disp_scenarios[rows[0]:rows[1]]:
-                    if disp > threshold:
-                        count_up += 1
-                for disp in cumulative_disp_scenarios[rows[1]:rows[2]]:
-                    if disp < -threshold:
-                        count_down += 1
-                for disp in cumulative_disp_scenarios[rows[2]:rows[3]]:
-                    if disp > threshold:
-                        count_total_abs += 1
-
-                n_exceedances_total_abs[tix, 0] = count_total_abs
-                n_exceedances_up[tix, 0] = count_up
-                n_exceedances_down[tix, 0] = count_down
 
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
@@ -465,8 +412,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
     # get displacement thresholds for calculating exceedance (hazard curve x-axis)
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
-    results = []
-    results = []
+
     benchmarking = False
     start = time()
     if not benchmarking:
@@ -474,13 +420,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     for i, site_of_interest in enumerate(site_ids):
         if i == 1:
             start = time() # Because the first loop is really slow, it throws the stats for the rest
-        if i == 1:
-            start = time() # Because the first loop is really slow, it throws the stats for the rest
         begin = time()
         lap = time()
-
-        if benchmarking:
-            print(f"Site {site_of_interest} ({i}/{len(site_ids)})")
 
         if benchmarking:
             print(f"Site {site_of_interest} ({i}/{len(site_ids)})")
@@ -575,20 +516,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             cumulative_down_scenarios = down_scenarios.sum(axis=1).reshape(1, n_samples)
             cumulative_abs_scenarios = abs_scenarios.sum(axis=1).reshape(1, n_samples)
             cumulative_disp_scenarios = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios, cumulative_abs_scenarios]).reshape(3, 1, n_samples)
-            up_scenarios = disp_scenarios.copy()
-            down_scenarios = disp_scenarios.copy()
-            abs_scenarios = disp_scenarios.copy()
-            up_scenarios.data = np.where(disp_scenarios.data > 0, disp_scenarios.data, 0)
-            down_scenarios.data = np.where(disp_scenarios.data < 0, disp_scenarios.data, 0)
-            abs_scenarios.data = np.abs(disp_scenarios.data)
-            if benchmarking:
-                print(f"Exceed Type Scenarios: {time() - lap:.5f} s")
-            lap = time()   
-
-            cumulative_up_scenarios = up_scenarios.sum(axis=1).reshape(1, n_samples)
-            cumulative_down_scenarios = down_scenarios.sum(axis=1).reshape(1, n_samples)
-            cumulative_abs_scenarios = abs_scenarios.sum(axis=1).reshape(1, n_samples)
-            cumulative_disp_scenarios = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios, cumulative_abs_scenarios]).reshape(3, 1, n_samples)
             if benchmarking:
                 print(f"Calculated Displacements: {time() - lap:.5f} s")
             lap = time()    
@@ -607,21 +534,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             else:
                 cumulative_array = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios, cumulative_abs_scenarios])
                 n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_array.reshape(3, 1, n_samples))
-            up_slip_scenarios = np.where(cumulative_disp_scenarios[0, 0, :] != 0)[0]
-            down_slip_scenarios = np.where(cumulative_disp_scenarios[1, 0, :] != 0)[0]
-            abs_slip_scenarios = np.where(cumulative_disp_scenarios[2, 0, :] != 0)[0]    
 
-            cumulative_data = np.hstack([cumulative_up_scenarios[0, up_slip_scenarios], cumulative_down_scenarios[0, down_slip_scenarios], cumulative_abs_scenarios[0, abs_slip_scenarios]])
-            if cumulative_data.shape[0] < 2e6:  # Anecdatally, with less than 2 million scenarios, the sparse method is faster
-                cumulative_indptr = np.cumsum([0, up_slip_scenarios.shape[0], down_slip_scenarios.shape[0], abs_slip_scenarios.shape[0]])
-                n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = sparse_thresholds(thresholds, cumulative_data, cumulative_indptr)
-                if benchmarking:
-                    print(f"Sparse Exceedances Counted : {time() - lap:.15f} s")
-            else:
-                cumulative_array = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios, cumulative_abs_scenarios])
-                n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_array.reshape(3, 1, n_samples))
             if benchmarking:
-                    print(f"Exceedances Counted : {time() - lap:.15f} s")
                     print(f"Exceedances Counted : {time() - lap:.15f} s")
             lap = time()
 
@@ -1200,7 +1114,6 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         elapsed, per_site = time_elasped(time(), start, 1, decimal=False)
         for ix, site in enumerate(site_names):
             printProgressBar(ix, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
-            printProgressBar(ix, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
             site_group = weighted_h5.create_group(site)
             with h5.File(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"], 'r') as branch_site_h5:
                 site_group.create_dataset("site_coords", data=branch_site_h5[site]["site_coords"])
@@ -1283,25 +1196,7 @@ def process_pair(pair_id, branch_disp_dict):
         cumulative_value += branch_disp_dict[branch]
     return pair_id, cumulative_value
 
-def process_pair(pair_id, branch_disp_dict):
-    parts = pair_id.split('_-_')
-    cumulative_value = branch_disp_dict[parts[0]]
-    for branch in parts[1:]:
-        cumulative_value += branch_disp_dict[branch]
-    return pair_id, cumulative_value
-
 def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None, intervals=['100']):    
-
-        benchmarking = False
-        if benchmarking:
-            print('')
-        start = time()
-        lap = time()
-
-        if numba_flag:
-            _ = calc_thresholds(np.arange(0,1,1), np.ones((3, 1, 100)))
-            _ = sparse_thresholds(np.arange(0,1,1), np.ones(3), np.arange(0, 4, 1))
-
 
         benchmarking = False
         if benchmarking:
