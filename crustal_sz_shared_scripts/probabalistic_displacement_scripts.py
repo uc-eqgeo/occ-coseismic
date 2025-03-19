@@ -521,32 +521,18 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         down_slip_scenarios = np.where(cumulative_disp_scenarios[1, 0, :] != 0)[0]
         abs_slip_scenarios = np.where(cumulative_disp_scenarios[2, 0, :] != 0)[0]    
 
-        lap = time()
         cumulative_data = np.hstack([cumulative_up_scenarios[0, up_slip_scenarios], cumulative_down_scenarios[0, down_slip_scenarios], cumulative_abs_scenarios[0, abs_slip_scenarios]])
-        cumulative_indptr = np.cumsum([0, up_slip_scenarios.shape[0], down_slip_scenarios.shape[0], abs_slip_scenarios.shape[0]])
-        n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = sparse_thresholds(thresholds, cumulative_data, cumulative_indptr)
-        sparse_time = time() - lap
-        if benchmarking:
-            print(f"Sparse Exceedances Counted : {time() - lap:.15f} s")
-        lap = time()
-        cumulative_array = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios, cumulative_abs_scenarios])
-        c_exceedances_total_abs, c_exceedances_up, c_exceedances_down = calc_thresholds(thresholds, cumulative_array.reshape(3, 1, n_samples))
-        calc_time = time() - lap
-        cumulative_csr = csr_array(cumulative_array)
-        if benchmarking:
-            print(f"Calc Exceedances Counted : {time() - lap:.15f} s")
-        if not np.array_equal(cumulative_data, cumulative_csr.data):
-            print('Error in pseudo sparse array creation')
-        if not np.array_equal(cumulative_indptr, cumulative_csr.indptr):
-            print('Error in pseudo sparse array creation')
-        lap = time()
-        sparse_time = 1e-6 if sparse_time == 0 else sparse_time
-        calc_time = 1e-6 if calc_time == 0 else calc_time
-
-        if sparse_time < calc_time:
-            results.append(['SPARSE', sparse_time / calc_time, np.diff(cumulative_csr.indptr)])
+        if cumulative_data.shape[0] < 2e6:  # Anecdatally, with less than 2 million scenarios, the sparse method is faster
+            cumulative_indptr = np.cumsum([0, up_slip_scenarios.shape[0], down_slip_scenarios.shape[0], abs_slip_scenarios.shape[0]])
+            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = sparse_thresholds(thresholds, cumulative_data, cumulative_indptr)
+            if benchmarking:
+                print(f"Sparse Exceedances Counted : {time() - lap:.15f} s")
         else:
-            results.append(['CALC', calc_time / sparse_time, np.diff(cumulative_csr.indptr)])
+            cumulative_array = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios, cumulative_abs_scenarios])
+            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_array.reshape(3, 1, n_samples))
+        if benchmarking:
+                print(f"Exceedances Counted : {time() - lap:.15f} s")
+        lap = time()
 
             # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
             # quite high for low displacements (25%). Means there's a ~25% chance an earthquake will exceed 0 m in next 100
@@ -621,34 +607,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     if benchmarking:
         print(f"Total Time: {time() - commence:.5f} s")
     
-    calc_ratio, calc_num, calc_array = [], [], []
-    sparse_ratio, sparse_num, sparse_array = [], [], []
-    for winner, ratio, numbers in results:
-        if winner == 'CALC':
-            calc_ratio.append(ratio)
-            calc_num.append(numbers.sum())
-            calc_array.append(numbers)
-        else:
-            sparse_ratio.append(ratio)
-            sparse_num.append(numbers.sum())
-            sparse_array.append(numbers)
-    calc_ratio, calc_num, calc_array = np.array(calc_ratio), np.array(calc_num), np.array(calc_array)
-    sparse_ratio, sparse_num, sparse_array = np.array(sparse_ratio), np.array(sparse_num), np.array(sparse_array)
-
-    sparse_order, calc_order = np.argsort(sparse_num), np.argsort(calc_num)
-
-    plt.plot(calc_num[calc_order], calc_ratio[calc_order], label='Calc Sum', color='red')
-    plt.plot(sparse_num[sparse_order], sparse_ratio[sparse_order], label='Sparse Sum', color='blue')
-    plt.scatter(calc_num[calc_order], calc_ratio[calc_order], color='red')
-    plt.scatter(sparse_num[sparse_order], sparse_ratio[sparse_order], color='blue')
-    plt.xlabel('Number of Non-Zero Elements')
-    plt.ylabel('Ratio of Time')
-    plt.title(f"Calc: {len(calc_ratio)} vs Sparse: {len(sparse_ratio)}")
-    plt.ylim([0, 1])
-    plt.legend()
-    plt.savefig(os.path.join(os.path.dirname(branch_site_disp_dict), '..', f'{branch_key}_calc_sparse_ratio_{len(site_ids)}.png'))
-    plt.close()
-
     if array_process:
         os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}", exist_ok=True)
         site_file = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5"
