@@ -1095,10 +1095,12 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
     preserve_previous_h5 = True
     if os.path.exists(weighted_h5_file):
-        weighted_h5_file = weighted_h5_file.replace('.h5', '_processing.h5')
         preserve_previous_h5 = True
-        if os.path.exists(weighted_h5_file):
-            os.remove(weighted_h5_file)
+    
+    if preserve_previous_h5:
+        weighted_h5_file = weighted_h5_file.replace('.h5', '_processing.h5')
+        if os.path.exists(weighted_h5_file.replace('_processing.h5', '.h5')):
+            os.remove(weighted_h5_file.replace('_processing.h5', '.h5'))
 
     # Create weighted h5 file with associated metadata
     weighted_h5 = h5.File(weighted_h5_file, "w")
@@ -1183,9 +1185,9 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
 
     if preserve_previous_h5:
-        os.remove(weighted_h5_file.replace('_processing.h5', '.h5'))
+        if os.path.exists(weighted_h5_file.replace('_processing.h5', '.h5')):
+            os.remove(weighted_h5_file.replace('_processing.h5', '.h5'))
         os.rename(weighted_h5_file, weighted_h5_file.replace('_processing.h5', '.h5'))
-        weighted_h5_file = weighted_h5_file.replace('_processing.h5', '.h5')
     
     return
 
