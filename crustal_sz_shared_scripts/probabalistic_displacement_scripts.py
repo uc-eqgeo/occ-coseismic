@@ -155,7 +155,6 @@ def time_elasped(current_time, start_time, site_num=None, decimal=False):
         else:
             return "{:0>2}:{:0>2}:{:0>2}.{:.0f}".format(int(hours), int(minutes), int(seconds), rem * 10)
 
-
 def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, model_version_results_directory):
     """
     Combine all site_disp_dicts for a each branch of a fault model into a single dictionary
@@ -1280,34 +1279,14 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
             lap = time()
 
         # Work out the exceedances for each branch combination
-        times = []
         for ix, pair_id in enumerate(pair_id_list):
-            tmp_time = time()
             n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = sparse_thresholds(thresholds, cumulative_pair_dict[pair_id].data, cumulative_pair_dict[pair_id].indptr)
-            sparse_time = time()
-            c_exceedances_total_abs, c_exceedances_up, c_exceedances_down = calc_thresholds(thresholds, cumulative_pair_dict[pair_id].toarray().reshape(3,1,-1))
-            calc_time = time()
-            if not np.array_equal(n_exceedances_down, c_exceedances_down):
-                print(f'Error in {pair_id} down exceedances')
-            if not np.array_equal(n_exceedances_up, c_exceedances_up):
-                print(f'Error in {pair_id} up exceedances')
-            if not np.array_equal(n_exceedances_total_abs, c_exceedances_total_abs):
-                print(f'Error in {pair_id} total_abs exceedances')
-            times.append([sparse_time - tmp_time, calc_time - sparse_time])
             site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)
             site_df_up[pair_id] = (n_exceedances_up / n_samples).reshape(-1)
             site_df_down[pair_id] = (n_exceedances_down / n_samples).reshape(-1)
         if benchmarking:
                 print(f'Exceedances thresholded: {time() - lap:.2f}s')
                 lap = time()
-        times = np.array(times)
-        times = np.where(times == 0, 1e-6, times)
-        plt.plot(times[:, 0], times[:, 1], 'o')
-        plt.plot([0, times.max(axis=0).min()], [0, times.max(axis=0).min()], 'k--')
-        plt.xlabel('Sparse Time (s)')
-        plt.ylabel('Calc Time (s)')
-        plt.savefig(f'../{site}_benchmarking.png')
-        plt.close()
 
         # Calculate the weighted exceedances for the site
         site_df_dict = {"total_abs": site_df_abs, "up": site_df_up, "down": site_df_down}
