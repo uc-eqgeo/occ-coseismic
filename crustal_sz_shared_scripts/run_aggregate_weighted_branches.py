@@ -31,11 +31,11 @@ single_branch = ["_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nhb110", "_sz_fq_p
                  "_sz_fq_3lhb110C1", "_sz_fq_3lhb110C100", "_sz_fq_3lhb110C1000", "_sz_fq_3nhb110C1", "_sz_fq_3nhb110C100"] # Allows you to specifically select which branches to calculate PPEs for. If None, all branches will be calculated
 single_branch = None
 rate_scaling = False           # Do you want to calculate PPEs for a single branch with different rate scalings?
-paired_crustal_sz = True      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = True             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
-calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
+calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = False            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
-calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
+calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
 remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 save_arrays = False         # Do you want to save the displacement and probability arrays?
 default_plot_order = False       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
@@ -421,7 +421,7 @@ if save_arrays:
 if paired_crustal_sz:
     site_names_title = f"paired crustal{crustal_site_names} and "
     for ix, sub in enumerate(fault_type[1:]):
-        site_names_title += f"{sub}{sz_site_names} and "
+        site_names_title += f"{sub}{sz_site_names[ix]} and "
     site_names_title = site_names_title[:-5]
 else:
     if not isinstance(fault_type, list): 
