@@ -1294,7 +1294,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
 
                 interval_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs[branch_weighted_mean_probs > 0], compression=compression)
                 non_zero_row = np.where(site_probabilities_df.sum(axis=1))[0][-1] + 1
-                interval_h5.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy()[non_zero_row:, :], compression='gzip', compression_opts=6)
+                interval_h5.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy()[:non_zero_row, :], compression='gzip', compression_opts=6)
 
                 # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
                 percentiles = percentile(site_probabilities_df, sigma_lims, axis=1, weights=branch_weights)
