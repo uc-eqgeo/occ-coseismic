@@ -421,7 +421,7 @@ if save_arrays:
 if paired_crustal_sz:
     site_names_title = f"paired crustal{crustal_site_names} and "
     for ix, sub in enumerate(fault_type[1:]):
-        site_names_title += f"{sub}{sz_site_names} and "
+        site_names_title += f"{sub}{sz_site_names[ix]} and "
     site_names_title = site_names_title[:-5]
 else:
     if not isinstance(fault_type, list): 
