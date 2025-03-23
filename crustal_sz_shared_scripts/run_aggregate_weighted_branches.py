@@ -6,7 +6,6 @@ from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, pl
     save_disp_prob_xarrays
 from helper_scripts import get_NSHM_directories, get_rupture_disp_dict
 import pickle as pkl
-import h5py as h5
 try:
     import geopandas as gpd
 except ImportError:
@@ -139,7 +138,7 @@ if single_branch is not None:
         calculate_weighted_mean_PPE = False
         save_arrays = False
 
-time_interval = [str(interval) for interval in time_interval]
+time_interval = [str(int(interval)) for interval in time_interval]
 ######################################################
 
 def make_branch_weight_dict(branch_weight_file_path, sheet_name):
@@ -455,5 +454,5 @@ if make_hazcurves:
             weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
             model_version_title=site_names_title, exceed_type_list=["up", "down", "total_abs"],
             out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order,
-            sigma=2)
+            sigma=2, intervals=[time_interval[time_interval.index(str(max([int(val) for val in time_interval])))]])  # Currently just plot the maximum time interval
     
