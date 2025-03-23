@@ -22,7 +22,6 @@ from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 from scipy.sparse import csc_array, csr_array
-from scipy.sparse import csc_array, csr_array
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
 from concurrent.futures import ThreadPoolExecutor
@@ -349,9 +348,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     procdir = os.path.relpath(os.path.dirname(__file__) + '/..')
 
     if numba_flag:
-        _ = calc_thresholds(np.arange(0,1,1), np.ones((3, 1, 100)))
-        # For some reason this causes a numba error on the second branch if allowed to run here....
-        # _ = sparse_thresholds(np.arange(0,1,1), np.ones((1, 100)), [0, 1])
         _ = calc_thresholds(np.arange(0,1,1), np.ones((3, 1, 100)))
         # For some reason this causes a numba error on the second branch if allowed to run here....
         # _ = sparse_thresholds(np.arange(0,1,1), np.ones((1, 100)), [0, 1])
