@@ -651,10 +651,9 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         if nesi_step == 'prep' and os.path.exists(f"../{model_version_results_directory}/site_name_list.txt"):
             os.remove(f"../{model_version_results_directory}/site_name_list.txt")
         if nesi_step == 'combine':
-            if os.path.exists(f"../{model_version_results_directory}/branch_combine_list.txt"):
-                os.remove(f"../{model_version_results_directory}/branch_combine_list.txt")
-            if os.path.exists(f"../{model_version_results_directory}/combine_site_meta.pkl"):
-                os.remove(f"../{model_version_results_directory}/combine_site_meta.pkl")
+            for file in ['branch_combine_list.txt', 'combine_site_meta.pkl']:
+                if os.path.exists(f"../{model_version_results_directory}/{file}"):
+                    os.remove(f"../{model_version_results_directory}/{file}")
             with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
                 pkl.dump({}, f)
 
@@ -879,7 +878,6 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                         # Check to see if the previous run had the same threshold start and step, just a lower maximum limit
                         if np.array_equal(weighted_h5[key][:], meta_dict[key][:weighted_h5[key][:].shape[0]]):
                             print(f"Previous threshold limits had lower maximum, but the same start and step. Extending the limits to match the new limits...")
-                            print(f"Previous threshold limits had lower maximum, but the same start and step. Extending the limits to match the new limits...")
                             del weighted_h5[key]
                             weighted_h5.create_dataset(key, data=meta_dict[key])
                         elif np.array_equal(weighted_h5[key][:meta_dict[key][:].shape[0]], meta_dict[key]):
@@ -889,8 +887,6 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                             print(f"Previous threshold limits had higher maximum, but the same start and step. Extending the new limits to match...")
                             thresholds = np.round(np.arange(thresh_lims[0], weighted_h5[key][-1] + thresh_step, thresh_step), 4)
                         else:
-                            raise Exception(f"Meta data for cannot match newly requested thresholds ({thresh_lims[0]}/{thresh_lims[1]}/{thresh_step}) "
-                                            f"to those from previous runs ({weighted_h5[key][0]}/{weighted_h5[key][-1]}/{np.round(weighted_h5[key][1] - weighted_h5[key][0], 4)})....")
                             raise Exception(f"Meta data for cannot match newly requested thresholds ({thresh_lims[0]}/{thresh_lims[1]}/{thresh_step}) "
                                             f"to those from previous runs ({weighted_h5[key][0]}/{weighted_h5[key][-1]}/{np.round(weighted_h5[key][1] - weighted_h5[key][0], 4)})....")
                     else:
@@ -1561,27 +1557,22 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
 
     unique_id_list = weighted_mean_PPE_dictionary['branch_ids'].asstr()
     weights = weighted_mean_PPE_dictionary['branch_weights'][:]
-    thresholds = weighted_mean_PPE_dictionary["thresholds"][:]
-    thresholds = thresholds[1:]
+    thresholds = weighted_mean_PPE_dictionary["thresholds"][1:]
     weight_order = np.argsort(weights)
     weight_colouring = True
 
     if 'sigma_lims' in weighted_mean_PPE_dictionary.keys():
         sigma_lims = weighted_mean_PPE_dictionary['sigma_lims'][:]
         mid_ix = np.where(sigma_lims == 50)[0][0]
-        mid_ix = np.where(sigma_lims == 50)[0][0]
         if sigma == 2:
             sigma_ix = [ix for ix, sig in enumerate(sigma_lims) if sig in [2.275, 97.725]]
-            sig_lab = '2sig'
             sig_lab = '2sig'
         elif sigma == 1:
             sigma_ix = [ix for ix, sig in enumerate(sigma_lims) if sig in [15.865, 84.135]]
             sig_lab = '1sig'
-            sig_lab = '1sig'
         else:
             print("Can't find requested sigma values in weighted_mean_PPE. Defaulting to max and min")
             sigma_ix = [0, -1]
-            sig_lab = 'minmax'
             sig_lab = 'minmax'
 
     if weight_colouring:
@@ -1599,7 +1590,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
     printProgressBar(0, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
 
     for ix, interval in enumerate(intervals):
-        for plot_n in range(n_plots):
+        for plot_n in range(n_plots / len(intervals)):
             sites = plot_order[plot_n*12:(plot_n+1)*12]
             if len(sites) >= 5 or len(sites) == 3:
                 n_cols = 3
@@ -1670,7 +1661,6 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                     ax.plot(thresholds, weighted_percentile_error[sigma_ix[0],1:], color='black', linewidth=0.75, linestyle='-.')
                     ax.plot(thresholds, weighted_percentile_error[sigma_ix[1],1:], color='black', linewidth=0.75, linestyle='-.')
 
-                    ax.plot(thresholds, weighted_percentile_error[mid_ix,1:], color=line_color, linewidth=1.5, linestyle=':')
                     ax.plot(thresholds, weighted_percentile_error[mid_ix,1:], color=line_color, linewidth=1.5, linestyle=':')
                     ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=1.5)
 
@@ -1753,10 +1743,10 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 plt.tight_layout()
 
                 for file_type in file_type_list:
-                    plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves{taper_extension}_{interval}yr_{plot_n}_{sig_lab}"
+                    plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves_{taper_extension}_{interval}yr_{plot_n}_{sig_lab}"
                                 f".{file_type}", dpi=300)
                 plt.close()
-                printProgressBar(plot_n * ix + plot_n + 1, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
+                printProgressBar(plot_n * ix + plot_n + 0.5, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
     weighted_mean_PPE_dictionary.close()
 
 def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_version_title, out_directory, file_type_list, slip_taper, plot_order, sigma=2):
