@@ -16,18 +16,18 @@ import h5py as h5
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_national_3km"
+mesh_version = "_EastCoastNI_10km"
 
 steeper_dip, gentler_dip = False, False
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'sites', 'national_3km_grid_points.csv')
+site_list_csv = os.path.join('..', 'sites', 'EastCoastNI_10km_grid_points.csv')
 sites_df = pd.read_csv(site_list_csv)
 
 gf_site_names = [str(site) for site in sites_df['siteId']]
 gf_site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
 
-geojson_only = True  # True if you are generating gfs for a subset of sites that you have already prepared
+geojson_only = False  # True if you are generating gfs for a subset of sites that you have already prepared
 #########################
 gf_type = "sites"
 
@@ -46,7 +46,9 @@ elif steeper_dip == True and gentler_dip == True:
 requested_site_coords = np.ascontiguousarray(np.array(sites_df[['Lon', 'Lat', 'Height']]))
 requested_site_names = sites_df['siteId'].values
 
-if not geojson_only:
+if geojson_only:
+    print(f"Generating geojson for {gf_type} only")
+else:
     # Load pre made_greens_functions
     gf_h5_file = f"discretised{discretise_version}/crustal_gf_dict_sites.h5"
     if not os.path.exists(gf_h5_file):
