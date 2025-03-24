@@ -1,12 +1,10 @@
 import os
 import pandas as pd
-import numpy as np
 from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, plot_single_branch_haz_curves, \
     make_sz_crustal_paired_PPE_dict, make_fault_model_PPE_dict, get_weighted_mean_PPE_dict, \
     save_disp_prob_xarrays
 from helper_scripts import get_NSHM_directories, get_rupture_disp_dict
 import pickle as pkl
-import h5py as h5
 try:
     import geopandas as gpd
 except ImportError:
@@ -23,7 +21,7 @@ sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerk", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
-testing = True   # Impacts number of samples runs, job time etc
+testing = False   # Impacts number of samples runs, job time etc
 fakequakes = False  # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
@@ -44,10 +42,10 @@ plot_order_csv = "../sites/EastCoastNI_5km_transect_points.csv"  # csv file with
 use_saved_dictionary = True   # Use a saved dictionary if it exists
 
 # Processing Parameters
-time_interval = [20, 50, 100]     # Time span of hazard forecast (yrs)
+time_interval = [100]     # Time span of hazard forecast (yrs)
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 10
-thresh_lims = [0, 10]
+thresh_lims = [0, 30]
 thresh_step = 0.01
 
 # Nesi Parameters
@@ -139,7 +137,7 @@ if single_branch is not None:
         calculate_weighted_mean_PPE = False
         save_arrays = False
 
-time_interval = [str(interval) for interval in time_interval]
+time_interval = [str(int(interval)) for interval in time_interval]
 ######################################################
 
 def make_branch_weight_dict(branch_weight_file_path, sheet_name):
@@ -455,5 +453,5 @@ if make_hazcurves:
             weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
             model_version_title=site_names_title, exceed_type_list=["up", "down", "total_abs"],
             out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order,
-            sigma=2)
+            sigma=2, intervals=[time_interval[time_interval.index(str(max([int(val) for val in time_interval])))]])  # Currently just plot the maximum time interval
     
