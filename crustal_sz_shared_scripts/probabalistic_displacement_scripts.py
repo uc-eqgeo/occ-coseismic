@@ -22,7 +22,6 @@ from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 from scipy.sparse import csc_array, csr_array
-from scipy.sparse import csc_array, csr_array
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
 from concurrent.futures import ThreadPoolExecutor
@@ -352,9 +351,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         _ = calc_thresholds(np.arange(0,1,1), np.ones((3, 1, 100)))
         # For some reason this causes a numba error on the second branch if allowed to run here....
         # _ = sparse_thresholds(np.arange(0,1,1), np.ones((1, 100)), [0, 1])
-        _ = calc_thresholds(np.arange(0,1,1), np.ones((3, 1, 100)))
-        # For some reason this causes a numba error on the second branch if allowed to run here....
-        # _ = sparse_thresholds(np.arange(0,1,1), np.ones((1, 100)), [0, 1])
 
     # use random number generator to initialise monte carlo sampling
     rng = np.random.default_rng()
@@ -659,8 +655,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 os.remove(f"../{model_version_results_directory}/branch_combine_list.txt")
             if os.path.exists(f"../{model_version_results_directory}/combine_site_meta.pkl"):
                 os.remove(f"../{model_version_results_directory}/combine_site_meta.pkl")
-            with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
-                pkl.dump({}, f)
+                with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
+                    pkl.dump({}, f)
 
     branch_weight_list = []
     fault_model_allbranch_PPE_dict = {}
@@ -883,7 +879,6 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                         # Check to see if the previous run had the same threshold start and step, just a lower maximum limit
                         if np.array_equal(weighted_h5[key][:], meta_dict[key][:weighted_h5[key][:].shape[0]]):
                             print(f"Previous threshold limits had lower maximum, but the same start and step. Extending the limits to match the new limits...")
-                            print(f"Previous threshold limits had lower maximum, but the same start and step. Extending the limits to match the new limits...")
                             del weighted_h5[key]
                             weighted_h5.create_dataset(key, data=meta_dict[key])
                         elif np.array_equal(weighted_h5[key][:meta_dict[key][:].shape[0]], meta_dict[key]):
@@ -893,8 +888,6 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                             print(f"Previous threshold limits had higher maximum, but the same start and step. Extending the new limits to match...")
                             thresholds = np.round(np.arange(thresh_lims[0], weighted_h5[key][-1] + thresh_step, thresh_step), 4)
                         else:
-                            raise Exception(f"Meta data for cannot match newly requested thresholds ({thresh_lims[0]}/{thresh_lims[1]}/{thresh_step}) "
-                                            f"to those from previous runs ({weighted_h5[key][0]}/{weighted_h5[key][-1]}/{np.round(weighted_h5[key][1] - weighted_h5[key][0], 4)})....")
                             raise Exception(f"Meta data for cannot match newly requested thresholds ({thresh_lims[0]}/{thresh_lims[1]}/{thresh_step}) "
                                             f"to those from previous runs ({weighted_h5[key][0]}/{weighted_h5[key][-1]}/{np.round(weighted_h5[key][1] - weighted_h5[key][0], 4)})....")
                     else:
@@ -1113,14 +1106,13 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     if not nesi:
         start = time()
         elapsed, per_site = time_elasped(time(), start, 1, decimal=False)
-        elapsed, per_site = time_elasped(time(), start, 1, decimal=False)
         for ix, site in enumerate(site_names):
             printProgressBar(ix, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
             site_group = weighted_h5.create_group(site)
             with h5.File(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"], 'r') as branch_site_h5:
                 site_group.create_dataset("site_coords", data=branch_site_h5[site]["site_coords"])
             create_site_weighted_mean(site_group, site, n_samples, crustal_model_version_results_directory, sz_model_version_results_directory_list, gf_name, thresholds,
-                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list)
+                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list, intervals=time_interval)
             elapsed, per_site = time_elasped(time(), start, ix + 1, decimal=False)
         printProgressBar(ix + 1, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
         weighted_h5.close()
@@ -1565,27 +1557,22 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
 
     unique_id_list = weighted_mean_PPE_dictionary['branch_ids'].asstr()
     weights = weighted_mean_PPE_dictionary['branch_weights'][:]
-    thresholds = weighted_mean_PPE_dictionary["thresholds"][:]
-    thresholds = thresholds[1:]
+    thresholds = weighted_mean_PPE_dictionary["thresholds"][1:]
     weight_order = np.argsort(weights)
     weight_colouring = True
 
     if 'sigma_lims' in weighted_mean_PPE_dictionary.keys():
         sigma_lims = weighted_mean_PPE_dictionary['sigma_lims'][:]
         mid_ix = np.where(sigma_lims == 50)[0][0]
-        mid_ix = np.where(sigma_lims == 50)[0][0]
         if sigma == 2:
             sigma_ix = [ix for ix, sig in enumerate(sigma_lims) if sig in [2.275, 97.725]]
-            sig_lab = '2sig'
             sig_lab = '2sig'
         elif sigma == 1:
             sigma_ix = [ix for ix, sig in enumerate(sigma_lims) if sig in [15.865, 84.135]]
             sig_lab = '1sig'
-            sig_lab = '1sig'
         else:
             print("Can't find requested sigma values in weighted_mean_PPE. Defaulting to max and min")
             sigma_ix = [0, -1]
-            sig_lab = 'minmax'
             sig_lab = 'minmax'
 
     if weight_colouring:
@@ -1597,167 +1584,169 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
 
     plt.close("all")
 
+    n_interval = len(intervals)
     n_plots = int(np.ceil(len(plot_order) / 12))
-    printProgressBar(0, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
+    plot_total = n_plots * n_interval
+    printProgressBar(0, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
 
-    for plot_n in range(n_plots):
-        sites = plot_order[plot_n*12:(plot_n+1)*12]
-        if len(sites) >= 5 or len(sites) == 3:
-            n_cols = 3
-            n_rows = int(np.ceil(len(sites) / 3))
-        elif len(sites) == 4 or len(sites) == 2:
-            n_cols = 2
-            n_rows = int(np.ceil(len(sites) / 2))
-        else:
-            n_cols = 1
-            n_rows = len(sites)
+    for ix, interval in enumerate(intervals):
+        for plot_n in range(n_plots / len(intervals)):
+            sites = plot_order[plot_n*12:(plot_n+1)*12]
+            if len(sites) >= 5 or len(sites) == 3:
+                n_cols = 3
+                n_rows = int(np.ceil(len(sites) / 3))
+            elif len(sites) == 4 or len(sites) == 2:
+                n_cols = 2
+                n_rows = int(np.ceil(len(sites) / 2))
+            else:
+                n_cols = 1
+                n_rows = len(sites)
 
-        for exceed_type in exceed_type_list:
-            fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2.63 + 0.12, n_rows * 2.32 + 0.71))  # Replicate 8x10 inch figure if there are less than 12 subplots
-            plt.subplots_adjust(hspace=0.3, wspace=0.3)
+            for exceed_type in exceed_type_list:
+                fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2.63 + 0.12, n_rows * 2.32 + 0.71))  # Replicate 8x10 inch figure if there are less than 12 subplots
+                plt.subplots_adjust(hspace=0.3, wspace=0.3)
 
-            # shade the region between the max and min value of all the curves at each site
-            for i, site in enumerate(sites):
-                ax = plt.subplot(n_rows, n_cols, i + 1)
-
-                # plots all three types of exceedance (total_abs, up, down) on the same plot
-
-                # Shade based on max-min
-                #ax.fill_between(thresholds, max_probs, min_probs, color='0.9')
-                # Shade based on weighted errors
-                #ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
-                #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
-                # Shade based on weighted 2 sigma percentiles
-                weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][intervals[-1]][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][intervals[-1]][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][intervals[-1]][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
-                ax.fill_between(thresholds, weighted_percentile_error[sigma_ix[0], 1:], weighted_percentile_error[sigma_ix[1], 1:], color='0.8')
-
-            # plot all the branches as light grey lines
-            # for each branch, plot the exceedance probabilities for each site
-            for kk in weight_order:
+                # shade the region between the max and min value of all the curves at each site
                 for i, site in enumerate(sites):
-                    site_exceedance_probs = weighted_mean_PPE_dictionary[site][intervals[-1]][f'branch_exceedance_probs_{exceed_type}'][1:, kk]
                     ax = plt.subplot(n_rows, n_cols, i + 1)
-                    #ax.plot(thresholds, site_exceedance_probs, color=[weights[weight_order[k]] / max_weight, 1-(weights[weight_order[k]] / max_weight), 0],
-                    #        linewidth=0.1)
-                    if weight_colouring:
-                        ax.plot(thresholds[:site_exceedance_probs.shape[0]], site_exceedance_probs, color=colours[kk], linewidth=0.2, alpha=0.8)
-                    else:
-                        ax.plot(thresholds[:site_exceedance_probs.shape[0]], site_exceedance_probs, color='grey', linewidth=0.2, alpha=0.5)
 
+                    # plots all three types of exceedance (total_abs, up, down) on the same plot
 
-            # loop through sites and add the weighted mean lines
-            for i, site in enumerate(sites):
-                ax = plt.subplot(n_rows, n_cols, i + 1)
-
-                # plots all three types of exceedance (total_abs, up, down) on the same plot
-                weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][intervals[-1]][f"weighted_exceedance_probs_{exceed_type}"][1:]
-                weighted_mean_exceedance_zeros = np.zeros_like(thresholds)
-                weighted_mean_exceedance_zeros[:len(weighted_mean_exceedance_probs)] = weighted_mean_exceedance_probs
-
-                line_color = get_probability_color(exceed_type)
-               
-                # Unweighted 1 sigma lines
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_84_135_vals"], color=line_color, linewidth=0.75, linestyle='-.')
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_15_865_vals"], color=line_color, linewidth=0.75, linestyle='-.')
-                # Unweighted 2 sigma lines
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_97_725_vals"], color=line_color, linewidth=0.75, linestyle='--')
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_2_275_vals"], color=line_color, linewidth=0.75, linestyle='--')
-
-                # Weighted 1 sigma lines
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w84_135_vals"], color=line_color, linewidth=0.75, linestyle=':')
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w15_865_vals"], color=line_color, linewidth=0.75, linestyle=':')
-                # Weighted 2 sigma lines
-                weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][intervals[-1]][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][intervals[-1]][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][intervals[-1]][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
-                ax.plot(thresholds, weighted_percentile_error[sigma_ix[0],1:], color='black', linewidth=0.75, linestyle='-.')
-                ax.plot(thresholds, weighted_percentile_error[sigma_ix[1],1:], color='black', linewidth=0.75, linestyle='-.')
-
-                ax.plot(thresholds, weighted_percentile_error[mid_ix,1:], color=line_color, linewidth=1.5, linestyle=':')
-                ax.plot(thresholds, weighted_percentile_error[mid_ix,1:], color=line_color, linewidth=1.5, linestyle=':')
-                ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=1.5)
-
-                # Uncertainty weighted mean
-                #ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"], color='black', linewidth=1)
-
-                ax.axhline(y=0.02, color="g", linestyle='dashed')
-                ax.axhline(y=0.1, color="g", linestyle='dotted')
-
-                xmin, xmax = 0.01, 30
-                ymin, ymax = 0.000001, 1
-                xmin, xmax = 0.01, 30
-                ymin, ymax = 0.000001, 1
-                ax.set_title(site)
-                ax.set_yscale('log'), ax.set_xscale('log')
-                ax.set_ylim([ymin, ymax])
-                ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
-                ax.get_xaxis().set_major_formatter(ScalarFormatter())
-                ax.ticklabel_format(axis='x', style='plain')
-                ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-                ax.set_xlim([xmin, xmax])
-
-            fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
-            fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
-            fig.suptitle(f"weighted mean hazard curves\n{model_version_title} {taper_extension}\n{exceed_type}")
-            plt.tight_layout()
-
-            if not os.path.exists(f"../{out_directory}/weighted_mean_figures"):
-                os.mkdir(f"../{out_directory}/weighted_mean_figures")
-
-            for file_type in file_type_list:
-                plt.savefig(
-                    f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurve_{exceed_type}{taper_extension}_{plot_n}_{sig_lab}{colouring}.{file_type}", dpi=300)
-            plt.close()
-            printProgressBar(plot_n + 0.5, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
-
-        # make a second graph with just the shaded envelope and weighted mean lines
-        if len(exceed_type_list) > 1:
-            fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2.63 + 0.12, n_rows * 2.32 + 0.71))
-            plt.subplots_adjust(hspace=0.3, wspace=0.3)
-
-            for i, site in enumerate(sites):
-                ax = plt.subplot(n_rows, n_cols, i + 1)
-                for exceed_type in exceed_type_list:
                     # Shade based on max-min
-                    # ax.fill_between(thresholds, weighted_mean_max_probs, weighted_mean_min_probs, color=fill_color, alpha=0.2)
+                    #ax.fill_between(thresholds, max_probs, min_probs, color='0.9')
                     # Shade based on weighted errors
                     #ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
                     #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
-                    # Shade based on 2 sigma percentiles
-                    weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][intervals[-1]][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][intervals[-1]][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][intervals[-1]][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
+                    # Shade based on weighted 2 sigma percentiles
+                    weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
                     ax.fill_between(thresholds, weighted_percentile_error[sigma_ix[0], 1:], weighted_percentile_error[sigma_ix[1], 1:], color='0.8')
 
-                # plot solid lines on top of the shaded regions
-                for exceed_type in exceed_type_list:
-                    line_color = get_probability_color(exceed_type)
-                    weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][intervals[-1]][f"weighted_exceedance_probs_{exceed_type}"][1:]
+                # plot all the branches as light grey lines
+                # for each branch, plot the exceedance probabilities for each site
+                for kk in weight_order:
+                    for i, site in enumerate(sites):
+                        site_exceedance_probs = weighted_mean_PPE_dictionary[site][interval][f'branch_exceedance_probs_{exceed_type}'][1:, kk]
+                        ax = plt.subplot(n_rows, n_cols, i + 1)
+                        #ax.plot(thresholds, site_exceedance_probs, color=[weights[weight_order[k]] / max_weight, 1-(weights[weight_order[k]] / max_weight), 0],
+                        #        linewidth=0.1)
+                        if weight_colouring:
+                            ax.plot(thresholds[:site_exceedance_probs.shape[0]], site_exceedance_probs, color=colours[kk], linewidth=0.2, alpha=0.8)
+                        else:
+                            ax.plot(thresholds[:site_exceedance_probs.shape[0]], site_exceedance_probs, color='grey', linewidth=0.2, alpha=0.5)
+
+
+                # loop through sites and add the weighted mean lines
+                for i, site in enumerate(sites):
+                    ax = plt.subplot(n_rows, n_cols, i + 1)
+
+                    # plots all three types of exceedance (total_abs, up, down) on the same plot
+                    weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][interval][f"weighted_exceedance_probs_{exceed_type}"][1:]
                     weighted_mean_exceedance_zeros = np.zeros_like(thresholds)
                     weighted_mean_exceedance_zeros[:len(weighted_mean_exceedance_probs)] = weighted_mean_exceedance_probs
-                    ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=2)
 
-                # add 10% and 2% lines
-                ax.axhline(y=0.02, color="g", linestyle='dashed')
-                ax.axhline(y=0.1, color="g", linestyle='dotted')
+                    line_color = get_probability_color(exceed_type)
+                
+                    # Unweighted 1 sigma lines
+                    # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_84_135_vals"], color=line_color, linewidth=0.75, linestyle='-.')
+                    # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_15_865_vals"], color=line_color, linewidth=0.75, linestyle='-.')
+                    # Unweighted 2 sigma lines
+                    # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_97_725_vals"], color=line_color, linewidth=0.75, linestyle='--')
+                    # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_2_275_vals"], color=line_color, linewidth=0.75, linestyle='--')
 
-                # make axes pretty
-                ax.set_title(site)
-                ax.set_yscale('log'), ax.set_xscale('log')
-                ax.set_ylim([ymin, ymax]), ax.set_xlim([xmin, xmax])
-                ax.set_ylim([ymin, ymax]), ax.set_xlim([xmin, xmax])
-                ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
-                ax.get_xaxis().set_major_formatter(ScalarFormatter())
-                ax.ticklabel_format(axis='x', style='plain')
-                ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+                    # Weighted 1 sigma lines
+                    # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w84_135_vals"], color=line_color, linewidth=0.75, linestyle=':')
+                    # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w15_865_vals"], color=line_color, linewidth=0.75, linestyle=':')
+                    # Weighted 2 sigma lines
+                    weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
+                    ax.plot(thresholds, weighted_percentile_error[sigma_ix[0],1:], color='black', linewidth=0.75, linestyle='-.')
+                    ax.plot(thresholds, weighted_percentile_error[sigma_ix[1],1:], color='black', linewidth=0.75, linestyle='-.')
 
-            fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
-            fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
-            exceed_types_string = ", ".join(exceed_type_list)
-            fig.suptitle(f"weighted mean hazard curves \n{model_version_title} {taper_extension} \n{exceed_types_string} ")
-            plt.tight_layout()
+                    ax.plot(thresholds, weighted_percentile_error[mid_ix,1:], color=line_color, linewidth=1.5, linestyle=':')
+                    ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=1.5)
 
-            for file_type in file_type_list:
-                plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves{taper_extension}_{plot_n}_{sig_lab}"
-                            f".{file_type}", dpi=300)
-            plt.close()
-            printProgressBar(plot_n + 1, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
+                    # Uncertainty weighted mean
+                    #ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"], color='black', linewidth=1)
+
+                    ax.axhline(y=0.02, color="g", linestyle='dashed')
+                    ax.axhline(y=0.1, color="g", linestyle='dotted')
+
+                    xmin, xmax = 0.01, 30
+                    ymin, ymax = 0.000001, 1
+                    xmin, xmax = 0.01, 30
+                    ymin, ymax = 0.000001, 1
+                    ax.set_title(site)
+                    ax.set_yscale('log'), ax.set_xscale('log')
+                    ax.set_ylim([ymin, ymax])
+                    ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
+                    ax.get_xaxis().set_major_formatter(ScalarFormatter())
+                    ax.ticklabel_format(axis='x', style='plain')
+                    ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+                    ax.set_xlim([xmin, xmax])
+
+                fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
+                fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
+                fig.suptitle(f"weighted mean hazard curves\n{model_version_title} {taper_extension}\n{exceed_type} {interval} yrs")
+                plt.tight_layout()
+
+                if not os.path.exists(f"../{out_directory}/weighted_mean_figures"):
+                    os.mkdir(f"../{out_directory}/weighted_mean_figures")
+
+                for file_type in file_type_list:
+                    plt.savefig(
+                        f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurve_{exceed_type}{taper_extension}_{interval}yr_{plot_n}_{sig_lab}{colouring}.{file_type}", dpi=300)
+                plt.close()
+                printProgressBar(plot_n * ix + plot_n + 0.5, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
+
+            # make a second graph with just the shaded envelope and weighted mean lines
+            if len(exceed_type_list) > 1:
+                fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2.63 + 0.12, n_rows * 2.32 + 0.71))
+                plt.subplots_adjust(hspace=0.3, wspace=0.3)
+
+                for i, site in enumerate(sites):
+                    ax = plt.subplot(n_rows, n_cols, i + 1)
+                    for exceed_type in exceed_type_list:
+                        # Shade based on max-min
+                        # ax.fill_between(thresholds, weighted_mean_max_probs, weighted_mean_min_probs, color=fill_color, alpha=0.2)
+                        # Shade based on weighted errors
+                        #ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
+                        #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
+                        # Shade based on 2 sigma percentiles
+                        weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
+                        ax.fill_between(thresholds, weighted_percentile_error[sigma_ix[0], 1:], weighted_percentile_error[sigma_ix[1], 1:], color='0.8')
+
+                    # plot solid lines on top of the shaded regions
+                    for exceed_type in exceed_type_list:
+                        line_color = get_probability_color(exceed_type)
+                        weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][interval][f"weighted_exceedance_probs_{exceed_type}"][1:]
+                        weighted_mean_exceedance_zeros = np.zeros_like(thresholds)
+                        weighted_mean_exceedance_zeros[:len(weighted_mean_exceedance_probs)] = weighted_mean_exceedance_probs
+                        ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=2)
+
+                    # add 10% and 2% lines
+                    ax.axhline(y=0.02, color="g", linestyle='dashed')
+                    ax.axhline(y=0.1, color="g", linestyle='dotted')
+
+                    # make axes pretty
+                    ax.set_title(site)
+                    ax.set_yscale('log'), ax.set_xscale('log')
+                    ax.set_ylim([ymin, ymax]), ax.set_xlim([xmin, xmax])
+                    ax.set_ylim([ymin, ymax]), ax.set_xlim([xmin, xmax])
+                    ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
+                    ax.get_xaxis().set_major_formatter(ScalarFormatter())
+                    ax.ticklabel_format(axis='x', style='plain')
+                    ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+
+                fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
+                fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
+                exceed_types_string = ", ".join(exceed_type_list)
+                fig.suptitle(f"weighted mean hazard curves \n{model_version_title} {taper_extension} \n{exceed_types_string} {interval} years")
+                plt.tight_layout()
+
+                for file_type in file_type_list:
+                    plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves_{taper_extension}_{interval}yr_{plot_n}_{sig_lab}"
+                                f".{file_type}", dpi=300)
+                plt.close()
+                printProgressBar(plot_n * ix + plot_n + 0.5, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
     weighted_mean_PPE_dictionary.close()
 
 def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_version_title, out_directory, file_type_list, slip_taper, plot_order, sigma=2):
