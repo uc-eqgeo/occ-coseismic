@@ -651,11 +651,12 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         if nesi_step == 'prep' and os.path.exists(f"../{model_version_results_directory}/site_name_list.txt"):
             os.remove(f"../{model_version_results_directory}/site_name_list.txt")
         if nesi_step == 'combine':
-            for file in ['branch_combine_list.txt', 'combine_site_meta.pkl']:
-                if os.path.exists(f"../{model_version_results_directory}/{file}"):
-                    os.remove(f"../{model_version_results_directory}/{file}")
-            with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
-                pkl.dump({}, f)
+            if os.path.exists(f"../{model_version_results_directory}/branch_combine_list.txt"):
+                os.remove(f"../{model_version_results_directory}/branch_combine_list.txt")
+            if os.path.exists(f"../{model_version_results_directory}/combine_site_meta.pkl"):
+                os.remove(f"../{model_version_results_directory}/combine_site_meta.pkl")
+                with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
+                    pkl.dump({}, f)
 
     branch_weight_list = []
     fault_model_allbranch_PPE_dict = {}
@@ -1104,7 +1105,6 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     
     if not nesi:
         start = time()
-        elapsed, per_site = time_elasped(time(), start, 1, decimal=False)
         elapsed, per_site = time_elasped(time(), start, 1, decimal=False)
         for ix, site in enumerate(site_names):
             printProgressBar(ix, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
