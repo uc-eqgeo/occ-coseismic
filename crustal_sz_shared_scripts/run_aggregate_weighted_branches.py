@@ -1,12 +1,10 @@
 import os
 import pandas as pd
-import numpy as np
 from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, plot_single_branch_haz_curves, \
     make_sz_crustal_paired_PPE_dict, make_fault_model_PPE_dict, get_weighted_mean_PPE_dict, \
     save_disp_prob_xarrays
 from helper_scripts import get_NSHM_directories, get_rupture_disp_dict
 import pickle as pkl
-import h5py as h5
 try:
     import geopandas as gpd
 except ImportError:
@@ -17,26 +15,24 @@ os.chdir(os.path.dirname(__file__))
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
-crustal_site_names = "_JDE_sites"   # Name of the sites geojson
-sz_site_names = ["_EastCoastNI_5km_transect", "_SouthIsland_10km"]       # Name of the sites geojson
-sz_site_names = ["_paper_sites_points"]
+crustal_site_names = "_EastCoastNI_10km"   # Name of the sites geojson
+sz_site_names = ["_EastCoastNI_10km", "_SouthIsland_10km"]       # Name of the sites geojson
 sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerk", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
-fakequakes = True  # Use fakequakes for the subduction zone (applied only to hikkerk)
-fakequakes = False
+fakequakes = False  # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
 single_branch = ["_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nhb110", "_sz_fq_pnhb110", "_sz_fq_3lhb110", "_sz_fq_plhb110",
                  "_sz_fq_3lhb110C1", "_sz_fq_3lhb110C100", "_sz_fq_3lhb110C1000", "_sz_fq_3nhb110C1", "_sz_fq_3nhb110C100"] # Allows you to specifically select which branches to calculate PPEs for. If None, all branches will be calculated
-single_branch = ["_sz_NzEx"]
+single_branch = None
 rate_scaling = False           # Do you want to calculate PPEs for a single branch with different rate scalings?
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
-load_random = False             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
+load_random = True             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
-remake_PPE = True            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
+remake_PPE = False            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
 remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 save_arrays = False         # Do you want to save the displacement and probability arrays?
@@ -46,10 +42,10 @@ plot_order_csv = "../sites/EastCoastNI_5km_transect_points.csv"  # csv file with
 use_saved_dictionary = True   # Use a saved dictionary if it exists
 
 # Processing Parameters
-time_interval = 100     # Time span of hazard forecast (yrs)
+time_interval = [100]     # Time span of hazard forecast (yrs)
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 10
-thresh_lims = [0, 10]
+thresh_lims = [0, 30]
 thresh_step = 0.01
 
 # Nesi Parameters
@@ -69,7 +65,7 @@ figure_file_type_list = ["png"]
 
 ## Set parameters based on user inputs
 if testing:
-    n_samples = 1e4   # Number of scenarios to run
+    n_samples = 1e5   # Number of scenarios to run
     job_time = 1    # Amount of time to allocate per site in the cumu_PPE task array
     mem = 1    # Memory allocation for cumu_PPE task array
 else:
@@ -141,6 +137,7 @@ if single_branch is not None:
         calculate_weighted_mean_PPE = False
         save_arrays = False
 
+time_interval = [str(int(interval)) for interval in time_interval]
 ######################################################
 
 def make_branch_weight_dict(branch_weight_file_path, sheet_name):
@@ -273,7 +270,6 @@ if not paired_crustal_sz:
         fault_model_branch_weight_dict = fault_model_single_branch_weight_dict
 
     extension1_list = [gf_name + suffix for suffix in file_suffix_list]
-    get_rupture_dict = False
 
     if "crustal" in fault_type:
         site_geojson = f"../crustal/discretised_{version_discretise_directory[0].split('/')[-1]}/{fault_type[0]}_site_locations{crustal_site_names}.geojson"
@@ -289,6 +285,7 @@ if not paired_crustal_sz:
         inv_sites = site_gdf['siteId'].values.tolist()
 
     for ix, extension1 in enumerate(extension1_list):
+        get_rupture_dict = False
         ftype = [(jj, ftype) for jj, ftype in enumerate(fault_type) if '_' + ftype.replace('rustal', '') + '_' in extension1][0]
         all_rupture_disp_file = f"../{version_discretise_directory[ftype[0]]}/{extension1}/all_rupture_disps_{extension1}{taper_extension}_sites.pkl"
 
@@ -403,7 +400,8 @@ if not paired_crustal_sz and calculate_weighted_mean_PPE or not os.path.exists(w
                                                             outfile_extension=outfile_extension, slip_taper=slip_taper,
                                                             nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples,
                                                             min_tasks_per_array=10, n_array_tasks=n_array_tasks, mem=mem, cpus=n_cpus, job_time=job_time,
-                                                            thresh_lims=thresh_lims, thresh_step=thresh_step, site_list=inv_sites, remake_PPE=remake_weighted_PPE)
+                                                            thresh_lims=thresh_lims, thresh_step=thresh_step, site_list=inv_sites, remake_PPE=remake_weighted_PPE,
+                                                            time_interval=time_interval)
 
 # plot hazard curves and save to file
 if save_arrays:
@@ -415,12 +413,13 @@ if save_arrays:
     for key in branch_key:
         ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
                             thresh_lims=[0, 3], thresh_step=0.05, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.01,
-                            output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key)
+                            output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key,
+                            time_intervals=time_interval)
 
 if paired_crustal_sz:
     site_names_title = f"paired crustal{crustal_site_names} and "
     for ix, sub in enumerate(fault_type[1:]):
-        site_names_title += f"{sub}{sz_site_names} and "
+        site_names_title += f"{sub}{sz_site_names[ix]} and "
     site_names_title = site_names_title[:-5]
 else:
     if not isinstance(fault_type, list): 
@@ -453,5 +452,6 @@ if make_hazcurves:
         plot_weighted_mean_haz_curves(
             weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
             model_version_title=site_names_title, exceed_type_list=["up", "down", "total_abs"],
-            out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)
+            out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order,
+            sigma=2, intervals=[time_interval[time_interval.index(str(max([int(val) for val in time_interval])))]])  # Currently just plot the maximum time interval
     
