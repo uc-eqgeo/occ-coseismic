@@ -1111,36 +1111,86 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
     # Check if previous h5 exists. If it does, preserve it until new weighted mean file is complete
     weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
-    preserve_previous_h5 = True
-    if os.path.exists(weighted_h5_file):
-        preserve_previous_h5 = True
+    preserve_previous_h5 = False
+    # if os.path.exists(weighted_h5_file):
+    #     preserve_previous_h5 = True
     
     if preserve_previous_h5:
         weighted_h5_file = weighted_h5_file.replace('.h5', '_processing.h5')
         if os.path.exists(weighted_h5_file.replace('_processing.h5', '.h5')):
             os.remove(weighted_h5_file.replace('_processing.h5', '.h5'))
 
-    # Create weighted h5 file with associated metadata
-    weighted_h5 = h5.File(weighted_h5_file, "w")
+    if os.path.exists(weighted_h5_file):
+        weighted_h5 = h5.File(weighted_h5_file, "r+")
+        # Check the same branches are being used
+        weighted_id = [id.decode() for id in weighted_h5['branch_ids'][:]]
+        assert len(set(pair_id_list) - set(weighted_id)) == 0, "New branch ids do not match previous branch ids"
+        weighted_weights = weighted_h5['branch_weights'][:]
+        # Check the branch weights are the same
+        branch_order = [weighted_id.index(pair_id) for pair_id in pair_id_list]
+        weighted_weights_ordered = [weighted_weights[ix] for ix in branch_order]
+        assert pair_weight_list == weighted_weights_ordered, "New branch weights do not match previous branch weights"
+    else:
+        # Create weighted h5 file with associated metadata
+        weighted_h5 = h5.File(weighted_h5_file, "w")
+        
+        weighted_h5.create_dataset('branch_weights', data=pair_weight_list)
+        weighted_h5.create_dataset('branch_ids', data=pair_id_list)
+        weighted_h5.create_dataset("thresholds", data=thresholds)
+        weighted_h5.create_dataset('sigma_lims', data=sigma_lims)
     
-    weighted_h5.create_dataset('branch_weights', data=pair_weight_list)
-    weighted_h5.create_dataset('branch_ids', data=pair_id_list)
-    weighted_h5.create_dataset("thresholds", data=thresholds)
-    weighted_h5.create_dataset('sigma_lims', data=sigma_lims)
-    
+    requested_sites = site_names
+    if remake_PPE:
+        intervals_list = [time_interval for _ in site_names]
+    else:
+        # Check sites individually to see if they have been processed
+        site_names = []
+        intervals_list = []
+        for site in requested_sites:
+            if site in weighted_h5.keys():
+                required_intervals = []
+                for interval in time_interval:
+                    # Check each time interval
+                    if interval in weighted_h5[site].keys():
+                        if 'meta' in weighted_h5[site][interval].keys():
+                            min_thresh, max_thresh, thresh_delta, n_scenarios = weighted_h5[site][interval]['meta'][:]
+                            if any([min_thresh > thresh_lims[0], max_thresh < thresh_lims[1], thresh_delta != thresh_step, n_scenarios < n_samples]):  # Failure critieria
+                                required_intervals.append(interval)
+                if len(required_intervals) > 0:
+                    site_names.append(site)
+                    intervals_list.append(required_intervals)
+            else:
+                site_names.append(site)
+                intervals_list.append(time_interval)
+
+    if len(site_names) == 0:
+        print(f"All sites have been processed. Skipping...")
+        weighted_h5.close()
+        return
+    else:
+        print(f"{len(site_names)}/{len(requested_sites)} requested sites need processing...")
+
     if not nesi:
         start = time()
         elapsed, per_site = time_elasped(time(), start, 1, decimal=False)
+        weighted_h5.close()  # Closing file after each site saves that site's data (in case processing is cancelled)
         for ix, site in enumerate(site_names):
+            weighted_h5 = h5.File(weighted_h5_file, "r+")
             printProgressBar(ix, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
-            site_group = weighted_h5.create_group(site)
-            with h5.File(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"], 'r') as branch_site_h5:
-                site_group.create_dataset("site_coords", data=branch_site_h5[site]["site_coords"])
+            if site in weighted_h5.keys():
+                for interval in intervals_list[ix]:
+                    if interval in weighted_h5[site].keys():
+                        del weighted_h5[site][interval]
+                site_group = weighted_h5[site]
+            else:
+                site_group = weighted_h5.create_group(site)
+                with h5.File(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"], 'r') as branch_site_h5:
+                    site_group.create_dataset("site_coords", data=branch_site_h5[site]["site_coords"])
             create_site_weighted_mean(site_group, site, n_samples, crustal_model_version_results_directory, sz_model_version_results_directory_list, gf_name, thresholds,
-                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list, intervals=time_interval)
+                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list, intervals=intervals_list[ix])
+            weighted_h5.close()
             elapsed, per_site = time_elasped(time(), start, ix + 1, decimal=False)
         printProgressBar(ix + 1, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
-        weighted_h5.close()
     
     else:
         if nesi_step == 'prep':
@@ -1319,6 +1369,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles_csc.data, compression='gzip', compression_opts=6)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indices", data=percentiles_csc.indices, compression='gzip', compression_opts=6)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indptr", data=percentiles_csc.indptr, compression='gzip', compression_opts=6)
+            interval_h5.create_dataset(f"meta", data=np.array([thresholds[0], thresholds[-1], thresholds[1] - thresholds[0], n_samples]))
             if benchmarking:
                     print(f'Weights made: {time() - lap:.2f}s')
         if benchmarking:
