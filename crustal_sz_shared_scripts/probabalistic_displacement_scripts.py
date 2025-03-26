@@ -22,7 +22,7 @@ from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 from scipy.sparse import csc_array, csr_array
-from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE, \
+from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, combine_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -693,13 +693,13 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
         # Reduce site list to only those that have not been processed or not processed to the required number of samples
         thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
+        well_processed_sites = []
         if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_PPE:
             print('\tChecking for existing PPE at each site...')
             with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r") as branch_PPEh5:
                 # Checks that sites have been processed
                 existing_sites = [site for site in branch_PPEh5.keys() if site not in ["branch_weight", "thresholds"]]
                 # Checks that previous processing had required sampling (i.e. wasn't a testing run)
-                well_processed_sites = []
                 for site in existing_sites:
                         well_processed = []
                         for interval in time_interval: # check for each time interval
