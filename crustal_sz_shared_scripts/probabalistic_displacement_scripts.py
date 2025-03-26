@@ -713,11 +713,11 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                         if all(well_processed):
                             well_processed_sites.append(site)
 
-            prep_list = [site for site in inv_sites if site not in well_processed_sites]
         else:
             branch_PPEh5 = h5.File(fault_model_allbranch_PPE_dict[branch_id], "w")
             branch_PPEh5.close()
-            prep_list = inv_sites
+
+        prep_list = [site for site in inv_sites if site not in well_processed_sites]
         
         if len(prep_list) == 0:
             print(f"\tAll sites have been processed for {branch_id}. Skipping...")
@@ -740,12 +740,12 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 if sbatch:
                     print(f"\tPreparing NESI combination for {fault_model_allbranch_PPE_dict[branch_id]}....")
                     prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
-                                        taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1], thresholds=thresholds)
+                                        taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1], thresholds=thresholds, sites=prep_list)
                     combine_branches += 1
                     continue
                 else:
                     print(f"\tCombining site dictionaries into {fault_model_allbranch_PPE_dict[branch_id]}....")
-                    compile_site_cumu_PPE(prep_list, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
+                    combine_site_cumu_PPE(prep_list, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
                                         taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", thresholds=thresholds)
 
         else:
@@ -854,66 +854,80 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
 
     # Check if previous h5 exists. If it does, preserve it until new weighted mean file is complete
     weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
-    preserve_previous_h5 = False
-    # if os.path.exists(weighted_h5_file):
-    #     weighted_h5_file = weighted_h5_file.replace('.h5', '_processing.h5')
-    #     preserve_previous_h5 = True
-    #     if os.path.exists(weighted_h5_file):
-    #         os.remove(weighted_h5_file)
-
-    meta_dict = {'branch_weights': branch_weights,
-                 'thresholds': thresholds,
-                 'branch_ids': np.array(unique_id_list, dtype='S'),
-                 'sigma_lims': sigma_lims}
-
-    if not os.path.exists(weighted_h5_file):
-        weighted_h5 = h5.File(weighted_h5_file, "w")
-        for key in meta_dict.keys():
-            weighted_h5.create_dataset(key, data=meta_dict[key])
-    else:
-        weighted_h5 = h5.File(weighted_h5_file, "r+")
-        for key in meta_dict.keys():
-            if key in weighted_h5.keys():
-                if not np.array_equal(weighted_h5[key][:], meta_dict[key]):
-                    if key == 'thresholds':
-                        # Check to see if the previous run had the same threshold start and step, just a lower maximum limit
-                        if np.array_equal(weighted_h5[key][:], meta_dict[key][:weighted_h5[key][:].shape[0]]):
-                            print(f"Previous threshold limits had lower maximum, but the same start and step. Extending the limits to match the new limits...")
-                            del weighted_h5[key]
-                            weighted_h5.create_dataset(key, data=meta_dict[key])
-                        elif np.array_equal(weighted_h5[key][:meta_dict[key][:].shape[0]], meta_dict[key]):
-                            print(f"Previous threshold limits had higher maximum, but the same start and step. Extending the new limits to match...")
-                            thresholds = np.round(np.arange(thresh_lims[0], weighted_h5[key][-1] + thresh_step, thresh_step), 4)
-                        elif np.array_equal(weighted_h5[key][:meta_dict[key][:].shape[0]], meta_dict[key]):
-                            print(f"Previous threshold limits had higher maximum, but the same start and step. Extending the new limits to match...")
-                            thresholds = np.round(np.arange(thresh_lims[0], weighted_h5[key][-1] + thresh_step, thresh_step), 4)
-                        else:
-                            raise Exception(f"Meta data for cannot match newly requested thresholds ({thresh_lims[0]}/{thresh_lims[1]}/{thresh_step}) "
-                                            f"to those from previous runs ({weighted_h5[key][0]}/{weighted_h5[key][-1]}/{np.round(weighted_h5[key][1] - weighted_h5[key][0], 4)})....")
-                    else:
-                        print(f"Meta data for **{key}** does not match what was in the weighted.h5...")
-            else:
-                print(f"Meta data for **{key}** was not in the weighted.h5. Adding...")
-                weighted_h5.create_dataset(key, data=meta_dict[key])
-
     model_directory = '/'.join(fault_model_PPE_dict[unique_id_list[0]].split('/')[1:-2])
+
+    if os.path.exists(weighted_h5_file):
+        weighted_h5 = h5.File(weighted_h5_file, "r+")
+        # Check the same branches are being used
+        weighted_id = [id.decode() for id in weighted_h5['branch_ids'][:]]
+        assert len(set(unique_id_list) - set(weighted_id)) == 0, "New branch ids do not match previous branch ids"
+        weighted_weights = weighted_h5['branch_weights'][:]
+        # Check the branch weights are the same
+        branch_order = [weighted_id.index(pair_id) for pair_id in unique_id_list]
+        weighted_weights_ordered = [weighted_weights[ix] for ix in branch_order]
+        assert list(branch_weights) == weighted_weights_ordered, "New branch weights do not match previous branch weights"
+    else:
+        # Create weighted h5 file with associated metadata
+        weighted_h5 = h5.File(weighted_h5_file, "w")
+        
+        weighted_h5.create_dataset('branch_weights', data=branch_weights)
+        weighted_h5.create_dataset('branch_ids', data=unique_id_list)
+        weighted_h5.create_dataset("thresholds", data=thresholds)
+        weighted_h5.create_dataset('sigma_lims', data=sigma_lims)
+    
+    requested_sites = site_list
+    if remake_PPE:
+        intervals_list = [time_interval for _ in site_list]
+    else:
+        # Check sites individually to see if they have been processed
+        site_list = []
+        intervals_list = []
+        for site in requested_sites:
+            if site in weighted_h5.keys():
+                required_intervals = []
+                for interval in time_interval:
+                    # Check each time interval
+                    if interval in weighted_h5[site].keys():
+                        if 'meta' in weighted_h5[site][interval].keys():
+                            min_thresh, max_thresh, thresh_delta, n_scenarios = weighted_h5[site][interval]['meta'][:]
+                            if any([min_thresh > thresh_lims[0], max_thresh < thresh_lims[1], thresh_delta != thresh_step, n_scenarios < n_samples]):  # Failure critieria
+                                required_intervals.append(interval)
+                    else:
+                        required_intervals.append(interval)
+                if len(required_intervals) > 0:
+                    site_list.append(site)
+                    intervals_list.append(required_intervals)
+            else:
+                site_list.append(site)
+                intervals_list.append(time_interval)
+
+    if len(site_list) == 0:
+        print(f"All sites have been processed. Skipping...")
+        weighted_h5.close()
+        return
+    else:
+        print(f"{len(site_list)}/{len(requested_sites)} requested sites need processing...")
 
     n_sites = len(site_list)
     if not nesi:
         start = time()
-        printProgressBar(0, n_sites, prefix=f'\t0/{n_sites} sites:', suffix='00:00:00 0 s/site', length=50)
+        elapsed, per_site = time_elasped(time(), start, 1, decimal=False)
+        weighted_h5.close()  # Closing file after each site saves that site's data (in case processing is cancelled)
         for ix, site in enumerate(site_list):
-            if remake_PPE and site in weighted_h5.keys():
-                del weighted_h5[site]
-            if site not in weighted_h5.keys():
+            weighted_h5 = h5.File(weighted_h5_file, "r+")
+            printProgressBar(ix, len(site_list), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
+            if site in weighted_h5.keys():
+                for interval in intervals_list[ix]:
+                    if interval in weighted_h5[site].keys():
+                        del weighted_h5[site][interval]
+                site_group = weighted_h5[site]
+            else:
                 site_group = weighted_h5.create_group(site)
                 site_group.create_dataset("site_coords", data=site_coords_dict[site])
-                create_site_weighted_mean(site_group, site, n_samples, model_directory, [model_directory], 'sites', thresholds, exceed_type_list, unique_id_list, sigma_lims, branch_weights, compression=None, intervals=time_interval)
-            else:
-                non_weighted_intervals = list(set(time_interval) - set(weighted_h5[site].keys()))
-                if len(non_weighted_intervals) > 0:
-                    create_site_weighted_mean(weighted_h5[site], site, n_samples, model_directory, [model_directory], 'sites', thresholds, exceed_type_list, unique_id_list, sigma_lims, branch_weights, compression=None, intervals=non_weighted_intervals)
-
+            create_site_weighted_mean(site_group, site, n_samples, model_directory, [model_directory], 'sites', thresholds,
+                                      exceed_type_list, unique_id_list, sigma_lims, branch_weights, compression=None,
+                                      intervals=intervals_list[ix])
+            weighted_h5.close()
             elapsed = time_elasped(time(), start, decimal=False)
             printProgressBar(ix + 1, len(site_list), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
         weighted_h5.close()
@@ -963,32 +977,33 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             printProgressBar(0, len(site_list), prefix=f'\tAdding Site {site_list[0]}', suffix='Complete 00:00:00 (00:00s/site)', length=50)
             for ix, site in enumerate(site_list):
                 site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
+                if remake_PPE and site in weighted_h5.keys():
+                    del weighted_h5[site]
                 site_group = weighted_h5.create_group(site)
                 with h5.File(site_h5_file, 'r') as site_h5:
+                    # Take the data from the site_h5 and put it in the weighted_h5
                     site_group.create_dataset("site_coords", data=site_h5['site_coords'])
                     for exceed_type in exceed_type_list:
-                        for dataset in ['weighted_exceedance_probs_*-*', '*-*_max_vals', '*-*_min_vals', 'branch_exceedance_probs_*-*']:
-                            site_group.create_dataset(dataset.replace('*-*', exceed_type), data=site_h5[dataset.replace('*-*', exceed_type)], compression=None)
+                        site_group.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=site_h5[f'weighted_exceedance_probs_{exceed_type}'], compression=None)
+                        site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_h5[f'branch_exceedance_probs_{exceed_type}'], compression='gzip', compression_opts=6)
+                        site_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = [branch for branch in site_h5['branch_id_list'].asstr()]
+                        site_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=site_h5[f'{exceed_type}_weighted_percentile_error'], compression=None)
+
                 elapsed = time_elasped(time(), start, decimal=False)
                 printProgressBar(ix + 1, len(site_list), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
             weighted_h5.close()
             shutil.rmtree(f"../{out_directory}/weighted_sites")
 
-
-    if preserve_previous_h5:
-        os.remove(weighted_h5_file.replace('_processing.h5', '.h5'))
-        os.rename(weighted_h5_file, weighted_h5_file.replace('_processing.h5', '.h5'))
-        weighted_h5_file = weighted_h5_file.replace('_processing.h5', '.h5')
-
-    return weighted_h5_file
+    return
 
 
 def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight_dict_list,
                                     crustal_model_version_results_directory, sz_model_version_results_directory_list,
-                                    paired_PPE_pickle_name, slip_taper, n_samples, out_directory, outfile_extension, sz_type_list,
+                                    slip_taper, n_samples, out_directory, outfile_extension,
                                     nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
-                                    n_array_tasks=100, min_tasks_per_array=100, time_interval=['100'], sd=0.4, job_time=3, remake_PPE=True, load_random=False,
-                                    sbatch=True, thresh_lims=[0, 3], thresh_step=0.01, site_gdf=None):
+                                    n_array_tasks=100, min_tasks_per_array=100, time_interval=['100'], job_time=3, remake_PPE=True,
+                                    thresh_lims=[0, 3], thresh_step=0.01, site_gdf=None):
+
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -1086,37 +1101,81 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
     # Check if previous h5 exists. If it does, preserve it until new weighted mean file is complete
     weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
-    preserve_previous_h5 = True
-    if os.path.exists(weighted_h5_file):
-        preserve_previous_h5 = True
-    
-    if preserve_previous_h5:
-        weighted_h5_file = weighted_h5_file.replace('.h5', '_processing.h5')
-        if os.path.exists(weighted_h5_file.replace('_processing.h5', '.h5')):
-            os.remove(weighted_h5_file.replace('_processing.h5', '.h5'))
 
-    # Create weighted h5 file with associated metadata
-    weighted_h5 = h5.File(weighted_h5_file, "w")
+    if os.path.exists(weighted_h5_file):
+        weighted_h5 = h5.File(weighted_h5_file, "r+")
+        # Check the same branches are being used
+        weighted_id = [id.decode() for id in weighted_h5['branch_ids'][:]]
+        assert len(set(pair_id_list) - set(weighted_id)) == 0, "New branch ids do not match previous branch ids"
+        weighted_weights = weighted_h5['branch_weights'][:]
+        # Check the branch weights are the same
+        branch_order = [weighted_id.index(pair_id) for pair_id in pair_id_list]
+        weighted_weights_ordered = [weighted_weights[ix] for ix in branch_order]
+        assert pair_weight_list == weighted_weights_ordered, "New branch weights do not match previous branch weights"
+    else:
+        # Create weighted h5 file with associated metadata
+        weighted_h5 = h5.File(weighted_h5_file, "w")
+        
+        weighted_h5.create_dataset('branch_weights', data=pair_weight_list)
+        weighted_h5.create_dataset('branch_ids', data=pair_id_list)
+        weighted_h5.create_dataset("thresholds", data=thresholds)
+        weighted_h5.create_dataset('sigma_lims', data=sigma_lims)
     
-    weighted_h5.create_dataset('branch_weights', data=pair_weight_list)
-    weighted_h5.create_dataset('branch_ids', data=pair_id_list)
-    weighted_h5.create_dataset("thresholds", data=thresholds)
-    weighted_h5.create_dataset('sigma_lims', data=sigma_lims)
-    
+    requested_sites = site_names
+    if remake_PPE:
+        intervals_list = [time_interval for _ in site_names]
+    else:
+        # Check sites individually to see if they have been processed
+        site_names = []
+        intervals_list = []
+        for site in requested_sites:
+            if site in weighted_h5.keys():
+                required_intervals = []
+                for interval in time_interval:
+                    # Check each time interval
+                    if interval in weighted_h5[site].keys():
+                        if 'meta' in weighted_h5[site][interval].keys():
+                            min_thresh, max_thresh, thresh_delta, n_scenarios = weighted_h5[site][interval]['meta'][:]
+                            if any([min_thresh > thresh_lims[0], max_thresh < thresh_lims[1], thresh_delta != thresh_step, n_scenarios < n_samples]):  # Failure critieria
+                                required_intervals.append(interval)
+                    else:
+                        required_intervals.append(interval)
+                if len(required_intervals) > 0:
+                    site_names.append(site)
+                    intervals_list.append(required_intervals)
+            else:
+                site_names.append(site)
+                intervals_list.append(time_interval)
+
+    if len(site_names) == 0:
+        print(f"All sites have been processed. Skipping...")
+        weighted_h5.close()
+        return
+    else:
+        print(f"{len(site_names)}/{len(requested_sites)} requested sites need processing...")
+
     if not nesi:
         start = time()
         elapsed, per_site = time_elasped(time(), start, 1, decimal=False)
+        weighted_h5.close()  # Closing file after each site saves that site's data (in case processing is cancelled)
         for ix, site in enumerate(site_names):
+            weighted_h5 = h5.File(weighted_h5_file, "r+")
             printProgressBar(ix, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
-            site_group = weighted_h5.create_group(site)
-            with h5.File(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"], 'r') as branch_site_h5:
-                site_group.create_dataset("site_coords", data=branch_site_h5[site]["site_coords"])
+            if site in weighted_h5.keys():
+                for interval in intervals_list[ix]:
+                    if interval in weighted_h5[site].keys():
+                        del weighted_h5[site][interval]
+                site_group = weighted_h5[site]
+            else:
+                site_group = weighted_h5.create_group(site)
+                with h5.File(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"], 'r') as branch_site_h5:
+                    site_group.create_dataset("site_coords", data=branch_site_h5[site]["site_coords"])
             create_site_weighted_mean(site_group, site, n_samples, crustal_model_version_results_directory, sz_model_version_results_directory_list, gf_name, thresholds,
-                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list, intervals=time_interval)
+                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list, intervals=intervals_list[ix])
+            weighted_h5.close()
             elapsed, per_site = time_elasped(time(), start, ix + 1, decimal=False)
         printProgressBar(ix + 1, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
-        weighted_h5.close()
-    
+   
     else:
         if nesi_step == 'prep':
             weighted_h5.close()
@@ -1174,12 +1233,6 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 printProgressBar(ix + 1, len(site_names), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
             weighted_h5.close()
             shutil.rmtree(f"../{out_directory}/weighted_sites")
-
-
-    if preserve_previous_h5:
-        if os.path.exists(weighted_h5_file.replace('_processing.h5', '.h5')):
-            os.remove(weighted_h5_file.replace('_processing.h5', '.h5'))
-        os.rename(weighted_h5_file, weighted_h5_file.replace('_processing.h5', '.h5'))
     
     return
 
@@ -1294,6 +1347,8 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles_csc.data, compression='gzip', compression_opts=6)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indices", data=percentiles_csc.indices, compression='gzip', compression_opts=6)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indptr", data=percentiles_csc.indptr, compression='gzip', compression_opts=6)
+            interval_h5.create_dataset(f"meta", data=np.array([thresholds[0], thresholds[-1], thresholds[1] - thresholds[0], n_samples]))
+
             if benchmarking:
                     print(f'Weights made: {time() - lap:.2f}s')
         if benchmarking:
@@ -1590,7 +1645,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
     printProgressBar(0, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
 
     for ix, interval in enumerate(intervals):
-        for plot_n in range(n_plots / len(intervals)):
+        for plot_n in range(n_plots):
             sites = plot_order[plot_n*12:(plot_n+1)*12]
             if len(sites) >= 5 or len(sites) == 3:
                 n_cols = 3
@@ -1743,10 +1798,10 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 plt.tight_layout()
 
                 for file_type in file_type_list:
-                    plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves_{taper_extension}_{interval}yr_{plot_n}_{sig_lab}"
+                    plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves{taper_extension}_{interval}yr_{plot_n}_{sig_lab}"
                                 f".{file_type}", dpi=300)
                 plt.close()
-                printProgressBar(plot_n * ix + plot_n + 0.5, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
+                printProgressBar(plot_n * ix + plot_n + 1, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
     weighted_mean_PPE_dictionary.close()
 
 def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_version_title, out_directory, file_type_list, slip_taper, plot_order, sigma=2):
