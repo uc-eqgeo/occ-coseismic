@@ -15,8 +15,8 @@ os.chdir(os.path.dirname(__file__))
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
-crustal_site_names = "_EastCoastNI_10km"   # Name of the sites geojson
-sz_site_names = ["_EastCoastNI_10km", "_SouthIsland_10km"]       # Name of the sites geojson
+crustal_site_names = "_validation_sites"   # Name of the sites geojson
+sz_site_names = ["_validation_sites", "_SouthIsland_10km"]       # Name of the sites geojson
 sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerk", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
@@ -29,11 +29,11 @@ single_branch = ["_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nhb110", "_sz_fq_p
                  "_sz_fq_3lhb110C1", "_sz_fq_3lhb110C100", "_sz_fq_3lhb110C1000", "_sz_fq_3nhb110C1", "_sz_fq_3nhb110C100"] # Allows you to specifically select which branches to calculate PPEs for. If None, all branches will be calculated
 single_branch = None
 rate_scaling = False           # Do you want to calculate PPEs for a single branch with different rate scalings?
-paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+paired_crustal_sz = True      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = True             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = False            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
-calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
+calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
 remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 save_arrays = False         # Do you want to save the displacement and probability arrays?
 default_plot_order = False       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
@@ -378,17 +378,15 @@ if paired_crustal_sz:
 
     #### skip this part if you've already run it once and saved to a pickle file
     if calculate_fault_model_PPE or not use_saved_dictionary:
-        if os.path.exists(PPE_filepath):
-            os.remove(PPE_filepath)
 
         make_sz_crustal_paired_PPE_dict(
             crustal_branch_weight_dict=branch_weight_dict_list[0], sz_branch_weight_dict_list=branch_weight_dict_list[1:],
             crustal_model_version_results_directory=version_discretise_directory[0],
             sz_model_version_results_directory_list=version_discretise_directory[1:],
-            paired_PPE_pickle_name=paired_PPE_pickle_name, slip_taper=slip_taper, n_samples=int(n_samples),
-            out_directory=out_version_results_directory, outfile_extension=outfile_extension, sz_type_list=fault_type[1:],
+            slip_taper=slip_taper, n_samples=int(n_samples),
+            out_directory=out_version_results_directory, outfile_extension=outfile_extension,
             nesi=nesi, nesi_step=nesi_step, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array,
-            mem=mem, time_interval=time_interval, sd=sd, job_time=job_time, remake_PPE=remake_PPE, load_random=load_random, account=account,
+            mem=mem, time_interval=time_interval, job_time=job_time, remake_PPE=remake_PPE, account=account,
             thresh_lims=thresh_lims, thresh_step=thresh_step, site_gdf=site_gdf)
 
 # calculate weighted mean PPE for the branch or paired dataset

@@ -1010,10 +1010,10 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
 
 def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight_dict_list,
                                     crustal_model_version_results_directory, sz_model_version_results_directory_list,
-                                    paired_PPE_pickle_name, slip_taper, n_samples, out_directory, outfile_extension, sz_type_list,
+                                    slip_taper, n_samples, out_directory, outfile_extension,
                                     nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
-                                    n_array_tasks=100, min_tasks_per_array=100, time_interval=['100'], sd=0.4, job_time=3, remake_PPE=True, load_random=False,
-                                    sbatch=True, thresh_lims=[0, 3], thresh_step=0.01, site_gdf=None):
+                                    n_array_tasks=100, min_tasks_per_array=100, time_interval=['100'], job_time=3, remake_PPE=True,
+                                    thresh_lims=[0, 3], thresh_step=0.01, site_gdf=None):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -1111,14 +1111,6 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
     # Check if previous h5 exists. If it does, preserve it until new weighted mean file is complete
     weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
-    preserve_previous_h5 = False
-    # if os.path.exists(weighted_h5_file):
-    #     preserve_previous_h5 = True
-    
-    if preserve_previous_h5:
-        weighted_h5_file = weighted_h5_file.replace('.h5', '_processing.h5')
-        if os.path.exists(weighted_h5_file.replace('_processing.h5', '.h5')):
-            os.remove(weighted_h5_file.replace('_processing.h5', '.h5'))
 
     if os.path.exists(weighted_h5_file):
         weighted_h5 = h5.File(weighted_h5_file, "r+")
@@ -1249,12 +1241,6 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 printProgressBar(ix + 1, len(site_names), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
             weighted_h5.close()
             shutil.rmtree(f"../{out_directory}/weighted_sites")
-
-
-    if preserve_previous_h5:
-        if os.path.exists(weighted_h5_file.replace('_processing.h5', '.h5')):
-            os.remove(weighted_h5_file.replace('_processing.h5', '.h5'))
-        os.rename(weighted_h5_file, weighted_h5_file.replace('_processing.h5', '.h5'))
     
     return
 
