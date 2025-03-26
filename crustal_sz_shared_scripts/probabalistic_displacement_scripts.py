@@ -22,7 +22,7 @@ from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 from scipy.sparse import csc_array, csr_array
-from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, combine_site_cumu_PPE, \
+from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -1003,6 +1003,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
                                     n_array_tasks=100, min_tasks_per_array=100, time_interval=['100'], job_time=3, remake_PPE=True,
                                     thresh_lims=[0, 3], thresh_step=0.01, site_gdf=None):
+
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -1174,7 +1175,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
             weighted_h5.close()
             elapsed, per_site = time_elasped(time(), start, ix + 1, decimal=False)
         printProgressBar(ix + 1, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
-    
+   
     else:
         if nesi_step == 'prep':
             weighted_h5.close()
@@ -1347,6 +1348,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indices", data=percentiles_csc.indices, compression='gzip', compression_opts=6)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indptr", data=percentiles_csc.indptr, compression='gzip', compression_opts=6)
             interval_h5.create_dataset(f"meta", data=np.array([thresholds[0], thresholds[-1], thresholds[1] - thresholds[0], n_samples]))
+
             if benchmarking:
                     print(f'Weights made: {time() - lap:.2f}s')
         if benchmarking:
