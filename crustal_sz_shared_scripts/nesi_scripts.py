@@ -114,11 +114,11 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
         f.write("module purge  2>/dev/null\n".encode())
         f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
 
-        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {int(time_interval)} --n_samples {int(n_samples)} ".encode())
+        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {'/'.join([str(val) for val in time_interval])} --n_samples {int(n_samples)} ".encode())
         f.write(f"--sd {sd} --nesi_job site_PPE {NSHM} --thresh_lims {thresh_lims[0]}/{thresh_lims[1]} --thresh_step {thresh_step}\n\n".encode())
 
 
-def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=None, thresholds=None):
+def combine_site_cumu_PPE(sites, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=None, thresholds=None):
     """
     Script to recompile all individual site PPE dictionaries into a single branch dictionary.
     For the sake of saving space, the individual site dictionaries are deleted after being combined into the branch dictionary.
@@ -178,12 +178,13 @@ def compile_site_cumu_PPE(sites, model_version_results_directory, extension1, br
     return
 
 
-def prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=0, thresholds=None):
+def prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=0, thresholds=None, sites=[]):
 
     with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "rb") as f:
         combine_dict = pkl.load(f)
 
     combine_dict[os.path.basename(branch_h5file)] = {'branch_site_disp_dict': branch_site_disp_dict_file,
+                                                     'sites': sites,
                                                      'model_version_results_directory': model_version_results_directory,
                                                      'extension1': extension1,
                                                      'branch_h5file': branch_h5file,
@@ -231,7 +232,7 @@ def prep_SLURM_combine_submission(combine_dict_file, branch_combine_list, model_
 
 def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks, site_file,
                                          hours: int = 0, mins: int = 3, mem: int = 45, cpus: int = 1, account: str = 'uc03610',
-                                         job_time = 0):
+                                         job_time = 0, time_interval = ['100']):
     """
     Prep the SLURM submission script to create a task array to calculate the weighted mean PPE for each site
     """
@@ -261,7 +262,7 @@ def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks
         f.write("module purge  2>/dev/null\n".encode())
         f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
 
-        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --nesi_job site_weights \n\n".encode())
+        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {'/'.join([str(val) for val in time_interval])} --nesi_job site_weights \n\n".encode())
     print('')
 
     return slurm_file
@@ -307,7 +308,7 @@ if __name__ == "__main__":
     parser.add_argument("--task_number", type=int, default=0, help="Task number for the SLURM array")
     parser.add_argument("--tasks_per_array", type=int, default=10, help="Number of tasks per SLURM array")
     parser.add_argument("--site_file", type=str, default='site_name_list.txt', help="File containing the site information")
-    parser.add_argument("--time_interval", type=int, default=100, help="Time interval to calculate exceedance probabilities over")
+    parser.add_argument("--time_interval", type=str, default='100', help="Time interval to calculate exceedance probabilities over")
     parser.add_argument("--n_samples", type=int, default=1e5, help="Number of samples to use for the poissonian simulation")
     parser.add_argument("--sd", type=float, default=0.4, help="Standard deviation of the normal distribution to use for uncertainty in displacements")
     parser.add_argument("--thresh_lims", type=str, default="0/3", help="Threshold limits for the exceedance probabilities")
@@ -331,8 +332,8 @@ if __name__ == "__main__":
     else:
         taper = "_uniform"
 
+    investigation_time = [str(interval) for interval in args.time_interval.split('/')]
     if args.nesi_job == 'site_PPE':
-        investigation_time = args.time_interval
         n_samples = args.n_samples
         sd = args.sd
 
@@ -481,10 +482,11 @@ if __name__ == "__main__":
             combine_dict = pkl.load(f)
        
         for branch in task_branches:
-            with h5.File(combine_dict[branch]['branch_site_disp_dict'], "r") as branch_h5:
-                site_list = [key for key in branch_h5.keys() if key not in ['rates', 'scaled_rates']]
+            site_list = combine_dict[branch]['sites']
+            # with h5.File(combine_dict[branch]['branch_site_disp_dict'], "r") as branch_h5:
+                # site_list = [key for key in branch_h5.keys() if key not in ['rates', 'scaled_rates']]
             nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
-            compile_site_cumu_PPE(site_list, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
+            combine_site_cumu_PPE(site_list, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
                                 branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'],
                                 thresholds=combine_dict[branch]['thresholds'])
         print('\nAll branches combined!')
@@ -534,7 +536,8 @@ if __name__ == "__main__":
                                           [val.decode('utf-8') for val in site_h5['branch_id_list'][()]], 
                                           site_h5['sigma_lims'], 
                                           site_h5['branch_weights'],
-                                          compression='gzip')
+                                          compression='gzip',
+                                          intervals=[str(interval) for interval in investigation_time])
             nesiprint(f"Site {site_name} complete")
         print('\nAll sites complete!')
 

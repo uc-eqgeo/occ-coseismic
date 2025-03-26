@@ -21,9 +21,12 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
-from scipy.sparse import csc_array
+from scipy.sparse import csc_array, csr_array
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, compile_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+
 numba_flag = True
 if numba_flag:
     try:
@@ -134,16 +137,23 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total: 
         print()
 
-def time_elasped(current_time, start_time, decimal=False):
+def time_elasped(current_time, start_time, site_num=None, decimal=False):
     elapsed_time = current_time - start_time
+    if site_num is not None:
+        per_site = elapsed_time / site_num
     hours, rem = divmod(elapsed_time, 3600)
     minutes, seconds = divmod(rem, 60)
     if not decimal:
-        return "{:0>2}:{:0>2}:{:0>2}".format(int(hours), int(minutes), int(seconds))
+        if site_num is not None:
+            return "{:0>2}:{:0>2}:{:0>2}".format(int(hours), int(minutes), int(seconds)), per_site
+        else:
+            return "{:0>2}:{:0>2}:{:0>2}".format(int(hours), int(minutes), int(seconds))
     else:
         seconds, rem = divmod(seconds, 1)
-        return "{:0>2}:{:0>2}:{:0>2}.{:.0f}".format(int(hours), int(minutes), int(seconds), rem * 10)
-
+        if site_num is not None:
+            return "{:0>2}:{:0>2}:{:0>2}.{:.0f}".format(int(hours), int(minutes), int(seconds), rem * 10), per_site
+        else:
+            return "{:0>2}:{:0>2}:{:0>2}.{:.0f}".format(int(hours), int(minutes), int(seconds), rem * 10)
 
 def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, model_version_results_directory):
     """
@@ -180,26 +190,30 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
 
 if numba_flag:
     @njit(parallel=True)
-    def calc_thresholds(thresholds, cumulative_disp_scenarios):
+    def calc_thresholds(thresholds, cumulative_disp_scenarios, uix=0, dix=1, aix=2):
         n_thresholds = len(thresholds)
-        n_chunks, n_scenarios = cumulative_disp_scenarios.shape
+        _, n_chunks, n_scenarios = cumulative_disp_scenarios.shape
         n_exceedances_total_abs = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
         n_exceedances_up = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
         n_exceedances_down = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
-
-        abs_disp_scenarios = np.abs(cumulative_disp_scenarios)
+        
+        # Limit the thresholds counted to only those that dont exceed maximum displacement
+        max_disp = cumulative_disp_scenarios[aix, :, :].max()
+        if max_disp < thresholds[-1]:
+            n_thresholds = np.where(thresholds > max_disp)[0][0]
+        
         for tix in prange(n_thresholds):
             threshold = thresholds[tix]
 
             for i in range(n_chunks):
                 count_total_abs, count_up, count_down = 0, 0, 0
                 for j in range(n_scenarios):
-                    if abs_disp_scenarios[i, j] > threshold:
-                        count_total_abs += 1
-                    if cumulative_disp_scenarios[i, j] > threshold:
+                    if cumulative_disp_scenarios[uix, i, j] > threshold:
                         count_up += 1
-                    if cumulative_disp_scenarios[i, j] < -threshold:
+                    if cumulative_disp_scenarios[dix, i, j] < -threshold:
                         count_down += 1
+                    if cumulative_disp_scenarios[aix, i, j] > threshold:
+                        count_total_abs += 1
 
                 n_exceedances_total_abs[tix, i] = count_total_abs
                 n_exceedances_up[tix, i] = count_up
@@ -207,27 +221,89 @@ if numba_flag:
 
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
-else:
-    def calc_thresholds(thresholds, cumulative_disp_scenarios):
+    @njit(parallel=True)
+    def sparse_thresholds(thresholds, cumulative_disp_scenarios, rows):
+        # Currently won't run on chuncked data, but given chunked data doesn't really work, it's not exactly a big problem
         n_thresholds = len(thresholds)
-        n_chunks, n_scenarios = cumulative_disp_scenarios.shape
-        n_exceedances_total_abs = np.zeros((n_thresholds, n_chunks))
-        n_exceedances_up = np.zeros((n_thresholds, n_chunks))
-        n_exceedances_down = np.zeros((n_thresholds, n_chunks))
+        n_exceedances_total_abs = np.zeros((n_thresholds, 1), dtype=np.int32)
+        n_exceedances_up = np.zeros((n_thresholds, 1), dtype=np.int32)
+        n_exceedances_down = np.zeros((n_thresholds, 1), dtype=np.int32)
+        
+        if cumulative_disp_scenarios.shape[0] != 0:
+            # Limit the thresholds counted to only those that dont exceed maximum displacement
+            max_disp = cumulative_disp_scenarios.max()
+            if max_disp < thresholds[-1]:
+                n_thresholds = np.where(thresholds > max_disp)[0][0]
+            
+            for tix in prange(n_thresholds):
+                threshold = thresholds[tix]
+                count_total_abs, count_up, count_down = 0, 0, 0
+                for disp in cumulative_disp_scenarios[rows[0]:rows[1]]:
+                    if disp > threshold:
+                        count_up += 1
+                for disp in cumulative_disp_scenarios[rows[1]:rows[2]]:
+                    if disp < -threshold:
+                        count_down += 1
+                for disp in cumulative_disp_scenarios[rows[2]:rows[3]]:
+                    if disp > threshold:
+                        count_total_abs += 1
 
-        abs_disp_scenarios = np.abs(cumulative_disp_scenarios)
-        for tix, threshold in enumerate(thresholds):
-            # replaces index in zero array with the number of times the cumulative displacement exceeded the threshold
-            # across all of the 100 yr scenarios
-            # sums the absolute value of the disps if the abs value is greater than threshold. e.g., -0.5 + 0.5 = 1
-            n_exceedances_total_abs[tix, :] = np.sum(abs_disp_scenarios > threshold, axis=1)
-            n_exceedances_up[tix, :] = np.sum(cumulative_disp_scenarios > threshold, axis=1)
-            n_exceedances_down[tix, :] = np.sum(cumulative_disp_scenarios < -threshold, axis=1)
-            # Run check to see if displacement has maxed out (and therefore to stop calculating)
-            if np.sum(n_exceedances_total_abs[tix, :]) == 0:
-                # Double check that this isn't because up and down have cancelled out
-                if np.sum(n_exceedances_up[tix, :]) == 0:
-                    break
+                n_exceedances_total_abs[tix, 0] = count_total_abs
+                n_exceedances_up[tix, 0] = count_up
+                n_exceedances_down[tix, 0] = count_down
+
+        return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
+
+else:
+    def calc_thresholds(thresholds, cumulative_disp_scenarios, uix=0, dix=1, aix=2):
+        n_thresholds = len(thresholds)
+        n_chunks= cumulative_disp_scenarios.shape[1]
+        n_exceedances_total_abs = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
+        n_exceedances_up = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
+        n_exceedances_down = np.zeros((n_thresholds, n_chunks), dtype=np.int32)
+        
+        # Limit the thresholds counted to only those that dont exceed maximum displacement
+        max_disp = cumulative_disp_scenarios[aix, :, :].max()
+        if max_disp < thresholds[-1]:
+            n_thresholds = np.where(thresholds > max_disp)[0][0]
+        
+        for tix, threshold in range(thresholds[:n_thresholds]):
+            for i in range(n_chunks):
+                n_exceedances_up[tix, i] = np.sum(cumulative_disp_scenarios[uix, i, :] > threshold)
+                n_exceedances_down[tix, i] = np.sum(cumulative_disp_scenarios[dix, i, :] < -threshold)
+                n_exceedances_total_abs[tix, i] = np.sum(cumulative_disp_scenarios[aix, i, :] > threshold)
+
+        return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
+
+    def sparse_thresholds(thresholds, cumulative_disp_scenarios, rows):
+        # Currently won't run on chuncked data, but given chunked data doesn't really work, it's not exactly a big problem
+        n_thresholds = len(thresholds)
+        n_exceedances_total_abs = np.zeros((n_thresholds, 1), dtype=np.int32)
+        n_exceedances_up = np.zeros((n_thresholds, 1), dtype=np.int32)
+        n_exceedances_down = np.zeros((n_thresholds, 1), dtype=np.int32)
+        
+        if cumulative_disp_scenarios.shape[0] != 0:
+            # Limit the thresholds counted to only those that dont exceed maximum displacement
+            max_disp = cumulative_disp_scenarios.max()
+            if max_disp < thresholds[-1]:
+                n_thresholds = np.where(thresholds > max_disp)[0][0]
+            
+            for tix in prange(n_thresholds):
+                threshold = thresholds[tix]
+                count_total_abs, count_up, count_down = 0, 0, 0
+                for disp in cumulative_disp_scenarios[rows[0]:rows[1]]:
+                    if disp > threshold:
+                        count_up += 1
+                for disp in cumulative_disp_scenarios[rows[1]:rows[2]]:
+                    if disp < -threshold:
+                        count_down += 1
+                for disp in cumulative_disp_scenarios[rows[2]:rows[3]]:
+                    if disp > threshold:
+                        count_total_abs += 1
+
+                n_exceedances_total_abs[tix, 0] = count_total_abs
+                n_exceedances_up[tix, 0] = count_up
+                n_exceedances_down[tix, 0] = count_down
 
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
@@ -242,15 +318,16 @@ def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_
         n_ruptures = rates.shape[0]     
 
         print(f'\tPreparing {n_samples} Poissonian Scenarios for {n_ruptures} ruptures...')
-        rng = np.random.default_rng()   
-        scenarios = csc_array(rng.poisson(time_interval * rates, size=(int(n_samples), n_ruptures)))
+        rng = np.random.default_rng()
+        for interval in time_interval:
+            scenarios = csc_array(rng.poisson(float(interval) * rates, size=(int(n_samples), n_ruptures)))
 
-        with open(f"{randdir}/scenarios.pkl", "wb") as fid:
-            pkl.dump(scenarios, fid)
+            with open(f"{randdir}/{interval}_yr_scenarios.pkl", "wb") as fid:
+                pkl.dump(scenarios, fid)
 
 
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
-                 extension1, branch_key="nan", time_interval=100, sd=0.4, error_chunking=1000, scaling='', load_random=False,
+                 extension1, branch_key="nan", time_interval=[100], sd=0.4, error_chunking=1000, scaling='', load_random=False,
                  thresh_lims=[0, 3], thresh_step=0.01, plot_maximum_displacement=False, array_process=False,
                  crustal_model_dir="", subduction_model_dirs="", NSHM_branch=True, pair_unique_id=None):
     """
@@ -271,7 +348,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     procdir = os.path.relpath(os.path.dirname(__file__) + '/..')
 
     if numba_flag:
-        _ = calc_thresholds(np.arange(0,1,1), np.ones((1, 100)))
+        _ = calc_thresholds(np.arange(0,1,1), np.ones((3, 1, 100)))
+        # For some reason this causes a numba error on the second branch if allowed to run here....
+        # _ = sparse_thresholds(np.arange(0,1,1), np.ones((1, 100)), [0, 1])
 
     # use random number generator to initialise monte carlo sampling
     rng = np.random.default_rng()
@@ -310,16 +389,19 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             else:
                 NSHM_PPEh5_list.append(branch_PPE_h5)
 
-    if not os.path.exists(f"{procdir}/{model_version_results_directory}/{extension1}/scenarios.pkl") or not os.path.exists(f"../{model_version_results_directory}/{extension1}/disp_uncertainty.pkl"):
-        load_random = False
+    for interval in time_interval:
+        if not os.path.exists(f"{procdir}/{model_version_results_directory}/{extension1}/{interval}_yr_scenarios.pkl"):
+            load_random = False
 
     if load_random:
         # Load array of random samples rather than regenerating them
         randomdir = f"{procdir}/{model_version_results_directory}/{extension1}"
         if array_process:
             randomdir = os.path.join(randomdir, f"site_cumu_exceed{scaling}")
-        with open(f"{randomdir}/scenarios.pkl", 'rb') as f:
-            all_scenarios = pkl.load(f)
+        all_scenarios = {}
+        for interval in time_interval:
+            with open(f"{randomdir}/{interval}_yr_scenarios.pkl", "rb") as f:
+                all_scenarios[interval] = pkl.load(f)
 
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
@@ -332,8 +414,13 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     if not benchmarking:
         printProgressBar(0, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix='Complete 00:00:00 (00:00s/site)', length=50)
     for i, site_of_interest in enumerate(site_ids):
+        if i == 1:
+            start = time() # Because the first loop is really slow, it throws the stats for the rest
         begin = time()
         lap = time()
+
+        if benchmarking:
+            print(f"Site {site_of_interest} ({i}/{len(site_ids)})")
 
         if isinstance(branch_site_disp_dict, str):
             with h5.File(branch_site_disp_dict, "r") as branch_h5:
@@ -343,63 +430,62 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             site_dict_i = branch_site_disp_dict[site_of_interest]
             site_dict_i["scaled_rates"] = branch_h5["scaled_rates"][:]
 
-        if not NSHM_branch:
-            cumulative_disp_scenarios = np.zeros(n_samples)
-            for NSHM_PPE in NSHM_PPEh5_list[1:]:
-                with h5.File(NSHM_PPE, "r") as PPEh5:
-                    NSHM_displacements = PPEh5[site_of_interest]["scenario_displacements"][:]
-                    slip_scenarios = PPEh5[site_of_interest]["slip_scenarios_ix"][:]
+        site_PPE_dict[site_of_interest] = {}
+        for investigation_time in time_interval:
+            if not NSHM_branch:
+                cumulative_disp_scenarios = np.zeros(n_samples)
+                for NSHM_PPE in NSHM_PPEh5_list[1:]:
+                    with h5.File(NSHM_PPE, "r") as PPEh5:
+                        NSHM_displacements = PPEh5[site_of_interest]["scenario_displacements"][:]
+                        slip_scenarios = PPEh5[site_of_interest]["slip_scenarios_ix"][:]
 
-                cumulative_disp_scenarios[slip_scenarios] += NSHM_displacements.reshape(-1)
-            if benchmarking:
-                print(f"Loaded PPE: {time() - begin:.5f} s")
-            lap = time()
-        else:
-            # Set up params for sampling
-            investigation_time = time_interval
-
-            if "scaled_rates" not in site_dict_i.keys():
-                # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
-                scaled_rates = site_dict_i["rates"]
-            else:
-                scaled_rates = site_dict_i["scaled_rates"]
-
-            # Drop ruptures that don't cause slip at this site
-            drop_noslip = True
-            if drop_noslip:
-                disps = site_dict_i['disps']
-                # Check this isn't a site that is uneffected by earthquakes
-                if disps.shape[0] > 0:
-                    scaled_rates = scaled_rates[site_dict_i["disps_ix"]]
-                else:
-                    disps = np.zeros(1)
-                    scaled_rates = np.zeros(1)
-            else:
-                disps = np.zeros_like(scaled_rates)
-                if site_dict_i["disps_ix"] > 0:
-                    disps[site_dict_i["disps_ix"]] = site_dict_i['disps']
-
-            # average number of events per time interval (effectively R*T from Ned's guide)
-            lambdas = investigation_time * np.array(scaled_rates)
-
-            if load_random:
-                # Load in scenarios from csc array, or create empty array if no ruptures impact this site
-                if site_dict_i["disps_ix"].shape[0] > 0:
-                    scenarios = all_scenarios[:, site_dict_i["disps_ix"]]
-                else:
-                    scenarios = csc_array(np.zeros((int(n_samples), 1)))
+                    cumulative_disp_scenarios[slip_scenarios] += NSHM_displacements.reshape(-1)
                 if benchmarking:
-                    print(f"Time taken to load scenarios: {time() - lap:.5f} s")
-                    lap = time()
+                    print(f"Loaded PPE: {time() - begin:.5f} s")
+                lap = time()
             else:
-                # Generate n_samples of possible earthquake ruptures for random 100 year intervals
-                # returns boolean array where 0 means "no event" and 1 means "event". rows = 100 yr window, 
-                # columns = earthquake rupture
-                # Save as csc array to save memory
-                scenarios = csc_array(rng.poisson(lambdas, size=(int(n_samples), lambdas.size)))
-                if benchmarking:
-                    print(f"Time taken to generate scenarios: {time() - begin:.5f} s")
-                    lap = time()
+                # Set up params for sampling
+                if "scaled_rates" not in site_dict_i.keys():
+                    # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
+                    scaled_rates = site_dict_i["rates"]
+                else:
+                    scaled_rates = site_dict_i["scaled_rates"]
+
+                # Drop ruptures that don't cause slip at this site
+                drop_noslip = True
+                if drop_noslip:
+                    disps = site_dict_i['disps']
+                    # Check this isn't a site that is uneffected by earthquakes
+                    if disps.shape[0] > 0:
+                        scaled_rates = scaled_rates[site_dict_i["disps_ix"]]
+                    else:
+                        disps = np.zeros(1)
+                        scaled_rates = np.zeros(1)
+                else:
+                    disps = np.zeros_like(scaled_rates)
+                    if site_dict_i["disps_ix"] > 0:
+                        disps[site_dict_i["disps_ix"]] = site_dict_i['disps']
+
+                if load_random:
+                    # Load in scenarios from csc array, or create empty array if no ruptures impact this site
+                    if site_dict_i["disps_ix"].shape[0] > 0:
+                        scenarios = all_scenarios[investigation_time][:, site_dict_i["disps_ix"]]
+                    else:
+                        scenarios = csc_array(np.zeros((int(n_samples), 1)))
+                    if benchmarking:
+                        print(f"Time taken to load scenarios: {time() - lap:.5f} s")
+                        lap = time()
+                else:
+                    # average number of events per time interval (effectively R*T from Ned's guide)
+                    lambdas = float(investigation_time) * np.array(scaled_rates)
+                    # Generate n_samples of possible earthquake ruptures for random 100 year intervals
+                    # returns boolean array where 0 means "no event" and 1 means "event". rows = 100 yr window, 
+                    # columns = earthquake rupture
+                    # Save as csc array to save memory
+                    scenarios = csc_array(rng.poisson(lambdas, size=(int(n_samples), lambdas.size)))
+                    if benchmarking:
+                        print(f"Time taken to generate scenarios: {time() - begin:.5f} s")
+                        lap = time()
 
             # Calculate uncertainty for each scenario that ruptures
             # assigns a normal distribution with a mean of 1 and a standard deviation of sd
@@ -412,80 +498,106 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             # multiplies displacement by the uncertainty multiplier
             disp_scenarios = disp_scenarios * disp_uncertainty
             # sum all displacement values at that site in that 100 yr interval
-            cumulative_disp_scenarios = disp_scenarios.sum(axis=1)
+            up_scenarios = disp_scenarios.copy()
+            down_scenarios = disp_scenarios.copy()
+            abs_scenarios = disp_scenarios.copy()
+            up_scenarios.data = np.where(disp_scenarios.data > 0, disp_scenarios.data, 0)
+            down_scenarios.data = np.where(disp_scenarios.data < 0, disp_scenarios.data, 0)
+            abs_scenarios.data = np.abs(disp_scenarios.data)
+            if benchmarking:
+                print(f"Exceed Type Scenarios: {time() - lap:.5f} s")
+            lap = time()   
+
+            cumulative_up_scenarios = up_scenarios.sum(axis=1).reshape(1, n_samples)
+            cumulative_down_scenarios = down_scenarios.sum(axis=1).reshape(1, n_samples)
+            cumulative_abs_scenarios = abs_scenarios.sum(axis=1).reshape(1, n_samples)
+            cumulative_disp_scenarios = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios, cumulative_abs_scenarios]).reshape(3, 1, n_samples)
             if benchmarking:
                 print(f"Calculated Displacements: {time() - lap:.5f} s")
             lap = time()    
 
-        # sum all the displacements in the 100 year window that exceed threshold
-        cumulative_disp_scenarios = cumulative_disp_scenarios.reshape(1, len(cumulative_disp_scenarios))   
-        # Find indexes of scenarios where slip occurred
-        slip_scenarios = np.where(cumulative_disp_scenarios != 0)[1]    
-        lap = time()
-        n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios)
-        if benchmarking:
-            print(f"Exceedances Counted : {time() - lap:.15f} s")
-        lap = time()
+            # Find indexes of scenarios where slip occurred
+            up_slip_scenarios = np.where(cumulative_disp_scenarios[0, 0, :] != 0)[0]
+            down_slip_scenarios = np.where(cumulative_disp_scenarios[1, 0, :] != 0)[0]
+            abs_slip_scenarios = np.where(cumulative_disp_scenarios[2, 0, :] != 0)[0]    
 
-        # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
-        # quite high for low displacements (25%). Means there's a ~25% chance an earthquake will exceed 0 m in next 100
-        # years across all earthquakes in the catalogue (at that site).
-        exceedance_probs_total_abs = n_exceedances_total_abs / n_samples
-        exceedance_probs_up = n_exceedances_up / n_samples
-        exceedance_probs_down = n_exceedances_down / n_samples
-
-        # Minimum data needed for weighted_mean_PPE (done to reduce required storage, and if errors can be recalculated later if needed)
-        site_PPE_dict[site_of_interest] = {"exceedance_probs_total_abs": exceedance_probs_total_abs[exceedance_probs_total_abs != 0],
-                                           "exceedance_probs_up": exceedance_probs_up[exceedance_probs_up != 0],
-                                           "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
-
-        # Save the rest of the data if this is a NSHM branch
-        if NSHM_branch:
-            ## Reverting back to the old method of subsampling the scenarios right now
-            ## This results in a divergence as you get to increasingly low probabilities (i.e. large displacement events are captured in the full scenario set,
-            ## but not in most of the sub-samples), but offers some more useful error envelopes at higher probabilities
-            ## The other limit here is this places a lowest % error you can calculate and error for (i.e error_chunking = 1000 can only calculate to 0.1%)
-            ## Increasing the number of scenarios included in each chunk would allow for lower probabilities to be calculated, but then leads to the same issue as
-            ## for the newer method (overly tight error envelope due to little variation between the error scenarios)
-            ## The newer method of trying to recreate 100,000 samples from the full set using randowm permutations with replacement basically just recreates the
-            ## full set, so is not useful - although they contain the low probability events, becuase you're just using the same scenarios over and over again
-            ## the error envelope is so tight around the mean haz curve it's not useful.
-            ## It could be that when the branches are combined and weighted together, then this stops being an issue as you can take the relative variations between
-            ## the branches as you form the error envelope.
-            chunked_disp_scenarios = cumulative_disp_scenarios[:(n_chunks * error_chunking)].reshape(n_chunks, error_chunking)  # Create chunked displacement scenario (old method)
-            # error_chunking = 1000  # Now this is number of chunks to use in the new method, rather than the number of samples per chunk (old method)
-            # error_samples = int(n_samples / 1)  # Number of scenarios to use per chunk for error calculation (new method)
-            # rand_scenario_ix = np.random.randint(0, n_samples, size=error_chunking * error_samples)  # Random permutation to select which scenarios to use in each chunk (new method)
-            # if benchmarking:
-            #     print(f"Rand Scenario ix : {time() - lap:.15f} s")
-            # lap = time()
-            # chunked_disp_scenarios = cumulative_disp_scenarios[0, rand_scenario_ix].reshape(error_chunking, error_samples)  # Create chunked displacement scenario (new method)
-
-            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, chunked_disp_scenarios)
+            cumulative_data = np.hstack([cumulative_up_scenarios[0, up_slip_scenarios], cumulative_down_scenarios[0, down_slip_scenarios], cumulative_abs_scenarios[0, abs_slip_scenarios]])
+            if cumulative_data.shape[0] < 2e6:  # Anecdatally, with less than 2 million scenarios, the sparse method is faster
+                cumulative_indptr = np.cumsum([0, up_slip_scenarios.shape[0], down_slip_scenarios.shape[0], abs_slip_scenarios.shape[0]])
+                n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = sparse_thresholds(thresholds, cumulative_data, cumulative_indptr)
+                if benchmarking:
+                    print(f"Sparse Exceedances Counted : {time() - lap:.15f} s")
+            else:
+                cumulative_array = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios, cumulative_abs_scenarios])
+                n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_array.reshape(3, 1, n_samples))
 
             if benchmarking:
-                print(f"Error Exceedances Counted : {time() - lap:.15f} s")
+                    print(f"Exceedances Counted : {time() - lap:.15f} s")
             lap = time()
-            exceedance_errs_total_abs = n_exceedances_total_abs / error_chunking   # Change to error_samples for new method
-            exceedance_errs_up = n_exceedances_up / error_chunking   # Change to error_samples for new method
-            exceedance_errs_down = n_exceedances_down / error_chunking   # Change to error_samples for new method
 
-            # Output errors
-            sigma_lims = [0, 2.275, 15.865, 50, 84.135, 97.725, 100]  # Min/Max, 2 and 1 sigma, median
-            error_abs = np.percentile(exceedance_errs_total_abs, sigma_lims, axis=1)
-            error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
-            error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
+            # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
+            # quite high for low displacements (25%). Means there's a ~25% chance an earthquake will exceed 0 m in next 100
+            # years across all earthquakes in the catalogue (at that site).
+            exceedance_probs_total_abs = n_exceedances_total_abs / n_samples
+            exceedance_probs_up = n_exceedances_up / n_samples
+            exceedance_probs_down = n_exceedances_down / n_samples
 
-            site_PPE_dict[site_of_interest].update({"scenario_displacements": cumulative_disp_scenarios[0, slip_scenarios],
-                                                    "slip_scenarios_ix": slip_scenarios,
-                                                    "site_coords": site_dict_i["site_coords"],
-                                                    "standard_deviation": sd,
-                                                    "error_total_abs": error_abs[:, error_abs.sum(axis=0) != 0],
-                                                    "error_up": error_up[:, error_up.sum(axis=0) != 0],
-                                                    "error_down": error_down[:, error_down.sum(axis=0) != 0],
-                                                    "sigma_lims": sigma_lims,
-                                                    "n_samples": n_samples,
-                                                    "thresh_para": np.hstack([thresh_lims, thresh_step])})
+            # Minimum data needed for weighted_mean_PPE (done to reduce required storage, and if errors can be recalculated later if needed)
+            site_PPE_dict[site_of_interest][investigation_time] = {"exceedance_probs_total_abs": exceedance_probs_total_abs[exceedance_probs_total_abs != 0],
+                                                                   "exceedance_probs_up": exceedance_probs_up[exceedance_probs_up != 0],
+                                                                   "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
+
+            # Save the rest of the data if this is a NSHM branch
+            if NSHM_branch:
+                ## Reverting back to the old method of subsampling the scenarios right now
+                ## This results in a divergence as you get to increasingly low probabilities (i.e. large displacement events are captured in the full scenario set,
+                ## but not in most of the sub-samples), but offers some more useful error envelopes at higher probabilities
+                ## The other limit here is this places a lowest % error you can calculate and error for (i.e error_chunking = 1000 can only calculate to 0.1%)
+                ## Increasing the number of scenarios included in each chunk would allow for lower probabilities to be calculated, but then leads to the same issue as
+                ## for the newer method (overly tight error envelope due to little variation between the error scenarios)
+                ## The newer method of trying to recreate 100,000 samples from the full set using randowm permutations with replacement basically just recreates the
+                ## full set, so is not useful - although they contain the low probability events, becuase you're just using the same scenarios over and over again
+                ## the error envelope is so tight around the mean haz curve it's not useful.
+                ## It could be that when the branches are combined and weighted together, then this stops being an issue as you can take the relative variations between
+                ## the branches as you form the error envelope.
+                chunked_disp_scenarios = cumulative_disp_scenarios[:, 0, :(n_chunks * error_chunking)].reshape(3, n_chunks, error_chunking)  # Create chunked displacement scenario (old method)
+                # error_chunking = 1000  # Now this is number of chunks to use in the new method, rather than the number of samples per chunk (old method)
+                # error_samples = int(n_samples / 1)  # Number of scenarios to use per chunk for error calculation (new method)
+                # rand_scenario_ix = np.random.randint(0, n_samples, size=error_chunking * error_samples)  # Random permutation to select which scenarios to use in each chunk (new method)
+                # if benchmarking:
+                #     print(f"Rand Scenario ix : {time() - lap:.15f} s")
+                # lap = time()
+                # chunked_disp_scenarios = cumulative_disp_scenarios[0, rand_scenario_ix].reshape(error_chunking, error_samples)  # Create chunked displacement scenario (new method)
+
+                n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, chunked_disp_scenarios)
+
+                if benchmarking:
+                    print(f"Error Exceedances Counted : {time() - lap:.15f} s")
+                lap = time()
+                exceedance_errs_total_abs = n_exceedances_total_abs / error_chunking   # Change to error_samples for new method
+                exceedance_errs_up = n_exceedances_up / error_chunking   # Change to error_samples for new method
+                exceedance_errs_down = n_exceedances_down / error_chunking   # Change to error_samples for new method
+
+                # Output errors
+                sigma_lims = [0, 2.275, 15.865, 50, 84.135, 97.725, 100]  # Min/Max, 2 and 1 sigma, median
+                error_abs = np.percentile(exceedance_errs_total_abs, sigma_lims, axis=1)
+                error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
+                error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
+
+
+                scenario_displacements = {'up': {'displacements': cumulative_disp_scenarios[0, 0, up_slip_scenarios], 'scenario_ix': up_slip_scenarios},
+                                          'down': {'displacements': cumulative_disp_scenarios[1, 0, down_slip_scenarios], 'scenario_ix': down_slip_scenarios},
+                                          'total_abs': {'displacements': cumulative_disp_scenarios[2, 0, abs_slip_scenarios], 'scenario_ix': abs_slip_scenarios}}
+
+                site_PPE_dict[site_of_interest][investigation_time].update({"scenario_displacements": scenario_displacements,
+                                                                            "standard_deviation": sd,
+                                                                            "error_total_abs": error_abs[:, error_abs.sum(axis=0) != 0],
+                                                                            "error_up": error_up[:, error_up.sum(axis=0) != 0],
+                                                                            "error_down": error_down[:, error_down.sum(axis=0) != 0],
+                                                                            "sigma_lims": sigma_lims,
+                                                                            "n_samples": n_samples,
+                                                                            "thresh_para": np.hstack([thresh_lims, thresh_step])})
+        site_PPE_dict[site_of_interest].update({"site_coords": site_dict_i["site_coords"]})
 
         elapsed = time_elasped(time(), start)
         if benchmarking:
@@ -495,7 +607,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
     if benchmarking:
         print(f"Total Time: {time() - commence:.5f} s")
-
+    
+    
     if array_process:
         os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}", exist_ok=True)
         site_file = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5"
@@ -515,7 +628,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension, inv_sites=[],
                               nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
-                              time_interval=int(100), sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=3, load_random=False,
+                              time_interval=['100'], sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=3, load_random=False,
                               remake_PPE=True, sbatch=False, thresh_lims=[0, 3], thresh_step=0.01):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
@@ -542,8 +655,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 os.remove(f"../{model_version_results_directory}/branch_combine_list.txt")
             if os.path.exists(f"../{model_version_results_directory}/combine_site_meta.pkl"):
                 os.remove(f"../{model_version_results_directory}/combine_site_meta.pkl")
-            with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
-                pkl.dump({}, f)
+                with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
+                    pkl.dump({}, f)
 
     branch_weight_list = []
     fault_model_allbranch_PPE_dict = {}
@@ -588,15 +701,23 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 # Checks that previous processing had required sampling (i.e. wasn't a testing run)
                 well_processed_sites = []
                 for site in existing_sites:
-                    if all([True if key in branch_PPEh5[site].keys() else False for key in ['n_samples', 'thresh_para']]):
-                        if branch_PPEh5[site]['n_samples'][()] >= n_samples:
+                        well_processed = []
+                        for interval in time_interval: # check for each time interval
+                            passed_check = False
+                            if interval in branch_PPEh5[site].keys(): # Check this interval has been processed at all
+                                if all([True if key in branch_PPEh5[site][interval].keys() else False for key in ['n_samples', 'thresh_para']]): # Check if all keys are present (only added when processing is complete)
+                                    if branch_PPEh5[site][interval]['n_samples'][()] >= n_samples: # Check required number of samples were run
+                                        passed_check = True
+                            well_processed.append(passed_check)
+
+                        if all(well_processed):
                             well_processed_sites.append(site)
 
-            prep_list = [site for site in inv_sites if site not in well_processed_sites]
         else:
             branch_PPEh5 = h5.File(fault_model_allbranch_PPE_dict[branch_id], "w")
             branch_PPEh5.close()
-            prep_list = inv_sites
+
+        prep_list = [site for site in inv_sites if site not in well_processed_sites]
         
         if len(prep_list) == 0:
             print(f"\tAll sites have been processed for {branch_id}. Skipping...")
@@ -619,12 +740,12 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 if sbatch:
                     print(f"\tPreparing NESI combination for {fault_model_allbranch_PPE_dict[branch_id]}....")
                     prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
-                                        taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1], thresholds=thresholds)
+                                        taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1], thresholds=thresholds, sites=prep_list)
                     combine_branches += 1
                     continue
                 else:
                     print(f"\tCombining site dictionaries into {fault_model_allbranch_PPE_dict[branch_id]}....")
-                    compile_site_cumu_PPE(prep_list, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
+                    combine_site_cumu_PPE(prep_list, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
                                         taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", thresholds=thresholds)
 
         else:
@@ -699,7 +820,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         return fault_model_allbranch_PPE_dict
 
 def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper, site_list=[], thresh_lims=[0, 3], thresh_step=0.01, nesi=False, nesi_step='prep', n_samples=100000,
-                               min_tasks_per_array=100, n_array_tasks=100, mem=10, cpus=1, account='', job_time=60, remake_PPE=False):
+                               min_tasks_per_array=100, n_array_tasks=100, mem=10, cpus=1, account='', job_time=60, remake_PPE=False, time_interval=['100']):
     """takes all the branch PPEs and combines them based on the branch weights into a weighted mean PPE dictionary
 
     :param fault_model_PPE_dict: The dictionary has PPEs for each branch (or branch pairing).
@@ -733,54 +854,80 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
 
     # Check if previous h5 exists. If it does, preserve it until new weighted mean file is complete
     weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
-    preserve_previous_h5 = False
-    # if os.path.exists(weighted_h5_file):
-    #     weighted_h5_file = weighted_h5_file.replace('.h5', '_processing.h5')
-    #     preserve_previous_h5 = True
-    #     if os.path.exists(weighted_h5_file):
-    #         os.remove(weighted_h5_file)
-
-    meta_dict = {'branch_weights': branch_weights,
-                 'thresholds': thresholds,
-                 'branch_ids': np.array(unique_id_list, dtype='S'),
-                 'sigma_lims': sigma_lims}
-
-    if not os.path.exists(weighted_h5_file):
-        weighted_h5 = h5.File(weighted_h5_file, "w")
-        for key in meta_dict.keys():
-            weighted_h5.create_dataset(key, data=meta_dict[key])
-    else:
-        weighted_h5 = h5.File(weighted_h5_file, "r+")
-        for key in meta_dict.keys():
-            if key in weighted_h5.keys():
-                if not np.array_equal(weighted_h5[key][:], meta_dict[key]):
-                    if key == 'thresholds':
-                        # Check to see if the previous run had the same threshold start and step, just a lower maximum limit
-                        if np.array_equal(weighted_h5[key][:], meta_dict[key][:weighted_h5[key][:].shape[0]]):
-                            print(f"Previous threshold limits were different, but the same start and step. Extending the limits to match the new limits...")
-                            del weighted_h5[key]
-                            weighted_h5.create_dataset(key, data=meta_dict[key])
-                        else:
-                            raise Exception(f"Meta data for cannot match newly requested thresholds to those from previous runs....")
-                    else:
-                        print(f"Meta data for **{key}** does not match what was in the weighted.h5...")
-            else:
-                print(f"Meta data for **{key}** was not in the weighted.h5. Adding...")
-                weighted_h5.create_dataset(key, data=meta_dict[key])
-
     model_directory = '/'.join(fault_model_PPE_dict[unique_id_list[0]].split('/')[1:-2])
+
+    if os.path.exists(weighted_h5_file):
+        weighted_h5 = h5.File(weighted_h5_file, "r+")
+        # Check the same branches are being used
+        weighted_id = [id.decode() for id in weighted_h5['branch_ids'][:]]
+        assert len(set(unique_id_list) - set(weighted_id)) == 0, "New branch ids do not match previous branch ids"
+        weighted_weights = weighted_h5['branch_weights'][:]
+        # Check the branch weights are the same
+        branch_order = [weighted_id.index(pair_id) for pair_id in unique_id_list]
+        weighted_weights_ordered = [weighted_weights[ix] for ix in branch_order]
+        assert list(branch_weights) == weighted_weights_ordered, "New branch weights do not match previous branch weights"
+    else:
+        # Create weighted h5 file with associated metadata
+        weighted_h5 = h5.File(weighted_h5_file, "w")
+        
+        weighted_h5.create_dataset('branch_weights', data=branch_weights)
+        weighted_h5.create_dataset('branch_ids', data=unique_id_list)
+        weighted_h5.create_dataset("thresholds", data=thresholds)
+        weighted_h5.create_dataset('sigma_lims', data=sigma_lims)
+    
+    requested_sites = site_list
+    if remake_PPE:
+        intervals_list = [time_interval for _ in site_list]
+    else:
+        # Check sites individually to see if they have been processed
+        site_list = []
+        intervals_list = []
+        for site in requested_sites:
+            if site in weighted_h5.keys():
+                required_intervals = []
+                for interval in time_interval:
+                    # Check each time interval
+                    if interval in weighted_h5[site].keys():
+                        if 'meta' in weighted_h5[site][interval].keys():
+                            min_thresh, max_thresh, thresh_delta, n_scenarios = weighted_h5[site][interval]['meta'][:]
+                            if any([min_thresh > thresh_lims[0], max_thresh < thresh_lims[1], thresh_delta != thresh_step, n_scenarios < n_samples]):  # Failure critieria
+                                required_intervals.append(interval)
+                    else:
+                        required_intervals.append(interval)
+                if len(required_intervals) > 0:
+                    site_list.append(site)
+                    intervals_list.append(required_intervals)
+            else:
+                site_list.append(site)
+                intervals_list.append(time_interval)
+
+    if len(site_list) == 0:
+        print(f"All sites have been processed. Skipping...")
+        weighted_h5.close()
+        return
+    else:
+        print(f"{len(site_list)}/{len(requested_sites)} requested sites need processing...")
 
     n_sites = len(site_list)
     if not nesi:
         start = time()
-        printProgressBar(0, n_sites, prefix=f'\t0/{n_sites} sites:', suffix='00:00:00 0 s/site', length=50)
+        elapsed, per_site = time_elasped(time(), start, 1, decimal=False)
+        weighted_h5.close()  # Closing file after each site saves that site's data (in case processing is cancelled)
         for ix, site in enumerate(site_list):
-            if remake_PPE and site in weighted_h5.keys():
-                del weighted_h5[site]
-            if site not in weighted_h5.keys():
+            weighted_h5 = h5.File(weighted_h5_file, "r+")
+            printProgressBar(ix, len(site_list), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
+            if site in weighted_h5.keys():
+                for interval in intervals_list[ix]:
+                    if interval in weighted_h5[site].keys():
+                        del weighted_h5[site][interval]
+                site_group = weighted_h5[site]
+            else:
                 site_group = weighted_h5.create_group(site)
                 site_group.create_dataset("site_coords", data=site_coords_dict[site])
-                create_site_weighted_mean(site_group, site, n_samples, model_directory, [model_directory], 'sites', thresholds, exceed_type_list, unique_id_list, sigma_lims, branch_weights, compression=None)
+            create_site_weighted_mean(site_group, site, n_samples, model_directory, [model_directory], 'sites', thresholds,
+                                      exceed_type_list, unique_id_list, sigma_lims, branch_weights, compression=None,
+                                      intervals=intervals_list[ix])
+            weighted_h5.close()
             elapsed = time_elasped(time(), start, decimal=False)
             printProgressBar(ix + 1, len(site_list), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
         weighted_h5.close()
@@ -830,32 +977,33 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             printProgressBar(0, len(site_list), prefix=f'\tAdding Site {site_list[0]}', suffix='Complete 00:00:00 (00:00s/site)', length=50)
             for ix, site in enumerate(site_list):
                 site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
+                if remake_PPE and site in weighted_h5.keys():
+                    del weighted_h5[site]
                 site_group = weighted_h5.create_group(site)
                 with h5.File(site_h5_file, 'r') as site_h5:
+                    # Take the data from the site_h5 and put it in the weighted_h5
                     site_group.create_dataset("site_coords", data=site_h5['site_coords'])
                     for exceed_type in exceed_type_list:
-                        for dataset in ['weighted_exceedance_probs_*-*', '*-*_max_vals', '*-*_min_vals', 'branch_exceedance_probs_*-*']:
-                            site_group.create_dataset(dataset.replace('*-*', exceed_type), data=site_h5[dataset.replace('*-*', exceed_type)], compression=None)
+                        site_group.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=site_h5[f'weighted_exceedance_probs_{exceed_type}'], compression=None)
+                        site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_h5[f'branch_exceedance_probs_{exceed_type}'], compression='gzip', compression_opts=6)
+                        site_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = [branch for branch in site_h5['branch_id_list'].asstr()]
+                        site_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=site_h5[f'{exceed_type}_weighted_percentile_error'], compression=None)
+
                 elapsed = time_elasped(time(), start, decimal=False)
                 printProgressBar(ix + 1, len(site_list), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
             weighted_h5.close()
             shutil.rmtree(f"../{out_directory}/weighted_sites")
 
-
-    if preserve_previous_h5:
-        os.remove(weighted_h5_file.replace('_processing.h5', '.h5'))
-        os.rename(weighted_h5_file, weighted_h5_file.replace('_processing.h5', '.h5'))
-        weighted_h5_file = weighted_h5_file.replace('_processing.h5', '.h5')
-
-    return weighted_h5_file
+    return
 
 
 def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight_dict_list,
                                     crustal_model_version_results_directory, sz_model_version_results_directory_list,
-                                    paired_PPE_pickle_name, slip_taper, n_samples, out_directory, outfile_extension, sz_type_list,
+                                    slip_taper, n_samples, out_directory, outfile_extension,
                                     nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
-                                    n_array_tasks=100, min_tasks_per_array=100, time_interval=int(100), sd=0.4, job_time=3, remake_PPE=True, load_random=False,
-                                    sbatch=True, thresh_lims=[0, 3], thresh_step=0.01, site_gdf=None):
+                                    n_array_tasks=100, min_tasks_per_array=100, time_interval=['100'], job_time=3, remake_PPE=True,
+                                    thresh_lims=[0, 3], thresh_step=0.01, site_gdf=None):
+
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -953,34 +1101,81 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
     # Check if previous h5 exists. If it does, preserve it until new weighted mean file is complete
     weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
-    preserve_previous_h5 = False
-    if os.path.exists(weighted_h5_file):
-        weighted_h5_file = weighted_h5_file.replace('.h5', '_processing.h5')
-        preserve_previous_h5 = True
-        if os.path.exists(weighted_h5_file):
-            os.remove(weighted_h5_file)
 
-    # Create weighted h5 file with associated metadata
-    weighted_h5 = h5.File(weighted_h5_file, "w")
+    if os.path.exists(weighted_h5_file):
+        weighted_h5 = h5.File(weighted_h5_file, "r+")
+        # Check the same branches are being used
+        weighted_id = [id.decode() for id in weighted_h5['branch_ids'][:]]
+        assert len(set(pair_id_list) - set(weighted_id)) == 0, "New branch ids do not match previous branch ids"
+        weighted_weights = weighted_h5['branch_weights'][:]
+        # Check the branch weights are the same
+        branch_order = [weighted_id.index(pair_id) for pair_id in pair_id_list]
+        weighted_weights_ordered = [weighted_weights[ix] for ix in branch_order]
+        assert pair_weight_list == weighted_weights_ordered, "New branch weights do not match previous branch weights"
+    else:
+        # Create weighted h5 file with associated metadata
+        weighted_h5 = h5.File(weighted_h5_file, "w")
+        
+        weighted_h5.create_dataset('branch_weights', data=pair_weight_list)
+        weighted_h5.create_dataset('branch_ids', data=pair_id_list)
+        weighted_h5.create_dataset("thresholds", data=thresholds)
+        weighted_h5.create_dataset('sigma_lims', data=sigma_lims)
     
-    weighted_h5.create_dataset('branch_weights', data=pair_weight_list)
-    weighted_h5.create_dataset('branch_ids', data=pair_id_list)
-    weighted_h5.create_dataset("thresholds", data=thresholds)
-    weighted_h5.create_dataset('sigma_lims', data=sigma_lims)
-    
+    requested_sites = site_names
+    if remake_PPE:
+        intervals_list = [time_interval for _ in site_names]
+    else:
+        # Check sites individually to see if they have been processed
+        site_names = []
+        intervals_list = []
+        for site in requested_sites:
+            if site in weighted_h5.keys():
+                required_intervals = []
+                for interval in time_interval:
+                    # Check each time interval
+                    if interval in weighted_h5[site].keys():
+                        if 'meta' in weighted_h5[site][interval].keys():
+                            min_thresh, max_thresh, thresh_delta, n_scenarios = weighted_h5[site][interval]['meta'][:]
+                            if any([min_thresh > thresh_lims[0], max_thresh < thresh_lims[1], thresh_delta != thresh_step, n_scenarios < n_samples]):  # Failure critieria
+                                required_intervals.append(interval)
+                    else:
+                        required_intervals.append(interval)
+                if len(required_intervals) > 0:
+                    site_names.append(site)
+                    intervals_list.append(required_intervals)
+            else:
+                site_names.append(site)
+                intervals_list.append(time_interval)
+
+    if len(site_names) == 0:
+        print(f"All sites have been processed. Skipping...")
+        weighted_h5.close()
+        return
+    else:
+        print(f"{len(site_names)}/{len(requested_sites)} requested sites need processing...")
+
     if not nesi:
         start = time()
-        printProgressBar(0, len(site_names), prefix=f'\tProcessing Site {site_names[0]}', suffix='Complete 00:00:00 (00:00s/site)', length=50)
+        elapsed, per_site = time_elasped(time(), start, 1, decimal=False)
+        weighted_h5.close()  # Closing file after each site saves that site's data (in case processing is cancelled)
         for ix, site in enumerate(site_names):
-            site_group = weighted_h5.create_group(site)
-            with h5.File(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"], 'r') as branch_site_h5:
-                site_group.create_dataset("site_coords", data=branch_site_h5[site]["site_coords"])
+            weighted_h5 = h5.File(weighted_h5_file, "r+")
+            printProgressBar(ix, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
+            if site in weighted_h5.keys():
+                for interval in intervals_list[ix]:
+                    if interval in weighted_h5[site].keys():
+                        del weighted_h5[site][interval]
+                site_group = weighted_h5[site]
+            else:
+                site_group = weighted_h5.create_group(site)
+                with h5.File(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"], 'r') as branch_site_h5:
+                    site_group.create_dataset("site_coords", data=branch_site_h5[site]["site_coords"])
             create_site_weighted_mean(site_group, site, n_samples, crustal_model_version_results_directory, sz_model_version_results_directory_list, gf_name, thresholds,
-                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list)
-            elapsed = time_elasped(time(), start, decimal=False)
-            printProgressBar(ix + 1, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
-        weighted_h5.close()
-    
+                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list, intervals=intervals_list[ix])
+            weighted_h5.close()
+            elapsed, per_site = time_elasped(time(), start, ix + 1, decimal=False)
+        printProgressBar(ix + 1, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
+   
     else:
         if nesi_step == 'prep':
             weighted_h5.close()
@@ -1019,7 +1214,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
             mins = np.ceil(rem / 60)
 
             slurm_file = prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_array_tasks, site_file,
-                                         hours=int(hours), mins=int(mins), mem=mem, cpus=cpus, account=account, job_time=job_time)
+                                         hours=int(hours), mins=int(mins), mem=mem, cpus=cpus, account=account, job_time=job_time, time_interval=time_interval)
 
             raise Exception(f"Now run\n\tsbatch {slurm_file}")
         
@@ -1038,22 +1233,38 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 printProgressBar(ix + 1, len(site_names), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
             weighted_h5.close()
             shutil.rmtree(f"../{out_directory}/weighted_sites")
-
-
-    if preserve_previous_h5:
-        os.remove(weighted_h5_file.replace('_processing.h5', '.h5'))
-        os.rename(weighted_h5_file, weighted_h5_file.replace('_processing.h5', '.h5'))
-        weighted_h5_file = weighted_h5_file.replace('_processing.h5', '.h5')
     
     return
 
-def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None):    
+def process_pair(pair_id, branch_disp_dict):
+    parts = pair_id.split('_-_')
+    cumulative_value = branch_disp_dict[parts[0]]
+    for branch in parts[1:]:
+        cumulative_value += branch_disp_dict[branch]
+    return pair_id, cumulative_value
+
+def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None, intervals=['100']):    
+
+        benchmarking = False
+        if benchmarking:
+            print('')
+        start = time()
+        lap = time()
+
+        if numba_flag:
+            _ = calc_thresholds(np.arange(0,1,1), np.ones((3, 1, 100)))
+            _ = sparse_thresholds(np.arange(0,1,1), np.ones(3), np.arange(0, 4, 1))
+
         site_df_abs = {}
         site_df_up = {}
         site_df_down = {}
-        for pair_id in pair_id_list:
-            cumulative_disp_scenarios = np.zeros(n_samples)
-            for branch in pair_id.split('_-_'):
+
+        # For each branch, load in the displacements and put in a dictionary
+        branch_list = list(set([branch for pair_id in pair_id_list for branch in pair_id.split('_-_')]))
+        for interval in intervals:
+            interval_h5 = site_h5.create_group(interval)
+            branch_disp_dict = {}
+            for branch in branch_list:
                 fault_tag = branch.split('_')[-2]
                 branch_tag = branch.split('_')[-1]
                 if '_sz_' in branch:
@@ -1074,35 +1285,76 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
                 with h5.File(NSHM_file, 'r') as NSHM_h5:
                     if site in NSHM_h5.keys():
-                        NSHM_displacements = NSHM_h5[site]['scenario_displacements'][:]
-                        slip_scenarios = NSHM_h5[site]['slip_scenarios_ix'][:]
-                        cumulative_disp_scenarios[slip_scenarios] += NSHM_displacements.reshape(-1)
+                        NSHM_displacements = np.zeros((3, n_samples))
+                        for ix, exceed_type in enumerate(['up', 'down', 'total_abs']):
+                            if exceed_type in exceed_type_list:
+                                slip_scenarios = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['scenario_ix'][:]
+                                NSHM_displacements[ix, slip_scenarios] = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['displacements'][:]
+                        branch_disp_dict[branch] = csr_array(NSHM_displacements)   
+            if benchmarking:
+                print(f'{len(branch_list)} branch displacements loaded: {time() - lap:.2f}s')
+                lap = time()
 
-            n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_disp_scenarios.reshape(1, -1))
-            site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)
-            site_df_up[pair_id] = (n_exceedances_up / n_samples).reshape(-1)
-            site_df_down[pair_id] = (n_exceedances_down / n_samples).reshape(-1)
+            # Work out the cumulative displacement for all branch pairs
+            run_parallel = True
+            if run_parallel:
+                with ThreadPoolExecutor() as executor:
+                    func = partial(process_pair, branch_disp_dict=branch_disp_dict)
+                    results = executor.map(func, pair_id_list)
+                cumulative_pair_dict = dict(results)
+            else:
+                # Don't delete this yet as not tested as a nesi task array (paralleling it might kill it)
+                cumulative_pair_dict = {}
+                for ix, pair_id in enumerate(pair_id_list):
+                    _, cumulative_pair_dict[pair_id] = process_pair(pair_id, branch_disp_dict)
+                    # cumulative_pair_dict[pair_id] = branch_disp_dict[pair_id.split('_-_')[0]]
+                    # for branch in pair_id.split('_-_')[1:]:
+                    #     cumulative_pair_dict[pair_id] += branch_disp_dict[branch]
 
-        site_df_dict = {"total_abs": site_df_abs, "up": site_df_up, "down": site_df_down}
-        for exceed_type in exceed_type_list:
-            for dataset in ['weighted_exceedance_probs_*-*', '*-*_max_vals', '*-*_min_vals', 'branch_exceedance_probs_*-*', '*-*_weighted_percentile_error']:
-                if dataset.replace('*-*', exceed_type) in site_h5.keys():
-                    del site_h5[dataset.replace('*-*', exceed_type)]
-            site_probabilities_df = pd.DataFrame(site_df_dict[exceed_type])
+            if benchmarking:
+                print(f'{len(pair_id_list)} cumulative disp scenarios created: {time() - lap:.2f}s')
+                lap = time()
 
-            # collapse each row into a weighted mean value
-            branch_weighted_mean_probs = site_probabilities_df.apply(
-                lambda x: np.average(x, weights=branch_weights), axis=1)
+            # Work out the exceedances for each branch combination
+            for ix, pair_id in enumerate(pair_id_list):
+                n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = sparse_thresholds(thresholds, cumulative_pair_dict[pair_id].data, cumulative_pair_dict[pair_id].indptr)
+                site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)
+                site_df_up[pair_id] = (n_exceedances_up / n_samples).reshape(-1)
+                site_df_down[pair_id] = (n_exceedances_down / n_samples).reshape(-1)
+            if benchmarking:
+                    print(f'Exceedances thresholded: {time() - lap:.2f}s')
+                    lap = time()
 
-            site_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs[branch_weighted_mean_probs > 0], compression=compression)
-            site_h5.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy(), compression='gzip', compression_opts=6)
-            site_h5[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = pair_id_list
+            # Calculate the weighted exceedances for the site
+            site_df_dict = {"total_abs": site_df_abs, "up": site_df_up, "down": site_df_down}
+            for exceed_type in exceed_type_list:
+                for dataset in ['weighted_exceedance_probs_*-*', '*-*_max_vals', '*-*_min_vals', 'branch_exceedance_probs_*-*', '*-*_weighted_percentile_error']:
+                    if dataset.replace('*-*', exceed_type) in interval_h5.keys():
+                        del interval_h5[dataset.replace('*-*', exceed_type)]
+                site_probabilities_df = pd.DataFrame(site_df_dict[exceed_type])
 
-            # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
-            percentiles = percentile(site_probabilities_df, sigma_lims, axis=1, weights=branch_weights)
-            site_h5.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles, compression=compression)
+                # collapse each row into a weighted mean value
+                branch_weighted_mean_probs = site_probabilities_df.apply(
+                    lambda x: np.average(x, weights=branch_weights), axis=1)
 
-def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type, site_list, weighted=False, err_index=None):
+                interval_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs[branch_weighted_mean_probs > 0], compression=compression)
+                non_zero_row = np.where(site_probabilities_df.sum(axis=1))[0][-1] + 1
+                interval_h5.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy()[:non_zero_row, :], compression='gzip', compression_opts=6)
+
+                # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
+                percentiles = percentile(site_probabilities_df, sigma_lims, axis=1, weights=branch_weights)
+                percentiles_csc = csc_array(percentiles)
+                interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles_csc.data, compression='gzip', compression_opts=6)
+                interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indices", data=percentiles_csc.indices, compression='gzip', compression_opts=6)
+                interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indptr", data=percentiles_csc.indptr, compression='gzip', compression_opts=6)
+            interval_h5.create_dataset(f"meta", data=np.array([thresholds[0], thresholds[-1], thresholds[1] - thresholds[0], n_samples]))
+
+            if benchmarking:
+                    print(f'Weights made: {time() - lap:.2f}s')
+        if benchmarking:
+            print(f'Site complete: {time() - start:.2f}s\n')
+
+def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type, site_list, weighted=False, err_index=None, interval='100'):
     """returns displacements at the X% probabilities of exceedance for each site
 
     define exceedance type. Options are "total_abs", "up", "down"
@@ -1125,7 +1377,7 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
         errs = []
 
     for site in site_list:
-        site_PPE = site_PPE_dictionary[site][f"{prefix}exceedance_probs_{exceed_type}"]
+        site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
 
         # get first index that is < 10% (ideally we would interpolate for exact value but don't have a function)
         exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= round(probability,4)), -1)
@@ -1133,7 +1385,13 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
         disps.append(disp)
 
         if err_index:
-            site_err_PPE = site_PPE_dictionary[site][f'{exceed_type}_{prefix}percentile_error']
+            if weighted:
+                data = site_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"]
+                indices = site_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error_indices"]
+                indptr = site_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error_indptr"]
+                site_err_PPE = csc_array((data, indices, indptr)).toarray()
+            else:
+                site_err_PPE = site_PPE_dictionary[site][f'{exceed_type}_{prefix}percentile_error']
             site_err = []
             for err_ind in err_index:
                 exceedance_index = next((index for index, value in enumerate(site_err_PPE[err_ind, :]) if value <= round(probability,4)), -1)
@@ -1146,7 +1404,7 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
         return disps
 
 
-def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, site_list=None, weighted=False):
+def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, site_list=None, weighted=False, interval='100'):
     """ function that finds the probability at each site for the specified displacement threshold on the hazard curve
         Inputs:
         :param: dictionary of exceedance probabilities for each site (key = site)
@@ -1173,7 +1431,7 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
     # get list of probabilities at defined displacement threshold (one for each site)
     probs_threshold = []
     for site in site_list:
-        site_PPE = site_PPE_dictionary[site][f"{prefix}exceedance_probs_{exceed_type}"]
+        site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
         if site_PPE.shape[0] > index:
             probs_threshold.append(site_PPE[index])
         else:
@@ -1336,7 +1594,7 @@ def plot_many_hazard_curves(file_suffix_list, slip_taper, gf_name, fault_type, m
 
 
 def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list,
-                                  model_version_title, out_directory, file_type_list, slip_taper, plot_order, sigma=2):
+                                  model_version_title, out_directory, file_type_list, slip_taper, plot_order, sigma=2, intervals=['100']):
     """
     Plots the weighted mean hazard curve for each site, for each exceedance type (total_abs, up, down)
     :param weighted_mean_PPE_dictionary: dictionary containing the weighted mean exceedance probabilities for each site.
@@ -1354,20 +1612,23 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
 
     unique_id_list = weighted_mean_PPE_dictionary['branch_ids'].asstr()
     weights = weighted_mean_PPE_dictionary['branch_weights'][:]
-    thresholds = weighted_mean_PPE_dictionary["thresholds"][:]
-    thresholds = thresholds[1:]
+    thresholds = weighted_mean_PPE_dictionary["thresholds"][1:]
     weight_order = np.argsort(weights)
     weight_colouring = True
 
     if 'sigma_lims' in weighted_mean_PPE_dictionary.keys():
         sigma_lims = weighted_mean_PPE_dictionary['sigma_lims'][:]
+        mid_ix = np.where(sigma_lims == 50)[0][0]
         if sigma == 2:
             sigma_ix = [ix for ix, sig in enumerate(sigma_lims) if sig in [2.275, 97.725]]
+            sig_lab = '2sig'
         elif sigma == 1:
             sigma_ix = [ix for ix, sig in enumerate(sigma_lims) if sig in [15.865, 84.135]]
+            sig_lab = '1sig'
         else:
             print("Can't find requested sigma values in weighted_mean_PPE. Defaulting to max and min")
             sigma_ix = [0, -1]
+            sig_lab = 'minmax'
 
     if weight_colouring:
         colouring = "_c"
@@ -1378,161 +1639,169 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
 
     plt.close("all")
 
+    n_interval = len(intervals)
     n_plots = int(np.ceil(len(plot_order) / 12))
-    printProgressBar(0, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
+    plot_total = n_plots * n_interval
+    printProgressBar(0, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
 
-    for plot_n in range(n_plots):
-        sites = plot_order[plot_n*12:(plot_n+1)*12]
-        if len(sites) >= 5 or len(sites) == 3:
-            n_cols = 3
-            n_rows = int(np.ceil(len(sites) / 3))
-        elif len(sites) == 4 or len(sites) == 2:
-            n_cols = 2
-            n_rows = int(np.ceil(len(sites) / 2))
-        else:
-            n_cols = 1
-            n_rows = len(sites)
+    for ix, interval in enumerate(intervals):
+        for plot_n in range(n_plots):
+            sites = plot_order[plot_n*12:(plot_n+1)*12]
+            if len(sites) >= 5 or len(sites) == 3:
+                n_cols = 3
+                n_rows = int(np.ceil(len(sites) / 3))
+            elif len(sites) == 4 or len(sites) == 2:
+                n_cols = 2
+                n_rows = int(np.ceil(len(sites) / 2))
+            else:
+                n_cols = 1
+                n_rows = len(sites)
 
-        for exceed_type in exceed_type_list:
-            fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2.63 + 0.12, n_rows * 2.32 + 0.71))  # Replicate 8x10 inch figure if there are less than 12 subplots
-            plt.subplots_adjust(hspace=0.3, wspace=0.3)
+            for exceed_type in exceed_type_list:
+                fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2.63 + 0.12, n_rows * 2.32 + 0.71))  # Replicate 8x10 inch figure if there are less than 12 subplots
+                plt.subplots_adjust(hspace=0.3, wspace=0.3)
 
-            # shade the region between the max and min value of all the curves at each site
-            for i, site in enumerate(sites):
-                ax = plt.subplot(n_rows, n_cols, i + 1)
-
-                # plots all three types of exceedance (total_abs, up, down) on the same plot
-
-                # Shade based on max-min
-                #ax.fill_between(thresholds, max_probs, min_probs, color='0.9')
-                # Shade based on weighted errors
-                #ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
-                #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
-                # Shade based on weighted 2 sigma percentiles
-                ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][sigma_ix[0], 1:],
-                                weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][sigma_ix[1], 1:], color='0.8')
-
-            # plot all the branches as light grey lines
-            # for each branch, plot the exceedance probabilities for each site
-            for kk in weight_order:
+                # shade the region between the max and min value of all the curves at each site
                 for i, site in enumerate(sites):
-                    site_exceedance_probs = weighted_mean_PPE_dictionary[site][f'branch_exceedance_probs_{exceed_type}'][1:, kk]
                     ax = plt.subplot(n_rows, n_cols, i + 1)
-                    #ax.plot(thresholds, site_exceedance_probs, color=[weights[weight_order[k]] / max_weight, 1-(weights[weight_order[k]] / max_weight), 0],
-                    #        linewidth=0.1)
-                    if weight_colouring:
-                        ax.plot(thresholds, site_exceedance_probs, color=colours[kk], linewidth=0.2, alpha=0.8)
-                    else:
-                        ax.plot(thresholds, site_exceedance_probs, color='grey', linewidth=0.2, alpha=0.5)
 
+                    # plots all three types of exceedance (total_abs, up, down) on the same plot
 
-            # loop through sites and add the weighted mean lines
-            for i, site in enumerate(sites):
-                ax = plt.subplot(n_rows, n_cols, i + 1)
-
-                # plots all three types of exceedance (total_abs, up, down) on the same plot
-                weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:]
-                weighted_mean_exceedance_zeros = np.zeros_like(thresholds)
-                weighted_mean_exceedance_zeros[:len(weighted_mean_exceedance_probs)] = weighted_mean_exceedance_probs
-
-                line_color = get_probability_color(exceed_type)
-               
-                # Unweighted 1 sigma lines
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_84_135_vals"], color=line_color, linewidth=0.75, linestyle='-.')
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_15_865_vals"], color=line_color, linewidth=0.75, linestyle='-.')
-                # Unweighted 2 sigma lines
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_97_725_vals"], color=line_color, linewidth=0.75, linestyle='--')
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_2_275_vals"], color=line_color, linewidth=0.75, linestyle='--')
-
-                # Weighted 1 sigma lines
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w84_135_vals"], color=line_color, linewidth=0.75, linestyle=':')
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w15_865_vals"], color=line_color, linewidth=0.75, linestyle=':')
-                # Weighted 2 sigma lines
-                ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][0,1:], color='black', linewidth=0.75, linestyle='-.')
-                ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][-1,1:], color='black', linewidth=0.75, linestyle='-.')
-
-                ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=1.5)
-
-                # Uncertainty weighted mean
-                #ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"], color='black', linewidth=1)
-
-                ax.axhline(y=0.02, color="g", linestyle='dashed')
-                ax.axhline(y=0.1, color="g", linestyle='dotted')
-
-                xmin, xmax = 0.01, 10
-                ymin, ymax = 0.000005, 1
-                ax.set_title(site)
-                ax.set_yscale('log'), ax.set_xscale('log')
-                ax.set_ylim([ymin, ymax])
-                ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
-                ax.get_xaxis().set_major_formatter(ScalarFormatter())
-                ax.ticklabel_format(axis='x', style='plain')
-                ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-                ax.set_xlim([xmin, xmax])
-
-            fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
-            fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
-            fig.suptitle(f"weighted mean hazard curves\n{model_version_title} {taper_extension}\n{exceed_type}")
-            plt.tight_layout()
-
-            if not os.path.exists(f"../{out_directory}/weighted_mean_figures"):
-                os.mkdir(f"../{out_directory}/weighted_mean_figures")
-
-            for file_type in file_type_list:
-                plt.savefig(
-                    f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurve_{exceed_type}{taper_extension}_{plot_n}{colouring}.{file_type}", dpi=300)
-            plt.close()
-            printProgressBar(plot_n + 0.5, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
-
-        # make a second graph with just the shaded envelope and weighted mean lines
-        if len(exceed_type_list) > 1:
-            fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2.63 + 0.12, n_rows * 2.32 + 0.71))
-            plt.subplots_adjust(hspace=0.3, wspace=0.3)
-
-            for i, site in enumerate(sites):
-                ax = plt.subplot(n_rows, n_cols, i + 1)
-                for exceed_type in exceed_type_list:
                     # Shade based on max-min
-                    # ax.fill_between(thresholds, weighted_mean_max_probs, weighted_mean_min_probs, color=fill_color, alpha=0.2)
+                    #ax.fill_between(thresholds, max_probs, min_probs, color='0.9')
                     # Shade based on weighted errors
                     #ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
                     #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
-                    # Shade based on 2 sigma percentiles
-                    ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][0, 1:],
-                                    weighted_mean_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"][-1, 1:], color='0.8')
+                    # Shade based on weighted 2 sigma percentiles
+                    weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
+                    ax.fill_between(thresholds, weighted_percentile_error[sigma_ix[0], 1:], weighted_percentile_error[sigma_ix[1], 1:], color='0.8')
 
-                # plot solid lines on top of the shaded regions
-                for exceed_type in exceed_type_list:
-                    line_color = get_probability_color(exceed_type)
-                    weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:]
+                # plot all the branches as light grey lines
+                # for each branch, plot the exceedance probabilities for each site
+                for kk in weight_order:
+                    for i, site in enumerate(sites):
+                        site_exceedance_probs = weighted_mean_PPE_dictionary[site][interval][f'branch_exceedance_probs_{exceed_type}'][1:, kk]
+                        ax = plt.subplot(n_rows, n_cols, i + 1)
+                        #ax.plot(thresholds, site_exceedance_probs, color=[weights[weight_order[k]] / max_weight, 1-(weights[weight_order[k]] / max_weight), 0],
+                        #        linewidth=0.1)
+                        if weight_colouring:
+                            ax.plot(thresholds[:site_exceedance_probs.shape[0]], site_exceedance_probs, color=colours[kk], linewidth=0.2, alpha=0.8)
+                        else:
+                            ax.plot(thresholds[:site_exceedance_probs.shape[0]], site_exceedance_probs, color='grey', linewidth=0.2, alpha=0.5)
+
+
+                # loop through sites and add the weighted mean lines
+                for i, site in enumerate(sites):
+                    ax = plt.subplot(n_rows, n_cols, i + 1)
+
+                    # plots all three types of exceedance (total_abs, up, down) on the same plot
+                    weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][interval][f"weighted_exceedance_probs_{exceed_type}"][1:]
                     weighted_mean_exceedance_zeros = np.zeros_like(thresholds)
                     weighted_mean_exceedance_zeros[:len(weighted_mean_exceedance_probs)] = weighted_mean_exceedance_probs
-                    ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=2)
 
-                # add 10% and 2% lines
-                ax.axhline(y=0.02, color="g", linestyle='dashed')
-                ax.axhline(y=0.1, color="g", linestyle='dotted')
+                    line_color = get_probability_color(exceed_type)
+                
+                    # Unweighted 1 sigma lines
+                    # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_84_135_vals"], color=line_color, linewidth=0.75, linestyle='-.')
+                    # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_15_865_vals"], color=line_color, linewidth=0.75, linestyle='-.')
+                    # Unweighted 2 sigma lines
+                    # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_97_725_vals"], color=line_color, linewidth=0.75, linestyle='--')
+                    # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_2_275_vals"], color=line_color, linewidth=0.75, linestyle='--')
 
-                # make axes pretty
-                ax.set_title(site)
-                ax.set_yscale('log'), ax.set_xscale('log')
-                ax.set_ylim([0.000005, 1]), ax.set_xlim([0.01, 3])
-                ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
-                ax.get_xaxis().set_major_formatter(ScalarFormatter())
-                ax.ticklabel_format(axis='x', style='plain')
-                ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+                    # Weighted 1 sigma lines
+                    # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w84_135_vals"], color=line_color, linewidth=0.75, linestyle=':')
+                    # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w15_865_vals"], color=line_color, linewidth=0.75, linestyle=':')
+                    # Weighted 2 sigma lines
+                    weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
+                    ax.plot(thresholds, weighted_percentile_error[sigma_ix[0],1:], color='black', linewidth=0.75, linestyle='-.')
+                    ax.plot(thresholds, weighted_percentile_error[sigma_ix[1],1:], color='black', linewidth=0.75, linestyle='-.')
 
-            fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
-            fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
-            exceed_types_string = ", ".join(exceed_type_list)
-            fig.suptitle(f"weighted mean hazard curves \n{model_version_title} {taper_extension} \n{exceed_types_string} ")
-            plt.tight_layout()
+                    ax.plot(thresholds, weighted_percentile_error[mid_ix,1:], color=line_color, linewidth=1.5, linestyle=':')
+                    ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=1.5)
 
-            for file_type in file_type_list:
-                plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves{taper_extension}_{plot_n}"
-                            f".{file_type}", dpi=300)
-            plt.close()
-            printProgressBar(plot_n + 1, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
+                    # Uncertainty weighted mean
+                    #ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"], color='black', linewidth=1)
+
+                    ax.axhline(y=0.02, color="g", linestyle='dashed')
+                    ax.axhline(y=0.1, color="g", linestyle='dotted')
+
+                    xmin, xmax = 0.01, 30
+                    ymin, ymax = 0.000001, 1
+                    xmin, xmax = 0.01, 30
+                    ymin, ymax = 0.000001, 1
+                    ax.set_title(site)
+                    ax.set_yscale('log'), ax.set_xscale('log')
+                    ax.set_ylim([ymin, ymax])
+                    ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
+                    ax.get_xaxis().set_major_formatter(ScalarFormatter())
+                    ax.ticklabel_format(axis='x', style='plain')
+                    ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+                    ax.set_xlim([xmin, xmax])
+
+                fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
+                fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
+                fig.suptitle(f"weighted mean hazard curves\n{model_version_title} {taper_extension}\n{exceed_type} {interval} yrs")
+                plt.tight_layout()
+
+                if not os.path.exists(f"../{out_directory}/weighted_mean_figures"):
+                    os.mkdir(f"../{out_directory}/weighted_mean_figures")
+
+                for file_type in file_type_list:
+                    plt.savefig(
+                        f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurve_{exceed_type}{taper_extension}_{interval}yr_{plot_n}_{sig_lab}{colouring}.{file_type}", dpi=300)
+                plt.close()
+                printProgressBar(plot_n * ix + plot_n + 0.5, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
+
+            # make a second graph with just the shaded envelope and weighted mean lines
+            if len(exceed_type_list) > 1:
+                fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2.63 + 0.12, n_rows * 2.32 + 0.71))
+                plt.subplots_adjust(hspace=0.3, wspace=0.3)
+
+                for i, site in enumerate(sites):
+                    ax = plt.subplot(n_rows, n_cols, i + 1)
+                    for exceed_type in exceed_type_list:
+                        # Shade based on max-min
+                        # ax.fill_between(thresholds, weighted_mean_max_probs, weighted_mean_min_probs, color=fill_color, alpha=0.2)
+                        # Shade based on weighted errors
+                        #ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
+                        #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
+                        # Shade based on 2 sigma percentiles
+                        weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
+                        ax.fill_between(thresholds, weighted_percentile_error[sigma_ix[0], 1:], weighted_percentile_error[sigma_ix[1], 1:], color='0.8')
+
+                    # plot solid lines on top of the shaded regions
+                    for exceed_type in exceed_type_list:
+                        line_color = get_probability_color(exceed_type)
+                        weighted_mean_exceedance_probs = weighted_mean_PPE_dictionary[site][interval][f"weighted_exceedance_probs_{exceed_type}"][1:]
+                        weighted_mean_exceedance_zeros = np.zeros_like(thresholds)
+                        weighted_mean_exceedance_zeros[:len(weighted_mean_exceedance_probs)] = weighted_mean_exceedance_probs
+                        ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=2)
+
+                    # add 10% and 2% lines
+                    ax.axhline(y=0.02, color="g", linestyle='dashed')
+                    ax.axhline(y=0.1, color="g", linestyle='dotted')
+
+                    # make axes pretty
+                    ax.set_title(site)
+                    ax.set_yscale('log'), ax.set_xscale('log')
+                    ax.set_ylim([ymin, ymax]), ax.set_xlim([xmin, xmax])
+                    ax.set_ylim([ymin, ymax]), ax.set_xlim([xmin, xmax])
+                    ax.set_yticks([0.00001, 0.0001, 0.001, 0.01, 0.1, 1])
+                    ax.get_xaxis().set_major_formatter(ScalarFormatter())
+                    ax.ticklabel_format(axis='x', style='plain')
+                    ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+
+                fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
+                fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
+                exceed_types_string = ", ".join(exceed_type_list)
+                fig.suptitle(f"weighted mean hazard curves \n{model_version_title} {taper_extension} \n{exceed_types_string} {interval} years")
+                plt.tight_layout()
+
+                for file_type in file_type_list:
+                    plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves{taper_extension}_{interval}yr_{plot_n}_{sig_lab}"
+                                f".{file_type}", dpi=300)
+                plt.close()
+                printProgressBar(plot_n * ix + plot_n + 1, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
     weighted_mean_PPE_dictionary.close()
 
 def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_version_title, out_directory, file_type_list, slip_taper, plot_order, sigma=2):
@@ -2342,10 +2611,15 @@ def save_disp_prob_tifs(extension1, slip_taper, model_version_results_directory,
 
 def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0,
                            probs_lims=[0.01, 0.2], probs_step=0, output_thresh=True, output_probs=True, weighted=False,
-                           output_grids=True, thresholds=None, probabilities=None, sites=[], out_tag='', single_branch=''):
+                           output_grids=True, thresholds=None, probabilities=None, sites=[], out_tag='', single_branch='',
+                           time_intervals=['100']):
     """
     Add all results to x_array datasets, and save as netcdf files
     """
+
+    interval_vals = [int(i) for i in time_intervals]
+    interval_vals.sort()
+    time_intervals = [str(i) for i in interval_vals]
 
     # Define File Paths
     exceed_type_list = ["total_abs", "up", "down"]
@@ -2389,30 +2663,31 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         else:
             thresholds = PPEh5["thresholds"]
     
-    if single_branch != '':
-        # check processing thresholds for all are the same
-        proc_thresh = np.zeros((len(sites),3))
-        for ix, site in enumerate(sites):
-            proc_thresh[ix, :] = PPEh5[site]['thresh_para'][:]
-        proc_thresh[:, 0] = np.where(proc_thresh[:, 0] <= thresh_lims[0], 1, 0)  # Correct lowest limit?
-        proc_thresh[:, 1] = np.where(proc_thresh[:, 1] >= thresh_lims[1], 1, 0)  # Correct upper limit?
-        proc_thresh[:, 2] = np.where(proc_thresh[:, 2] == np.median(proc_thresh[:, 2]), 1, 0)  # All the same threshold step?
-        proc_thresh_check = proc_thresh.sum(axis=0)
-        if proc_thresh_check[0] != len(sites):
-            print('Some sites have minimum thresholds above the requested minimum threshold. Reprocess with new minimum threshold')
-            return
-        if proc_thresh_check[1] != len(sites):
-            print('Some sites have maximum thresholds below the requested maximum threshold. Reprocess with new maximum threshold')
-            return
-        if proc_thresh_check[2] != len(sites):
-            print('Not all sites have the same threshold step. Reprocess with new threshold steps')
-            return
-        PPEh5.close()
-        with h5.File(h5_file, 'a') as PPEh5:
-            if 'thresholds' in PPEh5.keys():
-                del PPEh5['thresholds']
-            PPEh5.create_dataset('thresholds', data=np.arange(PPEh5[sites[0]]['thresh_para'][0], PPEh5[sites[0]]['thresh_para'][1] + PPEh5[sites[0]]['thresh_para'][2], PPEh5[sites[0]]['thresh_para'][2]))
-        PPEh5 = h5.File(h5_file, 'r')
+    for interval in time_intervals:
+        if single_branch != '':
+            # check processing thresholds for all are the same
+            proc_thresh = np.zeros((len(sites),3))
+            for ix, site in enumerate(sites):
+                proc_thresh[ix, :] = PPEh5[site][interval]['thresh_para'][:]
+            proc_thresh[:, 0] = np.where(proc_thresh[:, 0] <= thresh_lims[0], 1, 0)  # Correct lowest limit?
+            proc_thresh[:, 1] = np.where(proc_thresh[:, 1] >= thresh_lims[1], 1, 0)  # Correct upper limit?
+            proc_thresh[:, 2] = np.where(proc_thresh[:, 2] == np.median(proc_thresh[:, 2]), 1, 0)  # All the same threshold step?
+            proc_thresh_check = proc_thresh.sum(axis=0)
+            if proc_thresh_check[0] != len(sites):
+                print('Some sites have minimum thresholds above the requested minimum threshold. Reprocess with new minimum threshold')
+                return
+            if proc_thresh_check[1] != len(sites):
+                print('Some sites have maximum thresholds below the requested maximum threshold. Reprocess with new maximum threshold')
+                return
+            if proc_thresh_check[2] != len(sites):
+                print('Not all sites have the same threshold step. Reprocess with new threshold steps')
+                return
+            PPEh5.close()
+            with h5.File(h5_file, 'a') as PPEh5:
+                if 'thresholds' in PPEh5.keys():
+                    del PPEh5['thresholds']
+                PPEh5.create_dataset('thresholds', data=np.arange(PPEh5[sites[0]][interval]['thresh_para'][0], PPEh5[sites[0]][interval]['thresh_para'][1] + PPEh5[sites[0]][interval]['thresh_para'][2], PPEh5[sites[0]][interval]['thresh_para'][2]))
+            PPEh5 = h5.File(h5_file, 'r')
 
 
     thresholds = np.array([round(val, 4) for val in thresholds])   # Rounding to try and deal with the floating point errors
@@ -2437,7 +2712,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         if not all(np.isin(site_x, x_data)) or not all(np.isin(site_y, y_data)):
             print("Site coordinates can't all be aligned to grid. Check sites are evenly spaced. Saving as site geojson instead...")
             save_disp_prob_geojson(extension1, slip_taper, model_version_results_directory, thresh_lims=thresh_lims, thresh_step=thresh_step, thresholds=thresholds,
-                                       probs_lims=probs_lims, probs_step=probs_step, probabilities=probabilities, weighted=weighted)
+                                    probs_lims=probs_lims, probs_step=probs_step, probabilities=probabilities, weighted=weighted)
             return
 
         site_x = (np.array(site_x) - x_data[0]) / x_res
@@ -2467,19 +2742,21 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                     print('Running available thresholds:\n', thresholds)
 
             for exceed_type in exceed_type_list:
-                thresh_grd = np.zeros([len(thresholds), len(y_data), len(x_data)]) * np.nan
-                probs = np.zeros([len(sites), len(thresholds)])
+                thresh_grd = np.zeros([len(thresholds), len(time_intervals), len(y_data), len(x_data)]) * np.nan
+                probs = np.zeros([len(sites), len(time_intervals), len(thresholds)])
                 printProgressBar(0, len(thresholds), prefix=f'\tProcessing 0.00 m', suffix=f'{exceed_type}', length=50)
-                for ii, threshold in enumerate(thresholds):
-                    probs[:, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
-                                                                  threshold=threshold, site_list=sites, weighted=weighted)
-                    printProgressBar(ii + 1, len(thresholds), prefix=f'\tProcessing {threshold:.2f} m', suffix=f'{exceed_type}', length=50)
+                for ti, interval in enumerate(time_intervals):
+                    for ii, threshold in enumerate(thresholds):
+                        probs[:, ti, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
+                                                                          threshold=threshold, site_list=sites, weighted=weighted, interval=interval)
+                    printProgressBar(ii + 1, len(thresholds), prefix=f'\tProcessing {threshold:.2f} m', suffix=f'{exceed_type} {interval} yrs', length=50)
                 for jj in range(len(sites)):
-                    thresh_grd[:, int(site_y[jj]), int(site_x[jj])] = probs[jj, :]
+                    thresh_grd[:, :, int(site_y[jj]), int(site_x[jj])] = probs[jj, :, :].T
 
-                da[exceed_type] = xr.DataArray(thresh_grd, dims=['threshold', 'lat', 'lon'], coords={'threshold': thresholds, 'lat': y_data, 'lon': x_data})
+                da[exceed_type] = xr.DataArray(thresh_grd, dims=['threshold', 'interval', 'lat', 'lon'], coords={'threshold': thresholds, 'interval': np.array([int(i) for i in time_intervals]), 'lat': y_data, 'lon': x_data})
                 da[exceed_type].attrs['exceed_type'] = exceed_type
                 da[exceed_type].attrs['threshold'] = 'Displacement (m)'
+                da[exceed_type].attrs['interval'] = 'Years'
                 da[exceed_type].attrs['crs'] = 'EPSG:2193'
 
                 ds['disp_' + exceed_type] = da[exceed_type]
@@ -2494,28 +2771,32 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                     probabilities = np.array([round(val, 4) for val in probabilities])
 
             for exceed_type in exceed_type_list:
-                thresh_grd = np.zeros([len(probabilities), len(y_data), len(x_data)]) * np.nan
-                disps = np.zeros([len(sites), len(probabilities)])
+                thresh_grd = np.zeros([len(probabilities), len(time_intervals), len(y_data), len(x_data)]) * np.nan
+                disps = np.zeros([len(sites), len(time_intervals), len(probabilities)])
                 printProgressBar(0, len(probabilities), prefix=f'\tProcessing 00 %', suffix=f'{exceed_type}', length=50)
-                for ii, probability in enumerate(probabilities):
-                    disps[:, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
-                                                                 site_list=sites, probability=probability, weighted=weighted)
-                    printProgressBar(ii + 1, len(probabilities), prefix=f'\tProcessing {int(100 * probability):0>2} %', suffix=f'{exceed_type}', length=50)
-                    if exceed_type == 'down':
-                        disps[:, ii] = -1 * disps[:, ii]
+                for ti, interval in enumerate(time_intervals):
+                    for ii, probability in enumerate(probabilities):
+                        disps[:, ti, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
+                                                                         site_list=sites, probability=probability, weighted=weighted, interval=interval)
+                        printProgressBar(ii + 1, len(probabilities), prefix=f'\tProcessing {int(100 * probability):0>2} %', suffix=f'{exceed_type} {interval} yrs', length=50)
+                        if exceed_type == 'down':
+                            disps[:, ti, ii] = -1 * disps[:, ti, ii]
                 for jj in range(len(sites)):
-                    thresh_grd[:, int(site_y[jj]), int(site_x[jj])] = disps[jj, :]
+                    thresh_grd[:, :, int(site_y[jj]), int(site_x[jj])] = disps[jj, :, :].T
 
-                da[exceed_type] = xr.DataArray(thresh_grd, dims=['probability', 'lat', 'lon'], coords={'probability': (probabilities * 100).astype(int), 'lat': y_data, 'lon': x_data})
+                da[exceed_type] = xr.DataArray(thresh_grd, dims=['probability', 'interval', 'lat', 'lon'], coords={'probability': (probabilities * 100).astype(int), 'interval': np.array([int(i) for i in time_intervals]), 'lat': y_data, 'lon': x_data})
                 da[exceed_type].attrs['exceed_type'] = exceed_type
                 da[exceed_type].attrs['threshold'] = 'Exceedance Probability (%)'
+                da[exceed_type].attrs['interval'] = 'Years'
                 da[exceed_type].attrs['crs'] = 'EPSG:2193'
 
                 ds['prob_' + exceed_type] = da[exceed_type]
             out_name += 'prob_'
 
         ds.attrs['branch'] = branch_name
-        ds.to_netcdf(f"{outfile_directory}/{model_id}_{out_name}{out_tag}_grids.nc".replace('__', '_'))
+        nc_name = f"{outfile_directory}/{model_id}_{out_name}{out_tag}_grids.nc".replace('__', '_')
+        ds.to_netcdf(nc_name)
+        print(f"\tWritten {nc_name}\n")
 
     return ds
 
