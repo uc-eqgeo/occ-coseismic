@@ -17,10 +17,10 @@ exceed_type = "down"                     # "down", "up", or "total_abs"
 slip_taper = False
 transect = False  # Whether to assume that all points are in order along a transect, and that a distance should be calculated rather than site names labeled
 sigma_lims = "2sig"   # "minmax", "2sig" or "1sig" for the error bars on the displacement chart
-file_id = 'numba_empty'
+file_id = ''
 
 # Choose what models to compare. These names should be in the results folder already.
-model_subdirectory_dict = {#"fq_hikkerk" : ["sz_fq_3nub110", "sz_fq_pnub110", "sz_fq_3nhb110", "sz_fq_pnhb110", "sz_fq_3lhb110", "sz_fq_plhb110"],
+model_subdirectory_dict = {"fq_hikkerk" : ["sz_fq_3nub110", "sz_fq_pnub110", "sz_fq_3nhb110", "sz_fq_pnhb110", "sz_fq_3lhb110", "sz_fq_plhb110"],
 #                                           "sz_fq_3lhb110C1", "sz_fq_3lhb110C100", "sz_fq_3lhb110C1000", "sz_fq_3nhb110C1", "sz_fq_3nhb110C100"],
                            "hikkerk" : ["sz_NzEx"]}
 #model_subdirectory_names = ["crustal_CFM","crustal_Model1", "crustal_Model2"]
@@ -28,12 +28,15 @@ model_subdirectory_dict = {#"fq_hikkerk" : ["sz_fq_3nub110", "sz_fq_pnub110", "s
 # used for plot labels/titles. must be in same order as model_subdirectory_names
 pretty_names = ["Crustal", "NZNSHM SZ"]
 pretty_names = []
+dir_name = ""
 for key in model_subdirectory_dict.keys():
     pretty_names += model_subdirectory_dict[key]
+    dir_name += f"_{key}x{len(model_subdirectory_dict[key])}"
+dir_name = dir_name.strip('_').replace(" ", "_")
 
 file_type_list = ["png"]     # generally png and/or pdf
-probability_plot = False            # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
-displacement_chart = False          # plots the displacement at the 10% and 2% probability of exceedance thresholds
+probability_plot = True            # plots the probability of exceedance at the 0.2 m uplift and subsidence thresholds
+displacement_chart = True          # plots the displacement at the 10% and 2% probability of exceedance thresholds
 compare_hazcurves = True        # plots the different hazard curves on the same plot
 disps_net = False
 make_map = False
@@ -124,8 +127,6 @@ matplotlib.rcParams['pdf.fonttype'] = 42
 displacement_threshold_list = [0.2]
 
 title = " vs ".join(pretty_names)
-dir_name = "_".join(pretty_names)
-dir_name = dir_name.replace(" ", "_")
 
 if slip_taper: slip_taper_extension = "_tapered"
 else: slip_taper_extension = "_uniform"

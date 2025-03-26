@@ -131,6 +131,9 @@ def compare_disps_chart(PPE_paths, plot_name, title, pretty_names, outfile_direc
     else:
         bar_width = 0.2
 
+    legend_width = bar_width
+    if not plot_bars:
+        bar_width = 0
 
     max_min_y_vals = []
     max_min_errs_y_val = []
@@ -210,7 +213,7 @@ def compare_disps_chart(PPE_paths, plot_name, title, pretty_names, outfile_direc
     axs[1].set_title(f"2% probability of exceedance", fontsize=8)
 
     # manually make legend with rectangles and text
-    swatch_width, swatch_height = bar_width, plot_ymax / 20
+    swatch_width, swatch_height = legend_width, plot_ymax / 20
     swatch_minx, swatch_miny = -1 * (len(plot_order[:, 0]) / 30), plot_ymax - (swatch_height * 2)
     if transect:
         swatch_width = float(plot_order[-1, 1]) / 50
