@@ -740,9 +740,9 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
             NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTMyNzM5NQ=="]
 
             if single_branch:
-                branch_index = file_suffix_list_i.index(single_branch)
-                file_suffix_list_i = [file_suffix_list_i[branch_index]]
-                NSHM_directory_list_i = [NSHM_directory_list_i[branch_index]]
+                branch_index = [file_suffix_list_i.index(branch) for branch in single_branch]
+                file_suffix_list_i = [file_suffix_list_i[index] for index in branch_index]
+                NSHM_directory_list_i = [NSHM_directory_list_i[index] for index in branch_index]
             else:
                 fault_branches += len(file_suffix_list_i) * 3  # For scaling
 
