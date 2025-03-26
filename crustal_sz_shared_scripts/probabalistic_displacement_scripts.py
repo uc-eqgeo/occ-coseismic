@@ -994,7 +994,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             weighted_h5.close()
             shutil.rmtree(f"../{out_directory}/weighted_sites")
 
-    return weighted_h5_file
+    return
 
 
 def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight_dict_list,
@@ -1643,7 +1643,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
     printProgressBar(0, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
 
     for ix, interval in enumerate(intervals):
-        for plot_n in range(n_plots / len(intervals)):
+        for plot_n in range(n_plots):
             sites = plot_order[plot_n*12:(plot_n+1)*12]
             if len(sites) >= 5 or len(sites) == 3:
                 n_cols = 3
@@ -1796,10 +1796,10 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 plt.tight_layout()
 
                 for file_type in file_type_list:
-                    plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves_{taper_extension}_{interval}yr_{plot_n}_{sig_lab}"
+                    plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves{taper_extension}_{interval}yr_{plot_n}_{sig_lab}"
                                 f".{file_type}", dpi=300)
                 plt.close()
-                printProgressBar(plot_n * ix + plot_n + 0.5, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
+                printProgressBar(plot_n * ix + plot_n + 1, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
     weighted_mean_PPE_dictionary.close()
 
 def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_version_title, out_directory, file_type_list, slip_taper, plot_order, sigma=2):

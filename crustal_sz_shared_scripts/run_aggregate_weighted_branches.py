@@ -29,15 +29,15 @@ single_branch = ["_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nhb110", "_sz_fq_p
                  "_sz_fq_3lhb110C1", "_sz_fq_3lhb110C100", "_sz_fq_3lhb110C1000", "_sz_fq_3nhb110C1", "_sz_fq_3nhb110C100"] # Allows you to specifically select which branches to calculate PPEs for. If None, all branches will be calculated
 single_branch = None
 rate_scaling = False           # Do you want to calculate PPEs for a single branch with different rate scalings?
-paired_crustal_sz = True      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = True             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
-calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
+calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
 remake_PPE = False            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
 remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 save_arrays = False         # Do you want to save the displacement and probability arrays?
-default_plot_order = False       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
-make_hazcurves = False     # Do you want to make hazard curves?
+default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
+make_hazcurves = True     # Do you want to make hazard curves?
 plot_order_csv = "../sites/EastCoastNI_5km_transect_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
 
@@ -393,13 +393,10 @@ if paired_crustal_sz:
 weighted_mean_PPE_filepath = f"../{out_version_results_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
 if not paired_crustal_sz and calculate_weighted_mean_PPE or not os.path.exists(weighted_mean_PPE_filepath):
     print('Calculating weighted mean PPE...')
-    weighted_mean_PPE_filepath = get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict,
-                                                            out_directory=out_version_results_directory,
-                                                            outfile_extension=outfile_extension, slip_taper=slip_taper,
-                                                            nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples,
-                                                            min_tasks_per_array=10, n_array_tasks=n_array_tasks, mem=mem, cpus=n_cpus, job_time=job_time,
-                                                            thresh_lims=thresh_lims, thresh_step=thresh_step, site_list=inv_sites, remake_PPE=remake_weighted_PPE,
-                                                            time_interval=time_interval)
+    get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=out_version_results_directory, outfile_extension=outfile_extension,
+                               slip_taper=slip_taper, nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples, min_tasks_per_array=10,
+                               n_array_tasks=n_array_tasks, mem=mem, cpus=n_cpus, job_time=job_time, thresh_lims=thresh_lims, thresh_step=thresh_step,
+                               site_list=inv_sites, remake_PPE=remake_weighted_PPE, time_interval=time_interval)
 
 # plot hazard curves and save to file
 if save_arrays:
@@ -447,9 +444,10 @@ if make_hazcurves:
              exceed_type_list=["up", "down", "total_abs"], out_directory=out_dir,
              file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)   
     else:
-        plot_weighted_mean_haz_curves(
-            weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
-            model_version_title=site_names_title, exceed_type_list=["up", "down", "total_abs"],
-            out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order,
-            sigma=2, intervals=[time_interval[time_interval.index(str(max([int(val) for val in time_interval])))]])  # Currently just plot the maximum time interval
+        for interval in time_interval:
+            plot_weighted_mean_haz_curves(
+                weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
+                model_version_title=site_names_title, exceed_type_list=["up", "down", "total_abs"],
+                out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order,
+                sigma=2, intervals=[interval])  # Currently just plot the maximum time interval
     
