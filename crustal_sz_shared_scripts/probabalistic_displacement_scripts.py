@@ -309,13 +309,14 @@ else:
 
 
 def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples):
+        os.makedirs(randdir, exist_ok=True)
         with h5.File(branch_site_disp_dict_file, "r") as branch_site_disp_dict:
             if "scaled_rates" not in branch_site_disp_dict.keys():
                 # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
                 rates = np.array(branch_site_disp_dict["rates"])
             else:
                 rates = np.array(branch_site_disp_dict["scaled_rates"])
-        n_ruptures = rates.shape[0]     
+        n_ruptures = rates.shape[0]   
 
         print(f'\tPreparing {n_samples} Poissonian Scenarios for {n_ruptures} ruptures...')
         rng = np.random.default_rng()
