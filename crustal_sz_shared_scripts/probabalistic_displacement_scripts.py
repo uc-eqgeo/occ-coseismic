@@ -309,13 +309,14 @@ else:
 
 
 def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples):
+        os.makedirs(randdir, exist_ok=True)
         with h5.File(branch_site_disp_dict_file, "r") as branch_site_disp_dict:
             if "scaled_rates" not in branch_site_disp_dict.keys():
                 # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
                 rates = np.array(branch_site_disp_dict["rates"])
             else:
                 rates = np.array(branch_site_disp_dict["scaled_rates"])
-        n_ruptures = rates.shape[0]     
+        n_ruptures = rates.shape[0]   
 
         print(f'\tPreparing {n_samples} Poissonian Scenarios for {n_ruptures} ruptures...')
         rng = np.random.default_rng()
@@ -931,7 +932,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                                       exceed_type_list, unique_id_list, sigma_lims, branch_weights, compression=None,
                                       intervals=intervals_list[ix])
             weighted_h5.close()
-            elapsed, per_site = time_elasped(time(), start, decimal=False)
+            elapsed, per_site = time_elasped(time(), start, ix + 1, decimal=False)
             printProgressBar(ix + 1, len(site_list), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
         weighted_h5.close()
     else:
@@ -986,11 +987,15 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                 with h5.File(site_h5_file, 'r') as site_h5:
                     # Take the data from the site_h5 and put it in the weighted_h5
                     site_group.create_dataset("site_coords", data=site_h5['site_coords'])
-                    for exceed_type in exceed_type_list:
-                        site_group.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=site_h5[f'weighted_exceedance_probs_{exceed_type}'], compression=None)
-                        site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_h5[f'branch_exceedance_probs_{exceed_type}'], compression='gzip', compression_opts=6)
-                        site_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = [branch for branch in site_h5['branch_id_list'].asstr()]
-                        site_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=site_h5[f'{exceed_type}_weighted_percentile_error'], compression=None)
+                    intervals = [key for key in site_h5.keys() if key.isnumeric()]
+                    for interval in intervals:
+                        interval_group = site_group.create_group(interval)
+                        interval_group.create_dataset("meta", data=site_h5[interval]['meta'][:])
+                        for exceed_type in exceed_type_list:
+                            interval_group.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=site_h5[interval][f'weighted_exceedance_probs_{exceed_type}'], compression=None)
+                            interval_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_h5[interval][f'branch_exceedance_probs_{exceed_type}'], compression='gzip', compression_opts=6)
+                            interval_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = [branch for branch in site_h5['branch_id_list'].asstr()]
+                            interval_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=site_h5[interval][f'{exceed_type}_weighted_percentile_error'], compression=None)
 
                 elapsed = time_elasped(time(), start, decimal=False)
                 printProgressBar(ix + 1, len(site_list), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
@@ -1341,7 +1346,10 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                     lambda x: np.average(x, weights=branch_weights), axis=1)
 
                 interval_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs[branch_weighted_mean_probs > 0], compression=compression)
-                non_zero_row = np.where(site_probabilities_df.sum(axis=1))[0][-1] + 1
+                try:
+                    non_zero_row = np.where(site_probabilities_df.sum(axis=1))[0][-1] + 1
+                except IndexError:  # if all rows are zero
+                    non_zero_row = 0
                 interval_h5.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy()[:non_zero_row, :], compression='gzip', compression_opts=6)
 
                 # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)

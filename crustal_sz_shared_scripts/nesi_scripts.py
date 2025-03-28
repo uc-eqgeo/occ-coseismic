@@ -1,12 +1,11 @@
 import os
-import shutil
 import argparse
 import pickle as pkl
 import numpy as np
 import pandas as pd
 import h5py as h5
 from time import time, sleep
-from helper_scripts import hdf5_to_dict
+from helper_scripts import hdf5_to_dict, dict_to_hdf5
 
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
     """
@@ -144,20 +143,24 @@ def combine_site_cumu_PPE(sites, model_version_results_directory, extension1, br
             if not os.path.exists(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5"):
                 continue
             with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5", "r") as site_h5:
-                if site_of_interest in branch_h5.keys():
-                    del branch_h5[site_of_interest]
-                branch_h5.create_group(site_of_interest)
+                if site_of_interest not in branch_h5.keys():
+                    branch_h5.create_group(site_of_interest)
+                if 'site_coords' not in branch_h5[site_of_interest].keys():
+                    branch_h5[site_of_interest].create_dataset('site_coords', data=site_h5[site_of_interest]['site_coords'][()])
+                intervals = [key for key in site_h5[site_of_interest].keys() if key != 'site_coords']
                 if all_good:
-                    for key in site_h5[site_of_interest].keys():
-                        if site_h5[site_of_interest][key][()].shape == ():   # Check for scalar datasets that cannot be compressed
-                            branch_h5[site_of_interest].create_dataset(key, data=site_h5[site_of_interest][key][()])
-                        else:
-                            branch_h5[site_of_interest].create_dataset(key, data=site_h5[site_of_interest][key][()], compression='gzip', compression_opts=5)
+                    for interval in intervals:
+                        if interval in branch_h5[site_of_interest].keys():
+                            del branch_h5[site_of_interest][interval]
+                        branch_h5[site_of_interest].create_group(interval)
+                        interval_dict = hdf5_to_dict(site_h5[site_of_interest][interval])
+                        dict_to_hdf5(branch_h5[site_of_interest][interval], interval_dict, compression='gzip', compression_opts=5)
             printProgressBar(ix + 1, len(sites), prefix=f'\tAdded {ix + 1}/{len(sites)} Sites:', suffix=f'{time() - start:.2f} seconds {site_of_interest}{bad_flag}', length=50)
         except:
             bad_sites.append(site_of_interest)
             all_good = False
             bad_flag = f" (Error with {len(bad_sites)} sites)"
+            del branch_h5[site_of_interest]
 
     if weight:
         if weight > 0 and 'branch_weight' not in branch_h5.keys():
@@ -165,12 +168,9 @@ def combine_site_cumu_PPE(sites, model_version_results_directory, extension1, br
 
     branch_h5.close()
     if all_good:
-        #shutil.rmtree(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}")
-        print(f'\nNot deleting ../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}!')
+        print(f'\nSuccessfully added new sites to ../{model_version_results_directory}/{extension1}/{os.path.basename(branch_h5file)}!')
     else:
-        print(f"\nError with {len(bad_sites)} sites: ../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}")
-        print(f"Deleting {branch_h5file}")
-        os.remove(branch_h5file)
+        print(f"\nError adding {len(bad_sites)} sites: ../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}")
         with open(f"../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}", "w") as f:
             for site in bad_sites:
                 f.write(f"{site} {model_version_results_directory}/{extension1} {S}\n")
