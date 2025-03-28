@@ -530,6 +530,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             else:
                 cumulative_array = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios, cumulative_abs_scenarios])
                 n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_array.reshape(3, 1, n_samples))
+                if benchmarking:
+                    print(f"Exceedances Counted : {time() - lap:.15f} s")
 
             if benchmarking:
                     print(f"Exceedances Counted : {time() - lap:.15f} s")
@@ -761,6 +763,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                                                     model_version_results_directory=model_version_results_directory,
                                                     time_interval=time_interval, n_samples=n_samples, extension1="",
                                                     thresh_lims=thresh_lims, thresh_step=thresh_step)
+                print('Writing PPE to h5 file....')
                 with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r+") as branch_PPEh5:
                     dict_to_hdf5(branch_PPEh5, branch_cumu_PPE_dict, replace_groups=True)
 
@@ -928,7 +931,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                                       exceed_type_list, unique_id_list, sigma_lims, branch_weights, compression=None,
                                       intervals=intervals_list[ix])
             weighted_h5.close()
-            elapsed = time_elasped(time(), start, decimal=False)
+            elapsed, per_site = time_elasped(time(), start, decimal=False)
             printProgressBar(ix + 1, len(site_list), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
         weighted_h5.close()
     else:
@@ -1379,9 +1382,12 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
     for site in site_list:
         site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
 
-        # get first index that is < 10% (ideally we would interpolate for exact value but don't have a function)
-        exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= round(probability,4)), -1)
-        disp = thresholds[exceedance_index]
+        if site_PPE.shape[0] > 0:
+            # get first index that is < 10% (ideally we would interpolate for exact value but don't have a function)
+            exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= round(probability,4)), -1)
+            disp = thresholds[exceedance_index]
+        else:
+            disp = 0
         disps.append(disp)
 
         if err_index:
@@ -1804,7 +1810,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 printProgressBar(plot_n * ix + plot_n + 1, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
     weighted_mean_PPE_dictionary.close()
 
-def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_version_title, out_directory, file_type_list, slip_taper, plot_order, sigma=2):
+def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_version_title, out_directory, file_type_list, slip_taper, plot_order, sigma=2, interval='100'):
     """
     Plots the weighted mean hazard curve for each site, for each exceedance type (total_abs, up, down)
     :param weighted_mean_PPE_dictionary: dictionary containing the weighted mean exceedance probabilities for each site.
@@ -1820,7 +1826,7 @@ def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_versio
 
     PPE_dictionary = h5.File(PPE_dictionary, 'r')
 
-    t_min, t_max, t_step = PPE_dictionary[plot_order[0]]['thresh_para'][:]
+    t_min, t_max, t_step = PPE_dictionary[plot_order[0]][interval]['thresh_para'][:]
     thresholds = np.round(np.arange(t_min, t_max, t_step), 4)[1:]
 
     if 'sigma_lims' in PPE_dictionary.keys():
@@ -2619,7 +2625,6 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
 
     interval_vals = [int(i) for i in time_intervals]
     interval_vals.sort()
-    time_intervals = [str(i) for i in interval_vals]
 
     # Define File Paths
     exceed_type_list = ["total_abs", "up", "down"]
