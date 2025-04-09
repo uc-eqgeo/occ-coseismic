@@ -431,21 +431,23 @@ if make_hazcurves:
 
     print(f"\nMaking hazard curves...")
     if single_branch:
-        out_dir = f"{out_version_results_directory}/sites{single_branch}/hazard_curves{outfile_extension}"
-        PPE_filepath = f"../{out_version_results_directory}/sites{single_branch}/{branch_key}_cumu_PPE.h5"
+        for branch, key in zip(single_branch, branch_key):
+            out_dir = f"{out_version_results_directory}/sites{branch}/hazard_curves{outfile_extension}"
+            PPE_filepath = f"../{out_version_results_directory}/sites{branch}/{key}_cumu_PPE.h5"
+            print(f"Output Directory: {out_dir}")
+            for interval in time_interval:
+                print('Plotting hazard curves for', branch, 'at', interval, 'years')
+                plot_single_branch_haz_curves(
+                    PPE_dictionary=PPE_filepath, model_version_title=site_names_title,
+                    exceed_type_list=["up", "down", "total_abs"], out_directory=out_dir,
+                    file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order, interval=interval)   
     else:
         out_dir =  f"{out_version_results_directory}/weighted_mean_figures"
-    print(f"Output Directory: {out_dir}")
-    if single_branch:
-         plot_single_branch_haz_curves(
-             PPE_dictionary=PPE_filepath, model_version_title=site_names_title,
-             exceed_type_list=["up", "down", "total_abs"], out_directory=out_dir,
-             file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order)   
-    else:
+        print(f"Output Directory: {out_dir}")
         for interval in time_interval:
             plot_weighted_mean_haz_curves(
                 weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
                 model_version_title=site_names_title, exceed_type_list=["up", "down", "total_abs"],
                 out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order,
-                sigma=2, intervals=[interval])  # Currently just plot the maximum time interval
+                sigma=2, intervals=[interval])
     

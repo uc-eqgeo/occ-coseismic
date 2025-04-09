@@ -309,13 +309,14 @@ else:
 
 
 def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples):
+        os.makedirs(randdir, exist_ok=True)
         with h5.File(branch_site_disp_dict_file, "r") as branch_site_disp_dict:
             if "scaled_rates" not in branch_site_disp_dict.keys():
                 # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
                 rates = np.array(branch_site_disp_dict["rates"])
             else:
                 rates = np.array(branch_site_disp_dict["scaled_rates"])
-        n_ruptures = rates.shape[0]     
+        n_ruptures = rates.shape[0]   
 
         print(f'\tPreparing {n_samples} Poissonian Scenarios for {n_ruptures} ruptures...')
         rng = np.random.default_rng()
@@ -530,6 +531,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             else:
                 cumulative_array = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios, cumulative_abs_scenarios])
                 n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_array.reshape(3, 1, n_samples))
+                if benchmarking:
+                    print(f"Exceedances Counted : {time() - lap:.15f} s")
 
             if benchmarking:
                     print(f"Exceedances Counted : {time() - lap:.15f} s")
@@ -761,6 +764,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                                                     model_version_results_directory=model_version_results_directory,
                                                     time_interval=time_interval, n_samples=n_samples, extension1="",
                                                     thresh_lims=thresh_lims, thresh_step=thresh_step)
+                print('Writing PPE to h5 file....')
                 with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r+") as branch_PPEh5:
                     dict_to_hdf5(branch_PPEh5, branch_cumu_PPE_dict, replace_groups=True)
 
@@ -983,11 +987,15 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                 with h5.File(site_h5_file, 'r') as site_h5:
                     # Take the data from the site_h5 and put it in the weighted_h5
                     site_group.create_dataset("site_coords", data=site_h5['site_coords'])
-                    for exceed_type in exceed_type_list:
-                        site_group.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=site_h5[f'weighted_exceedance_probs_{exceed_type}'], compression=None)
-                        site_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_h5[f'branch_exceedance_probs_{exceed_type}'], compression='gzip', compression_opts=6)
-                        site_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = [branch for branch in site_h5['branch_id_list'].asstr()]
-                        site_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=site_h5[f'{exceed_type}_weighted_percentile_error'], compression=None)
+                    intervals = [key for key in site_h5.keys() if key.isnumeric()]
+                    for interval in intervals:
+                        interval_group = site_group.create_group(interval)
+                        interval_group.create_dataset("meta", data=site_h5[interval]['meta'][:])
+                        for exceed_type in exceed_type_list:
+                            interval_group.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=site_h5[interval][f'weighted_exceedance_probs_{exceed_type}'], compression=None)
+                            interval_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_h5[interval][f'branch_exceedance_probs_{exceed_type}'], compression='gzip', compression_opts=6)
+                            interval_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = [branch for branch in site_h5['branch_id_list'].asstr()]
+                            interval_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=site_h5[interval][f'{exceed_type}_weighted_percentile_error'], compression=None)
 
                 elapsed = time_elasped(time(), start, decimal=False)
                 printProgressBar(ix + 1, len(site_list), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
@@ -1810,7 +1818,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 printProgressBar(plot_n * ix + plot_n + 1, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
     weighted_mean_PPE_dictionary.close()
 
-def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_version_title, out_directory, file_type_list, slip_taper, plot_order, sigma=2):
+def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_version_title, out_directory, file_type_list, slip_taper, plot_order, sigma=2, interval='100'):
     """
     Plots the weighted mean hazard curve for each site, for each exceedance type (total_abs, up, down)
     :param weighted_mean_PPE_dictionary: dictionary containing the weighted mean exceedance probabilities for each site.
@@ -1826,7 +1834,7 @@ def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_versio
 
     PPE_dictionary = h5.File(PPE_dictionary, 'r')
 
-    t_min, t_max, t_step = PPE_dictionary[plot_order[0]]['thresh_para'][:]
+    t_min, t_max, t_step = PPE_dictionary[plot_order[0]][interval]['thresh_para'][:]
     thresholds = np.round(np.arange(t_min, t_max, t_step), 4)[1:]
 
     if 'sigma_lims' in PPE_dictionary.keys():
