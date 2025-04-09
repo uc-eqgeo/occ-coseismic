@@ -928,7 +928,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                                       exceed_type_list, unique_id_list, sigma_lims, branch_weights, compression=None,
                                       intervals=intervals_list[ix])
             weighted_h5.close()
-            elapsed = time_elasped(time(), start, decimal=False)
+            elapsed, per_site = time_elasped(time(), start, ix + 1, decimal=False)
             printProgressBar(ix + 1, len(site_list), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
         weighted_h5.close()
     else:
@@ -1338,7 +1338,10 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                     lambda x: np.average(x, weights=branch_weights), axis=1)
 
                 interval_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs[branch_weighted_mean_probs > 0], compression=compression)
-                non_zero_row = np.where(site_probabilities_df.sum(axis=1))[0][-1] + 1
+                try:
+                    non_zero_row = np.where(site_probabilities_df.sum(axis=1))[0][-1] + 1
+                except IndexError:  # if all rows are zero
+                    non_zero_row = 0
                 interval_h5.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_probabilities_df.to_numpy()[:non_zero_row, :], compression='gzip', compression_opts=6)
 
                 # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
@@ -1379,9 +1382,12 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
     for site in site_list:
         site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
 
-        # get first index that is < 10% (ideally we would interpolate for exact value but don't have a function)
-        exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= round(probability,4)), -1)
-        disp = thresholds[exceedance_index]
+        if site_PPE.shape[0] > 0:
+            # get first index that is < 10% (ideally we would interpolate for exact value but don't have a function)
+            exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= round(probability,4)), -1)
+            disp = thresholds[exceedance_index]
+        else:
+            disp = 0
         disps.append(disp)
 
         if err_index:
@@ -2619,7 +2625,6 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
 
     interval_vals = [int(i) for i in time_intervals]
     interval_vals.sort()
-    time_intervals = [str(i) for i in interval_vals]
 
     # Define File Paths
     exceed_type_list = ["total_abs", "up", "down"]
