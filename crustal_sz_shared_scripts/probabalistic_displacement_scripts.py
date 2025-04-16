@@ -330,7 +330,7 @@ def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
                  extension1, branch_key="nan", time_interval=[100], sd=0.4, error_chunking=1000, scaling='', load_random=False,
                  thresh_lims=[0, 3], thresh_step=0.01, plot_maximum_displacement=False, array_process=False,
-                 crustal_model_dir="", subduction_model_dirs="", NSHM_branch=True, pair_unique_id=None):
+                 crustal_model_dir="", subduction_model_dirs="", NSHM_branch=True, pair_unique_id=None, cumu_PPEh5_file=''):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
 
@@ -414,6 +414,22 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     start = time()
     if not benchmarking:
         printProgressBar(0, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix='Complete 00:00:00 (00:00s/site)', length=50)
+
+    if array_process:
+        assert len(site_ids) == 1, "Array processing only works for one site at a time"
+        os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}", exist_ok=True)
+        cumu_PPEh5_file = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5"
+        if os.path.exists(cumu_PPEh5_file):
+            os.remove(cumu_PPEh5_file)
+    else:
+        if extension1 != "" and scaling == "":
+            cumu_PPEh5_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.h5"
+        elif scaling != "":
+            assert len(site_ids) == 1, "specific scaling flag only works for one site at a time"
+            cumu_PPEh5_file = f"../{model_version_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.h5"
+        else:
+            assert cumu_PPEh5_file != '', "Must provide cumu_PPE_h5_file"
+
     for i, site_of_interest in enumerate(site_ids):
         if i == 1:
             start = time() # Because the first loop is really slow, it throws the stats for the rest
@@ -601,6 +617,14 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                                                             "n_samples": n_samples,
                                                                             "thresh_para": np.hstack([thresh_lims, thresh_step])})
         site_PPE_dict[site_of_interest].update({"site_coords": site_dict_i["site_coords"]})
+        # Every 100th site, write the data to the h5 file
+        if i % 100 == 99:
+            lap = time()
+            with h5.File(cumu_PPEh5_file, "a") as PPEh5:
+                dict_to_hdf5(PPEh5, site_PPE_dict, replace_groups=True)
+            site_PPE_dict = {}
+            if benchmarking:
+                print(f"Site written to h5 : {time() - lap:.5f} s")
 
         elapsed = time_elasped(time(), start)
         if benchmarking:
@@ -608,26 +632,14 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         else:
             printProgressBar(i + 1, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix=f'Complete {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length=50)
 
+    if len(site_PPE_dict) > 0:
+        with h5.File(cumu_PPEh5_file, "a") as PPEh5:
+            dict_to_hdf5(PPEh5, site_PPE_dict, replace_groups=True)
+
     if benchmarking:
         print(f"Total Time: {time() - commence:.5f} s")
     
-    
-    if array_process:
-        os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}", exist_ok=True)
-        site_file = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5"
-        if os.path.exists(site_file):
-            os.remove(site_file)
-        with h5.File(site_file, "w") as site_PPEh5:
-            dict_to_hdf5(site_PPEh5, site_PPE_dict, compression='gzip', compression_opts=5)
-    else:
-        if extension1 != "" and scaling == "":
-            with h5.File(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.h5", "w") as site_PPEh5:
-                dict_to_hdf5(site_PPEh5, site_PPE_dict, compression='gzip', compression_opts=5)
-        elif scaling != "":
-            with h5.File(f"../{model_version_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.h5", "w") as site_PPEh5:
-                dict_to_hdf5(site_PPEh5, site_PPE_dict, compression='gzip', compression_opts=5)
-        else:
-            return site_PPE_dict
+    return
 
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension, inv_sites=[],
                               nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
@@ -717,7 +729,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                             well_processed_sites.append(site)
 
         else:
-            branch_PPEh5 = h5.File(fault_model_allbranch_PPE_dict[branch_id], "w")
+            branch_PPEh5 = h5.File(fault_model_allbranch_PPE_dict[branch_id], "a")
             branch_PPEh5.close()
 
         prep_list = [site for site in inv_sites if site not in well_processed_sites]
@@ -759,14 +771,11 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                     randdir = f"../{model_version_results_directory}"
                     prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples)
 
-                branch_cumu_PPE_dict = get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict_file,
-                                                    site_ids=prep_list, slip_taper=slip_taper, load_random=load_random,
-                                                    model_version_results_directory=model_version_results_directory,
-                                                    time_interval=time_interval, n_samples=n_samples, extension1="",
-                                                    thresh_lims=thresh_lims, thresh_step=thresh_step)
-                print('Writing PPE to h5 file....')
-                with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r+") as branch_PPEh5:
-                    dict_to_hdf5(branch_PPEh5, branch_cumu_PPE_dict, replace_groups=True)
+                get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict_file,
+                             site_ids=prep_list, slip_taper=slip_taper, load_random=load_random,
+                             model_version_results_directory=model_version_results_directory,
+                             time_interval=time_interval, n_samples=n_samples, extension1="",
+                             thresh_lims=thresh_lims, thresh_step=thresh_step, cumu_PPEh5_file=fault_model_allbranch_PPE_dict[branch_id])
 
         if not all([nesi, nesi_step == 'combine', sbatch]):
             if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]):
