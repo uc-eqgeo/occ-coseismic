@@ -1887,8 +1887,8 @@ def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_versio
                 #ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
                 #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
                 # Shade based on weighted 2 sigma percentiles
-                ax.fill_between(thresholds[1:PPE_dictionary[site][f"error_{exceed_type}"].shape[1]], PPE_dictionary[site][f"error_{exceed_type}"][sigma_ix[0], 1:],
-                                PPE_dictionary[site][f"error_{exceed_type}"][sigma_ix[1], 1:], color='0.8')
+                ax.fill_between(thresholds[1:PPE_dictionary[site][interval][f"error_{exceed_type}"].shape[1]], PPE_dictionary[site][interval][f"error_{exceed_type}"][sigma_ix[0], 1:],
+                                PPE_dictionary[site][interval][f"error_{exceed_type}"][sigma_ix[1], 1:], color='0.8')
 
             # plot all the branches as light grey lines
             # for each branch, plot the exceedance probabilities for each site
@@ -1905,7 +1905,7 @@ def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_versio
                 ax = plt.subplot(n_rows, n_cols, i + 1)
 
                 # plots all three types of exceedance (total_abs, up, down) on the same plot
-                weighted_mean_exceedance_probs = PPE_dictionary[site][f"exceedance_probs_{exceed_type}"][1:]
+                weighted_mean_exceedance_probs = PPE_dictionary[site][interval][f"exceedance_probs_{exceed_type}"][1:]
 
                 line_color = get_probability_color(exceed_type)
                
@@ -1920,9 +1920,9 @@ def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_versio
                 # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w84_135_vals"], color=line_color, linewidth=0.75, linestyle=':')
                 # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w15_865_vals"], color=line_color, linewidth=0.75, linestyle=':')
                 # Weighted 2 sigma lines
-                n_thresh = PPE_dictionary[site][f"error_{exceed_type}"].shape[1]
-                ax.plot(thresholds[1:n_thresh], PPE_dictionary[site][f"error_{exceed_type}"][0,1:], color='black', linewidth=0.75, linestyle='-.')
-                ax.plot(thresholds[1:n_thresh], PPE_dictionary[site][f"error_{exceed_type}"][-1,1:], color='black', linewidth=0.75, linestyle='-.')
+                n_thresh = PPE_dictionary[site][interval][f"error_{exceed_type}"].shape[1]
+                ax.plot(thresholds[1:n_thresh], PPE_dictionary[site][interval][f"error_{exceed_type}"][0,1:], color='black', linewidth=0.75, linestyle='-.')
+                ax.plot(thresholds[1:n_thresh], PPE_dictionary[site][interval][f"error_{exceed_type}"][-1,1:], color='black', linewidth=0.75, linestyle='-.')
 
                 ax.plot(thresholds[1:n_thresh], weighted_mean_exceedance_probs, color=line_color, linewidth=1.5)
 
@@ -1971,14 +1971,14 @@ def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_versio
                     #ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
                     #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
                     # Shade based on 2 sigma percentiles
-                    n_thresh = PPE_dictionary[site][f"error_{exceed_type}"].shape[1]
-                    ax.fill_between(thresholds[1:n_thresh], PPE_dictionary[site][f"error_{exceed_type}"][0, 1:],
-                                    PPE_dictionary[site][f"error_{exceed_type}"][-1, 1:], color='0.8')
+                    n_thresh = PPE_dictionary[site][interval][f"error_{exceed_type}"].shape[1]
+                    ax.fill_between(thresholds[1:n_thresh], PPE_dictionary[site][interval][f"error_{exceed_type}"][0, 1:],
+                                    PPE_dictionary[site][interval][f"error_{exceed_type}"][-1, 1:], color='0.8')
 
                 # plot solid lines on top of the shaded regions
                 for exceed_type in exceed_type_list:
                     line_color = get_probability_color(exceed_type)
-                    exceedance_probs = PPE_dictionary[site][f"exceedance_probs_{exceed_type}"][1:]
+                    exceedance_probs = PPE_dictionary[site][interval][f"exceedance_probs_{exceed_type}"][1:]
                     ax.plot(thresholds[:exceedance_probs.shape[0]], exceedance_probs, color=line_color, linewidth=2)
 
                 # add 10% and 2% lines

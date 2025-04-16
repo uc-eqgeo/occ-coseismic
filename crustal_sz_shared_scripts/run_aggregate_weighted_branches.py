@@ -406,7 +406,7 @@ if save_arrays:
         branch_key = ['']
     for key in branch_key:
         ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                            thresh_lims=[0, 3], thresh_step=0.05, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.01,
+                            thresh_lims=[0, 3], thresh_step=1.00, output_thresh=True, probs_lims = [0.01, 0.10], probs_step=0.01,
                             output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key,
                             time_intervals=time_interval)
 
