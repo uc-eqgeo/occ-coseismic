@@ -408,13 +408,12 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     # get displacement thresholds for calculating exceedance (hazard curve x-axis)
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
 
-    benchmarking = False
+    benchmarking = True
     start = time()
     if not benchmarking:
         printProgressBar(0, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix='Complete 00:00:00 (00:00s/site)', length=50)
 
     if array_process:
-        assert len(site_ids) == 1, "Array processing only works for one site at a time"
         os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}", exist_ok=True)
     else:
         if extension1 != "" and scaling == "":
@@ -620,7 +619,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                                                             "thresh_para": np.hstack([thresh_lims, thresh_step])})
         site_PPE_dict[site_of_interest].update({"site_coords": site_dict_i["site_coords"]})
         # Every 100th site, write the data to the h5 file
-        if i % 100 == 99:
+        if i % 100 == 99 or array_process:
             lap = time()
             with h5.File(cumu_PPEh5_file, "a") as PPEh5:
                 dict_to_hdf5(PPEh5, site_PPE_dict, replace_groups=True)
