@@ -308,7 +308,7 @@ else:
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
 
-def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples):
+def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples):
         os.makedirs(randdir, exist_ok=True)
         with h5.File(branch_site_disp_dict_file, "r") as branch_site_disp_dict:
             if "scaled_rates" not in branch_site_disp_dict.keys():
@@ -330,7 +330,7 @@ def prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
                  extension1, branch_key="nan", time_interval=[100], sd=0.4, error_chunking=1000, scaling='', load_random=False,
                  thresh_lims=[0, 3], thresh_step=0.01, plot_maximum_displacement=False, array_process=False,
-                 crustal_model_dir="", subduction_model_dirs="", NSHM_branch=True, pair_unique_id=None, cumu_PPEh5_file=''):
+                 crustal_model_dir="", subduction_model_dirs="", NSHM_branch=True, pair_unique_id=None, cumu_PPEh5_file='', scenario_dir=''):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
 
@@ -388,18 +388,18 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             else:
                 NSHM_PPEh5_list.append(branch_PPE_h5)
 
+    scenario_dir = f"{procdir}/{model_version_results_directory}/{extension1}" if scenario_dir == '' else scenario_dir
+    if array_process:
+        scenario_dir = os.path.join(scenario_dir, f"site_cumu_exceed{scaling}")
     for interval in time_interval:
-        if not os.path.exists(f"{procdir}/{model_version_results_directory}/{extension1}/{interval}_yr_scenarios.pkl"):
+        if not os.path.exists(f"{scenario_dir}/{interval}_yr_scenarios.pkl"):
             load_random = False
 
     if load_random:
         # Load array of random samples rather than regenerating them
-        randomdir = f"{procdir}/{model_version_results_directory}/{extension1}"
-        if array_process:
-            randomdir = os.path.join(randomdir, f"site_cumu_exceed{scaling}")
         all_scenarios = {}
         for interval in time_interval:
-            with open(f"{randomdir}/{interval}_yr_scenarios.pkl", "rb") as f:
+            with open(f"{scenario_dir}/{interval}_yr_scenarios.pkl", "rb") as f:
                 all_scenarios[interval] = pkl.load(f)
 
     ## loop through each site and generate a bunch of 100 yr interval scenarios
@@ -744,8 +744,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         if nesi:
             if nesi_step == 'prep':
                 if load_random:
-                    randdir = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}"
-                    prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples)
+                    scenario_dir = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}"
+                    prepare_scenario_arrays(branch_site_disp_dict_file, scenario_dir, time_interval, n_samples)
 
                 print(f"\tPrepping for NESI....")
                 prep_nesi_site_list(model_version_results_directory, prep_list, extension1, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
@@ -767,14 +767,15 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 print(f"\tFound Pre-Prepared Branch PPE:  {fault_model_allbranch_PPE_dict[branch_id]}")
             else:
                 if load_random:
-                    randdir = f"../{model_version_results_directory}"
-                    prepare_random_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples)
+                    scenario_dir = os.path.dirname(branch_site_disp_dict_file)
+                    prepare_scenario_arrays(branch_site_disp_dict_file, scenario_dir, time_interval, n_samples)
 
                 get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict_file,
                              site_ids=prep_list, slip_taper=slip_taper, load_random=load_random,
                              model_version_results_directory=model_version_results_directory,
                              time_interval=time_interval, n_samples=n_samples, extension1="",
-                             thresh_lims=thresh_lims, thresh_step=thresh_step, cumu_PPEh5_file=fault_model_allbranch_PPE_dict[branch_id])
+                             thresh_lims=thresh_lims, thresh_step=thresh_step, cumu_PPEh5_file=fault_model_allbranch_PPE_dict[branch_id],
+                             scenario_dir=scenario_dir)
 
         if not all([nesi, nesi_step == 'combine', sbatch]):
             if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]):
