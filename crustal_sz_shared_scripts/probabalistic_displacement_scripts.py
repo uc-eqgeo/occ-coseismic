@@ -347,11 +347,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     commence = time()
 
     procdir = os.path.relpath(os.path.dirname(__file__) + '/..')
-
     if numba_flag:
-        _ = calc_thresholds(np.arange(0,1,1), np.ones((3, 1, 100)))
-        # For some reason this causes a numba error on the second branch if allowed to run here....
-        # _ = sparse_thresholds(np.arange(0,1,1), np.ones((1, 100)), [0, 1])
+        _ = calc_thresholds(np.arange(0, 1, 0.1), np.ones((3, 10, 100)))
+        _ = sparse_thresholds(np.arange(0, 1, 0.1), np.ones(100), np.array([0, 100]))
 
     # use random number generator to initialise monte carlo sampling
     rng = np.random.default_rng()
