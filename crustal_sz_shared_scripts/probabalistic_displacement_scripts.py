@@ -713,7 +713,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             print('\tChecking for existing PPE at each site...')
             with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r") as branch_PPEh5:
                 # Checks that sites have been processed
-                existing_sites = [site for site in branch_PPEh5.keys() if site not in ["branch_weight", "thresholds"]]
+                inv_set = set(inv_sites)
+                existing_sites = [site for site in branch_PPEh5.keys() if site in inv_set]
                 # Checks that previous processing had required sampling (i.e. wasn't a testing run)
                 for site in existing_sites:
                         well_processed = []
