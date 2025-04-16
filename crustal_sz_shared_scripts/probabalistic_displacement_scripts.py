@@ -416,26 +416,30 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     if array_process:
         assert len(site_ids) == 1, "Array processing only works for one site at a time"
         os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}", exist_ok=True)
-        cumu_PPEh5_file = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5"
-        if os.path.exists(cumu_PPEh5_file):
-            os.remove(cumu_PPEh5_file)
     else:
         if extension1 != "" and scaling == "":
             cumu_PPEh5_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.h5"
         elif scaling != "":
             assert len(site_ids) == 1, "specific scaling flag only works for one site at a time"
-            cumu_PPEh5_file = f"../{model_version_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.h5"
         else:
             assert cumu_PPEh5_file != '', "Must provide cumu_PPE_h5_file"
 
     for i, site_of_interest in enumerate(site_ids):
-        if i == 1:
-            start = time() # Because the first loop is really slow, it throws the stats for the rest
         begin = time()
         lap = time()
 
         if benchmarking:
             print(f"Site {site_of_interest} ({i}/{len(site_ids)})")
+
+        if array_process:
+            cumu_PPEh5_file = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5"
+            if os.path.exists(cumu_PPEh5_file):
+                os.remove(cumu_PPEh5_file)
+        else:
+            if extension1 != "" and scaling == "":
+                cumu_PPEh5_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.h5"
+            elif scaling != "":
+                cumu_PPEh5_file = f"../{model_version_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.h5"
 
         if isinstance(branch_site_disp_dict, str):
             with h5.File(branch_site_disp_dict, "r") as branch_h5:

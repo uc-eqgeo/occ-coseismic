@@ -708,7 +708,8 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
             if fakequakes:
                 file_suffix_list_i = ["_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nhb110", "_sz_fq_pnhb110", "_sz_fq_3lhb110", "_sz_fq_plhb110",
                                       "_sz_fq_3lhb110C1", "_sz_fq_3lhb110C100", "_sz_fq_3lhb110C1000", "_sz_fq_3nhb110C1", "_sz_fq_3nhb110C100",
-                                      "_sz_fq_3lhb110max9", "_sz_fq_plhb110max9",  "_sz_fq_3lhb110min9", "_sz_fq_plhb110min9",
+                                      "_sz_fq_3lhb110max9", "_sz_fq_plhb110max9", 
+                                      "_sz_fq_3lhb110min9", "_sz_fq_plhb110min9",
                                       "_sz_fq_3lhb110_GR65-95_max9", "_sz_fq_plhb110_GR65-95_max9"]
 
                 NSHM_directory_list_i = ["sz_solutions/FakeQuakes_hk_3e10_nolocking_uniformSlip_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10",
@@ -732,7 +733,7 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
                                          "sz_solutions/FakeQuakes_hk_3e10_locking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_max9_GR65-95_narchi9",
                                          "sz_solutions/FakeQuakes_hk_prem_locking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_max9_GR65-95_narchi9"]
             else:
-                file_suffix_list_i = ["_sz_NJk2", "_sz_NzEx", "_sz_NzE0"]
+                file_suffix_list_i = ["_sz_Njk2", "_sz_NzEx", "_sz_NzE0"]
                 NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2",
                                          "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzEx",
                                          "sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3NzE0"]
