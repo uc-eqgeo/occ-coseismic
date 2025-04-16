@@ -262,6 +262,7 @@ if not paired_crustal_sz:
             branch_key = [key for key in branch_keys if any([suffix in key[-len(suffix):] for suffix in file_suffix_list])]
         else:
             branch_key = [key for key in branch_keys if any(["_S10_" in key, "_S1_" in key]) and any([suffix in key[-len(suffix):] for suffix in file_suffix_list])]
+        branch_key = [key for suffix in file_suffix_list for key in branch_keys if key.endswith(suffix)]  # ensure file_suffix_list is the order the branch keys are in
         fault_model_single_branch_weight_dict = {}
         for key in branch_key:
             fault_model_single_branch_weight_dict = fault_model_single_branch_weight_dict | {key: fault_model_branch_weight_dict[key]}
@@ -405,7 +406,7 @@ if save_arrays:
         branch_key = ['']
     for key in branch_key:
         ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                            thresh_lims=[0, 3], thresh_step=0.05, output_thresh=True, probs_lims = [0.00, 0.20], probs_step=0.01,
+                            thresh_lims=[0, 3], thresh_step=1.00, output_thresh=True, probs_lims = [0.01, 0.10], probs_step=0.01,
                             output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key,
                             time_intervals=time_interval)
 
