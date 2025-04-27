@@ -440,18 +440,18 @@ if __name__ == "__main__":
                 nesiprint(f"{args.task_number}: Running {len(sites_of_interest)} sites in branch {extension1} with scaling {scaling}...")
 
             # Needs to be run one site at a time so sites can be recombined later
+            list_of_interest = sites_of_interest.tolist()
             for ix, site in enumerate(sites_of_interest):
                 if not args.NSHM_branch:
                     branch_unique_ids = pair_site_disp_dict[site]['branch_key']
                 lap = time()
                 if os.path.exists(f"../{branch_results_directory}/site_cumu_exceed{scaling}/{site}.pkl") and not args.overwrite:
                     print(f"{ix} {extension1} {site}.pkl already exists")
-                    continue
-                get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, [site], n_samples,
-                            extension1, branch_key=branch_unique_ids, time_interval=investigation_time, sd=sd, scaling=scaling, load_random=False,
-                            plot_maximum_displacement=False, array_process=True, NSHM_branch=args.NSHM_branch, crustal_model_dir=crustal_model_dir, subduction_model_dirs=subduction_model_dir,
-                            thresh_lims=[float(val) for val in args.thresh_lims.split('/')], thresh_step=float(args.thresh_step))
-                # os.system(f"echo {ix} {extension1} {site} complete in {time() - lap:.2f} seconds\n")
+                    list_of_interest.remove(site)
+            get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, list_of_interest, n_samples,
+                        extension1, branch_key=branch_unique_ids, time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True,
+                        plot_maximum_displacement=False, array_process=True, NSHM_branch=args.NSHM_branch, crustal_model_dir=crustal_model_dir, subduction_model_dirs=subduction_model_dir,
+                        thresh_lims=[float(val) for val in args.thresh_lims.split('/')], thresh_step=float(args.thresh_step))
 
             nesiprint(f"{extension1} complete in : {time() - begin:.2f} seconds\n")
 
