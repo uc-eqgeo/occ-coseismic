@@ -408,7 +408,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     # get displacement thresholds for calculating exceedance (hazard curve x-axis)
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
 
-    benchmarking = True
+    benchmarking = False
     start = time()
     if not benchmarking:
         printProgressBar(0, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix='Complete 00:00:00 (00:00s/site)', length=50)
@@ -507,28 +507,36 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
             # Calculate uncertainty for each scenario that ruptures
             # assigns a normal distribution with a mean of 1 and a standard deviation of sd
-            # effectively the multiplier for the displacement value               
-            disp_uncertainty = scenarios.copy()
-            disp_uncertainty.data = rng.normal(1, sd, size=scenarios.data.shape[0])
-
+            # effectively the multiplier for the displacement value
+            l1 = time()
+            disp_uncertainty = rng.normal(1, sd, size=scenarios.data.shape[0])
+            if benchmarking:
+                print(f"\tdisp_uncertainty: {time() - l1:.5f} s")
+                l1 = time()  
             # for each 100 yr scenario, get displacements from EQs that happened
             disp_scenarios = scenarios * disps
+            if benchmarking:
+                print(f"\tdisp_scenarios: {time() - l1:.5f} s")
+                l1 = time()
             # multiplies displacement by the uncertainty multiplier
-            disp_scenarios = disp_scenarios * disp_uncertainty
+            disp_scenarios.data *= disp_uncertainty
+            if benchmarking:
+                print(f"\tdisp_scenarios2: {time() - l1:.5f} s")
+
             # sum all displacement values at that site in that 100 yr interval
-            up_scenarios = disp_scenarios.copy()
-            down_scenarios = disp_scenarios.copy()
-            abs_scenarios = disp_scenarios.copy()
-            up_scenarios.data = np.where(disp_scenarios.data > 0, disp_scenarios.data, 0)
-            down_scenarios.data = np.where(disp_scenarios.data < 0, disp_scenarios.data, 0)
-            abs_scenarios.data = np.abs(disp_scenarios.data)
+            up_scenarios = np.where(disp_scenarios.data > 0, disp_scenarios.data, 0)
+            down_scenarios = np.where(disp_scenarios.data < 0, disp_scenarios.data, 0)
+            abs_scenarios = np.abs(disp_scenarios.data)
             if benchmarking:
                 print(f"Exceed Type Scenarios: {time() - lap:.5f} s")
-            lap = time()   
+            lap = time()
 
-            cumulative_up_scenarios = up_scenarios.sum(axis=1).reshape(1, n_samples)
-            cumulative_down_scenarios = down_scenarios.sum(axis=1).reshape(1, n_samples)
-            cumulative_abs_scenarios = abs_scenarios.sum(axis=1).reshape(1, n_samples)
+            disp_scenarios.data = up_scenarios
+            cumulative_up_scenarios = disp_scenarios.sum(axis=1).reshape(1, n_samples)
+            disp_scenarios.data = down_scenarios
+            cumulative_down_scenarios = disp_scenarios.sum(axis=1).reshape(1, n_samples)
+            disp_scenarios.data = abs_scenarios
+            cumulative_abs_scenarios = disp_scenarios.sum(axis=1).reshape(1, n_samples)
             cumulative_disp_scenarios = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios, cumulative_abs_scenarios]).reshape(3, 1, n_samples)
             if benchmarking:
                 print(f"Calculated Displacements: {time() - lap:.5f} s")
@@ -551,8 +559,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 if benchmarking:
                     print(f"Exceedances Counted : {time() - lap:.15f} s")
 
-            if benchmarking:
-                    print(f"Exceedances Counted : {time() - lap:.15f} s")
             lap = time()
 
             # the probability is the number of times that threshold was exceeded divided by the number of samples. so,
