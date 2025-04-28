@@ -574,41 +574,48 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                                                    "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
 
             # Save the rest of the data if this is a NSHM branch
+            save_errors = False
             if NSHM_branch:
-                ## Reverting back to the old method of subsampling the scenarios right now
-                ## This results in a divergence as you get to increasingly low probabilities (i.e. large displacement events are captured in the full scenario set,
-                ## but not in most of the sub-samples), but offers some more useful error envelopes at higher probabilities
-                ## The other limit here is this places a lowest % error you can calculate and error for (i.e error_chunking = 1000 can only calculate to 0.1%)
-                ## Increasing the number of scenarios included in each chunk would allow for lower probabilities to be calculated, but then leads to the same issue as
-                ## for the newer method (overly tight error envelope due to little variation between the error scenarios)
-                ## The newer method of trying to recreate 100,000 samples from the full set using randowm permutations with replacement basically just recreates the
-                ## full set, so is not useful - although they contain the low probability events, becuase you're just using the same scenarios over and over again
-                ## the error envelope is so tight around the mean haz curve it's not useful.
-                ## It could be that when the branches are combined and weighted together, then this stops being an issue as you can take the relative variations between
-                ## the branches as you form the error envelope.
-                chunked_disp_scenarios = cumulative_disp_scenarios[:, 0, :(n_chunks * error_chunking)].reshape(3, n_chunks, error_chunking)  # Create chunked displacement scenario (old method)
-                # error_chunking = 1000  # Now this is number of chunks to use in the new method, rather than the number of samples per chunk (old method)
-                # error_samples = int(n_samples / 1)  # Number of scenarios to use per chunk for error calculation (new method)
-                # rand_scenario_ix = np.random.randint(0, n_samples, size=error_chunking * error_samples)  # Random permutation to select which scenarios to use in each chunk (new method)
-                # if benchmarking:
-                #     print(f"Rand Scenario ix : {time() - lap:.15f} s")
-                # lap = time()
-                # chunked_disp_scenarios = cumulative_disp_scenarios[0, rand_scenario_ix].reshape(error_chunking, error_samples)  # Create chunked displacement scenario (new method)
+                if save_errors:
+                    ## Reverting back to the old method of subsampling the scenarios right now
+                    ## This results in a divergence as you get to increasingly low probabilities (i.e. large displacement events are captured in the full scenario set,
+                    ## but not in most of the sub-samples), but offers some more useful error envelopes at higher probabilities
+                    ## The other limit here is this places a lowest % error you can calculate and error for (i.e error_chunking = 1000 can only calculate to 0.1%)
+                    ## Increasing the number of scenarios included in each chunk would allow for lower probabilities to be calculated, but then leads to the same issue as
+                    ## for the newer method (overly tight error envelope due to little variation between the error scenarios)
+                    ## The newer method of trying to recreate 100,000 samples from the full set using randowm permutations with replacement basically just recreates the
+                    ## full set, so is not useful - although they contain the low probability events, becuase you're just using the same scenarios over and over again
+                    ## the error envelope is so tight around the mean haz curve it's not useful.
+                    ## It could be that when the branches are combined and weighted together, then this stops being an issue as you can take the relative variations between
+                    ## the branches as you form the error envelope.
+                    chunked_disp_scenarios = cumulative_disp_scenarios[:, 0, :(n_chunks * error_chunking)].reshape(3, n_chunks, error_chunking)  # Create chunked displacement scenario (old method)
+                    # error_chunking = 1000  # Now this is number of chunks to use in the new method, rather than the number of samples per chunk (old method)
+                    # error_samples = int(n_samples / 1)  # Number of scenarios to use per chunk for error calculation (new method)
+                    # rand_scenario_ix = np.random.randint(0, n_samples, size=error_chunking * error_samples)  # Random permutation to select which scenarios to use in each chunk (new method)
+                    # if benchmarking:
+                    #     print(f"Rand Scenario ix : {time() - lap:.15f} s")
+                    # lap = time()
+                    # chunked_disp_scenarios = cumulative_disp_scenarios[0, rand_scenario_ix].reshape(error_chunking, error_samples)  # Create chunked displacement scenario (new method)
 
-                n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, chunked_disp_scenarios)
+                    n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, chunked_disp_scenarios)
 
-                if benchmarking:
-                    print(f"Error Exceedances Counted : {time() - lap:.15f} s")
-                lap = time()
-                exceedance_errs_total_abs = n_exceedances_total_abs / error_chunking   # Change to error_samples for new method
-                exceedance_errs_up = n_exceedances_up / error_chunking   # Change to error_samples for new method
-                exceedance_errs_down = n_exceedances_down / error_chunking   # Change to error_samples for new method
+                    if benchmarking:
+                        print(f"Error Exceedances Counted : {time() - lap:.15f} s")
+                    lap = time()
+                    exceedance_errs_total_abs = n_exceedances_total_abs / error_chunking   # Change to error_samples for new method
+                    exceedance_errs_up = n_exceedances_up / error_chunking   # Change to error_samples for new method
+                    exceedance_errs_down = n_exceedances_down / error_chunking   # Change to error_samples for new method
 
-                # Output errors
-                sigma_lims = [0, 2.275, 15.865, 50, 84.135, 97.725, 100]  # Min/Max, 2 and 1 sigma, median
-                error_abs = np.percentile(exceedance_errs_total_abs, sigma_lims, axis=1)
-                error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
-                error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
+                    # Output errors
+                    sigma_lims = [0, 2.275, 15.865, 50, 84.135, 97.725, 100]  # Min/Max, 2 and 1 sigma, median
+                    error_abs = np.percentile(exceedance_errs_total_abs, sigma_lims, axis=1)
+                    error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
+                    error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
+
+                    site_PPE_dict[site_of_interest][investigation_time].update({"error_total_abs": error_abs[:, error_abs.sum(axis=0) != 0],
+                                                                                "error_up": error_up[:, error_up.sum(axis=0) != 0],
+                                                                                "error_down": error_down[:, error_down.sum(axis=0) != 0],
+                                                                                "sigma_lims": sigma_lims})
 
 
                 scenario_displacements = {'up': {'displacements': cumulative_disp_scenarios[0, 0, up_slip_scenarios], 'scenario_ix': up_slip_scenarios},
@@ -617,10 +624,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
                 site_PPE_dict[site_of_interest][investigation_time].update({"scenario_displacements": scenario_displacements,
                                                                             "standard_deviation": sd,
-                                                                            "error_total_abs": error_abs[:, error_abs.sum(axis=0) != 0],
-                                                                            "error_up": error_up[:, error_up.sum(axis=0) != 0],
-                                                                            "error_down": error_down[:, error_down.sum(axis=0) != 0],
-                                                                            "sigma_lims": sigma_lims,
                                                                             "n_samples": n_samples,
                                                                             "thresh_para": np.hstack([thresh_lims, thresh_step])})
         site_PPE_dict[site_of_interest].update({"site_coords": site_dict_i["site_coords"]})
