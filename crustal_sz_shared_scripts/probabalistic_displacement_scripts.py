@@ -1858,8 +1858,9 @@ def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_versio
     t_min, t_max, t_step = PPE_dictionary[plot_order[0]][interval]['thresh_para'][:]
     thresholds = np.round(np.arange(t_min, t_max, t_step), 4)[1:]
 
-    if 'sigma_lims' in PPE_dictionary.keys():
-        sigma_lims = PPE_dictionary['sigma_lims'][:]
+    plot_errors = True
+    if 'sigma_lims' in PPE_dictionary[plot_order[0]][interval].keys():
+        sigma_lims = PPE_dictionary[plot_order[0]][interval]['sigma_lims'][:]
         if sigma == 2:
             sigma_ix = [ix for ix, sig in enumerate(sigma_lims) if sig in [2.275, 97.725]]
         elif sigma == 1:
@@ -1868,8 +1869,8 @@ def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_versio
             print("Can't find requested sigma values in PPE. Defaulting to max and min")
             sigma_ix = [0, -1]
     else:
-        print("Can't find requested sigma values in PPE. Defaulting to max and min")
-        sigma_ix = [0, -1]
+        print("Can't find sigma values in PPE. Not plotting errors")
+        plot_errors = False
 
     plt.close("all")
 
@@ -1889,63 +1890,27 @@ def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_versio
             n_rows = len(sites)
 
         for exceed_type in exceed_type_list:
+            line_color = get_probability_color(exceed_type)
             fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2.63 + 0.12, n_rows * 2.32 + 0.71))  # Replicate 8x10 inch figure if there are less than 12 subplots
             plt.subplots_adjust(hspace=0.3, wspace=0.3)
 
-            # shade the region between the max and min value of all the curves at each site
             for i, site in enumerate(sites):
-                ax = plt.subplot(n_rows, n_cols, i + 1)
-
-                # plots all three types of exceedance (total_abs, up, down) on the same plot
-                #max_probs = PPE_dictionary[site][f"{exceed_type}_max_vals"][:]
-                #min_probs = PPE_dictionary[site][f"{exceed_type}_min_vals"][:]
-                #max_probs = max_probs[1:]
-                #min_probs = min_probs[1:]
-
-                # Shade based on max-min
-                #ax.fill_between(thresholds, max_probs, min_probs, color='0.9')
-                # Shade based on weighted errors
-                #ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
-                #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
-                # Shade based on weighted 2 sigma percentiles
-                ax.fill_between(thresholds[1:PPE_dictionary[site][interval][f"error_{exceed_type}"].shape[1]], PPE_dictionary[site][interval][f"error_{exceed_type}"][sigma_ix[0], 1:],
-                                PPE_dictionary[site][interval][f"error_{exceed_type}"][sigma_ix[1], 1:], color='0.8')
-
-            # plot all the branches as light grey lines
-            # for each branch, plot the exceedance probabilities for each site
-            # for i, site in enumerate(sites):
-            #     site_exceedance_probs = PPE_dictionary[site][f'exceedance_probs_{exceed_type}'][1:]
-            #     ax = plt.subplot(n_rows, n_cols, i + 1)
-            #     #ax.plot(thresholds, site_exceedance_probs, color=[weights[weight_order[k]] / max_weight, 1-(weights[weight_order[k]] / max_weight), 0],
-            #     #        linewidth=0.1)
-            #     ax.plot(thresholds, site_exceedance_probs, color='grey', linewidth=0.2, alpha=0.5)
-
-
-            # loop through sites and add the weighted mean lines
-            for i, site in enumerate(sites):
-                ax = plt.subplot(n_rows, n_cols, i + 1)
-
                 # plots all three types of exceedance (total_abs, up, down) on the same plot
                 weighted_mean_exceedance_probs = PPE_dictionary[site][interval][f"exceedance_probs_{exceed_type}"][1:]
+                ax = plt.subplot(n_rows, n_cols, i + 1)
 
-                line_color = get_probability_color(exceed_type)
-               
-                # Unweighted 1 sigma lines
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_84_135_vals"], color=line_color, linewidth=0.75, linestyle='-.')
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_15_865_vals"], color=line_color, linewidth=0.75, linestyle='-.')
-                # Unweighted 2 sigma lines
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_97_725_vals"], color=line_color, linewidth=0.75, linestyle='--')
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_2_275_vals"], color=line_color, linewidth=0.75, linestyle='--')
+                if plot_errors:
+                    n_thresh = PPE_dictionary[site][interval][f"error_{exceed_type}"].shape[1] - 1
+                    # Shade based on weighted sigma percentiles
+                    ax.fill_between(thresholds[:n_thresh], PPE_dictionary[site][interval][f"error_{exceed_type}"][sigma_ix[0], 1:],
+                                    PPE_dictionary[site][interval][f"error_{exceed_type}"][sigma_ix[1], 1:], color='0.8')
 
-                # Weighted 1 sigma lines
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w84_135_vals"], color=line_color, linewidth=0.75, linestyle=':')
-                # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w15_865_vals"], color=line_color, linewidth=0.75, linestyle=':')
-                # Weighted 2 sigma lines
-                n_thresh = PPE_dictionary[site][interval][f"error_{exceed_type}"].shape[1]
-                ax.plot(thresholds[1:n_thresh], PPE_dictionary[site][interval][f"error_{exceed_type}"][0,1:], color='black', linewidth=0.75, linestyle='-.')
-                ax.plot(thresholds[1:n_thresh], PPE_dictionary[site][interval][f"error_{exceed_type}"][-1,1:], color='black', linewidth=0.75, linestyle='-.')
+                    # Weighted sigma lines
+                    ax.plot(thresholds[:n_thresh], PPE_dictionary[site][interval][f"error_{exceed_type}"][sigma_ix[0], 1:], color='black', linewidth=0.75, linestyle='-.')
+                    ax.plot(thresholds[:n_thresh], PPE_dictionary[site][interval][f"error_{exceed_type}"][sigma_ix[-1], 1:], color='black', linewidth=0.75, linestyle='-.')
 
-                ax.plot(thresholds[1:n_thresh], weighted_mean_exceedance_probs, color=line_color, linewidth=1.5)
+                n_thresh = weighted_mean_exceedance_probs.shape[0]
+                ax.plot(thresholds[:n_thresh], weighted_mean_exceedance_probs, color=line_color, linewidth=1.5)
 
                 # Uncertainty weighted mean
                 #ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"], color='black', linewidth=1)
@@ -1986,19 +1951,13 @@ def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_versio
             for i, site in enumerate(sites):
                 ax = plt.subplot(n_rows, n_cols, i + 1)
                 for exceed_type in exceed_type_list:
-                    # Shade based on max-min
-                    # ax.fill_between(thresholds, weighted_mean_max_probs, weighted_mean_min_probs, color=fill_color, alpha=0.2)
-                    # Shade based on weighted errors
-                    #ax.fill_between(thresholds, weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] + weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:],
-                    #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
-                    # Shade based on 2 sigma percentiles
-                    n_thresh = PPE_dictionary[site][interval][f"error_{exceed_type}"].shape[1]
-                    ax.fill_between(thresholds[1:n_thresh], PPE_dictionary[site][interval][f"error_{exceed_type}"][0, 1:],
-                                    PPE_dictionary[site][interval][f"error_{exceed_type}"][-1, 1:], color='0.8')
-
-                # plot solid lines on top of the shaded regions
-                for exceed_type in exceed_type_list:
                     line_color = get_probability_color(exceed_type)
+                    if plot_errors:
+                        # Shade based on sigma percentiles
+                        n_thresh = PPE_dictionary[site][interval][f"error_{exceed_type}"].shape[1] - 1
+                        ax.fill_between(thresholds[:n_thresh], PPE_dictionary[site][interval][f"error_{exceed_type}"][sigma_lims[0], 1:],
+                                        PPE_dictionary[site][interval][f"error_{exceed_type}"][sigma_lims[-1], 1:], color='0.8')
+                    # plot solid lines on top of the shaded regions
                     exceedance_probs = PPE_dictionary[site][interval][f"exceedance_probs_{exceed_type}"][1:]
                     ax.plot(thresholds[:exceedance_probs.shape[0]], exceedance_probs, color=line_color, linewidth=2)
 
