@@ -1748,11 +1748,11 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                     # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w15_865_vals"], color=line_color, linewidth=0.75, linestyle=':')
                     # Weighted 2 sigma lines
                     weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
-                    ax.plot(thresholds, weighted_percentile_error[sigma_ix[0],1:], color='black', linewidth=0.75, linestyle='-.')
-                    ax.plot(thresholds, weighted_percentile_error[sigma_ix[1],1:], color='black', linewidth=0.75, linestyle='-.')
+                    ax.plot(thresholds, weighted_percentile_error[sigma_ix[0], 1:], color='black', linewidth=0.75, linestyle='-.')
+                    ax.plot(thresholds, weighted_percentile_error[sigma_ix[1], 1:], color='black', linewidth=0.75, linestyle='-.', label=sig_lab.replace("sig", " sigma").replace('minmax', 'min-max'))
 
-                    ax.plot(thresholds, weighted_percentile_error[mid_ix,1:], color=line_color, linewidth=1.5, linestyle=':')
-                    ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=1.5)
+                    ax.plot(thresholds, weighted_percentile_error[mid_ix, 1:], color=line_color, linewidth=1.5, linestyle=':', label='50th percentile')
+                    ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=1.5, label='weighted mean')
 
                     # Uncertainty weighted mean
                     #ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"uc_weighted_exceedance_probs_{exceed_type}"], color='black', linewidth=1)
@@ -1772,6 +1772,8 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                     ax.ticklabel_format(axis='x', style='plain')
                     ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
                     ax.set_xlim([xmin, xmax])
+                    if i == len(sites) - 1:
+                        ax.legend(loc='lower left', fontsize=8, frameon=False)
 
                 fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
                 fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
