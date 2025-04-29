@@ -1778,12 +1778,12 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 fig.suptitle(f"weighted mean hazard curves\n{model_version_title} {taper_extension}\n{exceed_type} {interval} yrs")
                 plt.tight_layout()
 
-                if not os.path.exists(f"../{out_directory}/weighted_mean_figures"):
-                    os.mkdir(f"../{out_directory}/weighted_mean_figures")
+                if not os.path.exists(f"../{out_directory}"):
+                    os.makedirs(f"../{out_directory}")
 
                 for file_type in file_type_list:
                     plt.savefig(
-                        f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurve_{exceed_type}{taper_extension}_{interval}yr_{plot_n}_{sig_lab}{colouring}.{file_type}", dpi=300)
+                        f"../{out_directory}/weighted_mean_hazcurve_{exceed_type}{taper_extension}_{interval}yr_{plot_n}_{sig_lab}{colouring}.{file_type}", dpi=300)
                 plt.close()
                 printProgressBar(plot_n * ix + plot_n + 0.5, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
 
@@ -1833,7 +1833,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 plt.tight_layout()
 
                 for file_type in file_type_list:
-                    plt.savefig(f"../{out_directory}/weighted_mean_figures/weighted_mean_hazcurves{taper_extension}_{interval}yr_{plot_n}_{sig_lab}"
+                    plt.savefig(f"../{out_directory}/weighted_mean_hazcurves{taper_extension}_{interval}yr_{plot_n}_{sig_lab}"
                                 f".{file_type}", dpi=300)
                 plt.close()
                 printProgressBar(plot_n * ix + plot_n + 1, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
@@ -1935,7 +1935,7 @@ def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_versio
             plt.tight_layout()
 
             if not os.path.exists(f"../{out_directory}"):
-                os.mkdir(f"../{out_directory}")
+                os.makedirs(f"../{out_directory}")
 
             for file_type in file_type_list:
                 plt.savefig(
