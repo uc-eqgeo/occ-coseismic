@@ -18,8 +18,8 @@ version_extension = "_validation_sites"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
-# Define whch subduction zone ([_fq_]hikkerk / puysegur)
-sz_zone = '_hikkerk'
+# Define whch subduction zone ([_fq_]hikkerm / puysegur)
+sz_zone = '_hikkerm'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
 csvfile = 'validation_sites_points.csv'
@@ -47,12 +47,12 @@ elif gentler_dip:
     version_extension += "_gentlerdip"
     sz_zone += "_gentlerdip"
 
-if 'hikkerk' in sz_zone:
+if 'hikkerm' in sz_zone:
     prefix = 'sz'
 elif 'puysegur' in sz_zone:
     prefix = 'py'
 else:
-    print("Please define a valid subduction zone (hikkerk / puysegur).")
+    print("Please define a valid subduction zone (hikkerm / puysegur).")
     exit()
 
 deblobify = False
