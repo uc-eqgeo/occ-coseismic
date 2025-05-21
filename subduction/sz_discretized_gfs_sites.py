@@ -18,8 +18,8 @@ version_extension = "_validation_sites"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
-# Define whch subduction zone ([_fq_]hikkerk / puysegur)
-sz_zone = '_hikkerk'
+# Define whch subduction zone ([_fq_]hikkerm / puysegur)
+sz_zone = '_hikkerm'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
 csvfile = 'validation_sites_points.csv'
@@ -47,12 +47,12 @@ elif gentler_dip:
     version_extension += "_gentlerdip"
     sz_zone += "_gentlerdip"
 
-if 'hikkerk' in sz_zone:
+if 'hikkerm' in sz_zone:
     prefix = 'sz'
 elif 'puysegur' in sz_zone:
     prefix = 'py'
 else:
-    print("Please define a valid subduction zone (hikkerk / puysegur).")
+    print("Please define a valid subduction zone (hikkerm / puysegur).")
     exit()
 
 deblobify = False
@@ -69,7 +69,7 @@ requested_site_names = sites_df['siteId'].values
 if geojson_only:
     print(f"Generating geojson for {gf_type} only")
 else:
-    # Load pre made_greens_functions
+    # Load premade greens_functions
     gf_h5_file = f"discretised{sz_zone}/{prefix}_gf_dict_sites.h5"
     if not os.path.exists(gf_h5_file):
         with h5.File(gf_h5_file, "w") as gf_h5:

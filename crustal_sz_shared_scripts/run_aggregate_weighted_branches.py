@@ -18,7 +18,7 @@ crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version
 crustal_site_names = "_EastCoastNI_10km"   # Name of the sites geojson
 sz_site_names = ["_EastCoastNI_5km", "_SouthIsland_5km"]       # Name of the sites geojson
 sz_list_order = ["sz", "py"]         # Order of the subduction zones
-sz_names = ["hikkerk", "puysegur"]   # Name of the subduction zone
+sz_names = ["hikkerm", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
@@ -432,23 +432,33 @@ if make_hazcurves:
 
     print(f"\nMaking hazard curves...")
     if single_branch:
+        if 'crustal' in fault_type:
+            site_dir = crustal_site_names.strip('_')
+        else:
+            site_dir = sz_site_names[sz_list_order.index(fault_type[0])].strip('_')
         for branch, key in zip(single_branch, branch_key):
-            out_dir = f"{out_version_results_directory}/sites{branch}/hazard_curves{outfile_extension}"
+            figure_directory = f"{out_version_results_directory}/sites{branch}/hazard_curves{outfile_extension}/{site_dir}"
             PPE_filepath = f"../{out_version_results_directory}/sites{branch}/{key}_cumu_PPE.h5"
-            print(f"Output Directory: {out_dir}")
+            print(f"Output Directory: {figure_directory}")
             for interval in time_interval:
                 print('Plotting hazard curves for', branch, 'at', interval, 'years')
                 plot_single_branch_haz_curves(
                     PPE_dictionary=PPE_filepath, model_version_title=site_names_title,
-                    exceed_type_list=["up", "down", "total_abs"], out_directory=out_dir,
+                    exceed_type_list=["up", "down", "total_abs"], out_directory=figure_directory,
                     file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order, interval=interval)   
     else:
-        out_dir =  f"{out_version_results_directory}/weighted_mean_figures"
-        print(f"Output Directory: {out_dir}")
+        ######
+        # Edit here for weighted, but single fault type (i.e not paired)
+        ######
+        if fault_type[0] == 'crustal':
+            figure_directory =  f"{out_version_results_directory}/weighted_mean_figures/{crustal_site_names.strip('_')}"
+        else:
+            figure_directory =  f"{out_version_results_directory}/weighted_mean_figures/{sz_site_names[0].strip('_')}"
+        print(f"Output Directory: {figure_directory}")
         for interval in time_interval:
             plot_weighted_mean_haz_curves(
                 weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
                 model_version_title=site_names_title, exceed_type_list=["up", "down", "total_abs"],
-                out_directory=out_version_results_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order,
+                out_directory=figure_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order,
                 sigma=2, intervals=[interval])
     
