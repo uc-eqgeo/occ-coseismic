@@ -772,6 +772,7 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
                                          "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10",
                                          "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-24_pMax6233_nIt500000_narchi10"
                                         ]
+
             else:
                 file_suffix_list_i = ["_sz_Njk2", "_sz_NzEx", "_sz_NzE0"]
                 NSHM_directory_list_i = ["sz_solutions/NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2",
