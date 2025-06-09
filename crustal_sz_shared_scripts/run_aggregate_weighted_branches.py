@@ -38,7 +38,7 @@ default_plot_order = True       # Do you want to plot haz curves for all sites, 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../sites/EastCoastNI_5km_transect_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
-
+branch_weight_csv = "branch_weight_data_v0-1"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
 # Processing Parameters
 time_interval = [100]     # Time span of hazard forecast (yrs)
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
@@ -48,7 +48,7 @@ thresh_step = 0.01
 
 # Nesi Parameters
 prep_sbatch = True   # Prep jobs for sbatch
-nesi_step = 'combine'  # 'prep' or 'combine'
+nesi_step = 'prep'  # 'prep' or 'combine'
 n_array_tasks = 250    # Number of array tasks
 min_tasks_per_array = 250   # Minimum number of sites per array
 min_branches_per_array = 1  # Minimum number of branches per array
@@ -226,7 +226,11 @@ for ix, model in enumerate(fault_type):
     version_discretise_directory.append(f"{results_directory}/{disc_version_list[ix]}")
 
 # get branch weights from the saved Excel spreadsheet
-branch_weight_file_path = os.path.relpath(os.path.join(os.path.dirname(__file__), f"../data/branch_weight_data.xlsx"))
+if branch_weight_csv is None:
+    branch_weight_csv = "branch_weight_data.xlsx"
+elif not branch_weight_csv.endswith('.xlsx'):
+    branch_weight_csv += ".xlsx"
+branch_weight_file_path = os.path.relpath(os.path.join(os.path.dirname(__file__), "..", "data", branch_weight_csv))
 crustal_sheet_name = "crustal_weights_4_2"
 sz_sheet_name = "sz_weights_4_0"
 py_sheet_name = "py_weights_4_0"
