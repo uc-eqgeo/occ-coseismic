@@ -1298,7 +1298,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 branch_tag = branch.split('_')[-1]
                 if '_sz_' in branch:
                     fault_type = 'sz'
-                    sz_name = 'hikkerk'
+                    sz_name = 'hikkerm'
                 elif '_py_' in branch:
                     fault_type = 'py'
                     sz_name = 'puysegur'

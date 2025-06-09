@@ -11,11 +11,11 @@ This script will discretise the subduction zone into patches based on the fake q
 """
 
 #### USER INPUT #####
-# Define whch subduction zone (hikkerk / puysegur)
-sz_zone = 'hikkerk'
+# Define whch subduction zone (hikkerm / puysegur)
+sz_zone = 'hikkerm'
 
-if not sz_zone in ['hikkerk', 'puysegur']:
-    print("Please define a valid subduction zone (hikkerk / puysegur).")
+if not sz_zone in ['hikkerm', 'puysegur']:
+    print("Please define a valid subduction zone (hikkerm / puysegur).")
     exit()
 
 #Sensitivity testing for subduction interface depth
@@ -55,7 +55,7 @@ def check_triangle_normal(triangle_vertices):
         ordered_triangle_vertices = triangle_vertices
     return ordered_triangle_vertices
 ####################
-if sz_zone == 'hikkerk':
+if sz_zone == 'hikkerm':
     prefix = 'sz'
 else:
     prefix = 'py'
@@ -123,7 +123,7 @@ all_rectangle_outline_gdf.to_file(f"discretised_fq_{sz_zone}/{prefix}_all_rectan
 # %%
 #####
 # read in triangle mesh and add the patch centroids as points
-if sz_zone == 'hikkerk':
+if sz_zone == 'hikkerm':
     mesh = meshio.read(f"../data/hik_kerm_adjusted_lock_final_slip_rates_coarse.vtk")
 else:
     mesh = meshio.read(f"../data/puysegur.vtk")
@@ -199,7 +199,7 @@ for ix, triangle_centroid in enumerate(triangle_centroids):
         closest_rectangles.append(-1)
 
 # # Prevent isolated triangles
-if os.path.exists('../data/hik_kerk3k_with_rake_neighbours.txt') and sz_zone == 'hikkerk':
+if os.path.exists('../data/hik_kerk3k_with_rake_neighbours.txt') and sz_zone == 'hikkerm':
     print('Removing isolated triangles')
     with open('../data/hik_kerk3k_with_rake_neighbours.txt', 'r') as f:
         neighbours = [[int(tri) for tri in line.strip().split()] for line in f.readlines()]
