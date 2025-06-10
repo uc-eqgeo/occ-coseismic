@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
-from scipy.sparse import csc_array, csr_array
+from scipy.sparse import csc_array, csr_array, hstack
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, combine_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
 from concurrent.futures import ThreadPoolExecutor
@@ -320,8 +320,11 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
 
         print(f'\tPreparing {n_samples} Poissonian Scenarios for {n_ruptures} ruptures...')
         rng = np.random.default_rng()
+        step = int(1e8 / n_samples)  # step size for poisson sampling (100,000,000 elements per run, ~9GB)
         for interval in time_interval:
-            scenarios = csc_array(rng.poisson(float(interval) * rates, size=(int(n_samples), n_ruptures)))
+            scenarios = csc_array(rng.poisson(float(interval) * rates[0:step], size=(int(n_samples), step)))
+            for ii in range(step, n_ruptures, step):
+                scenarios = hstack([scenarios, csc_array(rng.poisson(float(interval) * rates[ii:ii + step], size=(int(n_samples), len(rates[ii:ii + step]))))])
 
             with open(f"{randdir}/{interval}_yr_scenarios.pkl", "wb") as fid:
                 pkl.dump(scenarios, fid)
