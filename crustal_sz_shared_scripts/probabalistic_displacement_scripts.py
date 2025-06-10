@@ -819,7 +819,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         min_branches_per_array = 1
         if tasks_per_array < min_branches_per_array:
             tasks_per_array = min_branches_per_array
-        time_per_site = 0.2
+        time_per_site = 0.4
         array_time = 60 + time_per_site * n_sites * tasks_per_array
         hours, secs = divmod(array_time, 3600)
         mins = np.ceil(secs / 60)

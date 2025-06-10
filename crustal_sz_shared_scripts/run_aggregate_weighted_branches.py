@@ -90,8 +90,6 @@ if isinstance(sz_site_names, str):
 
 n_samples, job_time, mem, n_array_tasks, min_tasks_per_array = int(n_samples), int(job_time), int(mem), int(n_array_tasks), int(min_tasks_per_array)
 ## Solving processing conflicts
-# if calculate_fault_model_PPE and not nesi:
-#     calculate_weighted_mean_PPE = True  # If recalculating PPEs, you need to recalculate the weighted mean PPEs
 
 if paired_crustal_sz and calculate_weighted_mean_PPE:
     calculate_fault_model_PPE = True
