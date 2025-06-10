@@ -683,8 +683,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 os.remove(f"../{model_version_results_directory}/branch_combine_list.txt")
             if os.path.exists(f"../{model_version_results_directory}/combine_site_meta.pkl"):
                 os.remove(f"../{model_version_results_directory}/combine_site_meta.pkl")
-                with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
-                    pkl.dump({}, f)
+            with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
+                pkl.dump({}, f)
 
     branch_weight_list = []
     fault_model_allbranch_PPE_dict = {}
@@ -1060,8 +1060,8 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 os.remove(f"../{out_directory}/branch_combine_list.txt")
             if os.path.exists(f"../{out_directory}/combine_site_meta.pkl"):
                 os.remove(f"../{out_directory}/combine_site_meta.pkl")
-                with open(f"../{out_directory}/combine_site_meta.pkl", "wb") as f:
-                    pkl.dump({}, f)
+            with open(f"../{out_directory}/combine_site_meta.pkl", "wb") as f:
+                pkl.dump({}, f)
 
     # Make crustal_sz pair list
     all_crustal_branches_site_disp_dict = get_all_branches_site_disp_dict(crustal_branch_weight_dict, gf_name, slip_taper,
