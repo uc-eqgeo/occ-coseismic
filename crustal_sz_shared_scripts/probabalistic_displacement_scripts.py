@@ -1297,23 +1297,23 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
             interval_h5 = site_h5.create_group(interval)
             branch_disp_dict = {}
             for branch in branch_list:
-                fault_tag = branch.split('_')[-2]
-                branch_tag = branch.split('_')[-1]
-                if '_sz_' in branch:
-                    fault_type = 'sz'
-                    sz_name = 'hikkerm'
-                elif '_py_' in branch:
-                    fault_type = 'py'
-                    sz_name = 'puysegur'
-                if fault_tag == 'fq':
-                    fault_type += '_fq'
-                    sz_name = 'fq_' + sz_name
-
-                if fault_tag == 'c':
-                    fault_type = fault_tag
+                if '_c_' in branch:
+                    fault_type = 'c'
                     fault_dir = crustal_directory
                 else:
+                    if '_sz_' in branch:
+                        fault_type = 'sz'
+                        sz_name = 'hikkerm'
+                    elif '_py_' in branch:
+                        fault_type = 'py'
+                        sz_name = 'puysegur'
+                    
+                    if f"{fault_type}_fq" in branch:
+                        fault_type += '_fq'
+                        sz_name = 'fq_' + sz_name
                     fault_dir = next((sz_dir for sz_dir in sz_directory_list if f'/{sz_name}' in sz_dir))
+
+                branch_tag = branch.split(f'_{fault_type}_')[-1]
                 NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
                 with h5.File(NSHM_file, 'r') as NSHM_h5:
                     if site in NSHM_h5.keys():
