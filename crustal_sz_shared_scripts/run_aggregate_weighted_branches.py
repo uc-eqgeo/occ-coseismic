@@ -43,7 +43,7 @@ branch_weight_csv = "branch_weight_data_v0-1"  # If you want to use a specific b
 # Processing Parameters
 time_interval = [100]     # Time span of hazard forecast (yrs)
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
-n_cpus = 10
+n_cpus = 1
 thresh_lims = [0, 30]
 thresh_step = 0.01
 
@@ -69,14 +69,14 @@ if testing:
     mem = 1    # Memory allocation for cumu_PPE task array
 else:
     n_samples = 1e6   # Number of scenarios to run
-    job_time = 3    # Amount of time to allocate per site in the cumu_PPE task array
+    job_time = 5    # Amount of time to allocate per site in the cumu_PPE task array
     mem = 3    # Memory allocation for cumu_PPE task array
 
 if paired_crustal_sz and nesi_step == 'prep':
     if n_array_tasks < 500:
         n_array_tasks = 500
-    if job_time < 5:
-        job_time = 5
+    if job_time < 10:
+        job_time = 10
 
 if fault_type == 'crustal' and n_array_tasks < 500:
     n_array_tasks = 500
@@ -85,6 +85,9 @@ if fault_type == 'all':
     job_time = 120
     mem = 3
     min_tasks_per_array = 5
+
+if not calculate_fault_model_PPE and calculate_weighted_mean_PPE:
+    job_time = 20
 
 if isinstance(sz_site_names, str):
     sz_site_names = [sz_site_names]
@@ -393,7 +396,7 @@ if paired_crustal_sz:
 
 # calculate weighted mean PPE for the branch or paired dataset
 weighted_mean_PPE_filepath = f"../{out_version_results_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
-if not paired_crustal_sz and calculate_weighted_mean_PPE or not os.path.exists(weighted_mean_PPE_filepath):
+if not paired_crustal_sz and calculate_weighted_mean_PPE:
     print('Calculating weighted mean PPE...')
     get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=out_version_results_directory, outfile_extension=outfile_extension,
                                slip_taper=slip_taper, nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples, min_tasks_per_array=10,
