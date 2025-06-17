@@ -1412,15 +1412,17 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
         errs = []
 
     for site in site_list:
-        site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
-
-        if site_PPE.shape[0] > 0:
-            # get first index that is < 10% (ideally we would interpolate for exact value but don't have a function)
-            exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= round(probability,4)), -1)
-            disp = thresholds[exceedance_index]
-        else:
-            disp = 0
-        disps.append(disp)
+        try:
+            site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
+            if site_PPE.shape[0] > 0:
+                # get first index that is < 10% (ideally we would interpolate for exact value but don't have a function)
+                exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= round(probability,4)), -1)
+                disp = thresholds[exceedance_index]
+            else:
+                disp = 0
+            disps.append(disp)
+        except KeyError:
+            disps.append(np.nan)
 
         if err_index:
             if weighted:
@@ -1469,11 +1471,14 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
     # get list of probabilities at defined displacement threshold (one for each site)
     probs_threshold = []
     for site in site_list:
-        site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
-        if site_PPE.shape[0] > index:
-            probs_threshold.append(site_PPE[index])
-        else:
-            probs_threshold.append(0)
+        try:
+            site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
+            if site_PPE.shape[0] > index:
+                probs_threshold.append(site_PPE[index])
+            else:
+                probs_threshold.append(0)
+        except KeyError:
+            probs_threshold.append(np.nan)
 
     return probs_threshold
 
