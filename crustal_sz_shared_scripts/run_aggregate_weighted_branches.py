@@ -319,23 +319,25 @@ if not paired_crustal_sz:
     fault_type = fault_type[0]
     out_version_results_directory = version_discretise_directory[ftype[0]]
     PPE_filepath = f"../{out_version_results_directory}/all_branch_PPE_dict{outfile_extension}{taper_extension}.pkl"
-    if not os.path.exists(PPE_filepath):
-        print('No fault model PPE pkl file found. Making a new one...')
-        calculate_fault_model_PPE = True
-        use_saved_dictionary = False
+    # If only creating xarrays from final datasets, don't need to calculate PPEs
+    if any([calculate_fault_model_PPE, calculate_weighted_mean_PPE]):
+        if not os.path.exists(PPE_filepath):
+            print('No fault model PPE pkl file found. Making a new one...')
+            calculate_fault_model_PPE = True
+            use_saved_dictionary = False
 
-    if calculate_fault_model_PPE or not use_saved_dictionary:
-        print('\nCreating fault model PPE dictionaries...')
-        PPE_dict = make_fault_model_PPE_dict(
-                    branch_weight_dict=fault_model_branch_weight_dict,
-                    model_version_results_directory=out_version_results_directory, n_samples=n_samples,
-                    slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step, sbatch=prep_sbatch, mem=mem,
-                    time_interval=time_interval, sd=sd, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array, job_time=job_time,
-                    load_random=load_random, remake_PPE=remake_PPE, account=account, thresh_lims=thresh_lims, thresh_step=thresh_step, inv_sites=inv_sites)
-    else:
-        print('Loading pre-prepared fault model PPE dictionary...')
-        with open(PPE_filepath, 'rb') as f:
-            PPE_dict = pkl.load(f)
+        if calculate_fault_model_PPE or not use_saved_dictionary:
+            print('\nCreating fault model PPE dictionaries...')
+            PPE_dict = make_fault_model_PPE_dict(
+                        branch_weight_dict=fault_model_branch_weight_dict,
+                        model_version_results_directory=out_version_results_directory, n_samples=n_samples,
+                        slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step, sbatch=prep_sbatch, mem=mem,
+                        time_interval=time_interval, sd=sd, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array, job_time=job_time,
+                        load_random=load_random, remake_PPE=remake_PPE, account=account, thresh_lims=thresh_lims, thresh_step=thresh_step, inv_sites=inv_sites)
+        else:
+            print('Loading pre-prepared fault model PPE dictionary...')
+            with open(PPE_filepath, 'rb') as f:
+                PPE_dict = pkl.load(f)
 
 ##### paired crustal and sz PPE
 if paired_crustal_sz:
