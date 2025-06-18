@@ -847,6 +847,43 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
         return fault_model_allbranch_PPE_dict
 
+def check_completed_weighted_sites(weighted_h5, requested_sites, time_interval, thresh_lims=[0, 3], thresh_step=0.01, n_samples=100000):
+        # Check sites individually to see if they have been processed
+        site_list = []
+        intervals_list = []
+        for site in requested_sites:
+            if site in weighted_h5.keys():
+                required_intervals = []
+                for interval in time_interval:
+                    # Check each time interval
+                    if interval in weighted_h5[site].keys():
+                        if 'meta' in weighted_h5[site][interval].keys():
+                            min_thresh, max_thresh, thresh_delta, n_scenarios = weighted_h5[site][interval]['meta'][:]
+                            if any([min_thresh > thresh_lims[0], max_thresh < thresh_lims[1], thresh_delta != thresh_step, n_scenarios < n_samples]):  # Failure critieria
+                                required_intervals.append(interval)
+                    else:
+                        required_intervals.append(interval)
+                if len(required_intervals) > 0:
+                    site_list.append(site)
+                    intervals_list.append(required_intervals)
+            else:
+                site_list.append(site)
+                intervals_list.append(time_interval)
+        return site_list, intervals_list
+
+def calc_array_times(site_list, min_tasks_per_array=100, n_array_tasks=100, job_time=60):
+    # Calculate number of task arrays and required time for each array
+    n_sites = len(site_list)
+    tasks_per_array = np.ceil(n_sites / n_array_tasks)
+    if tasks_per_array < min_tasks_per_array:
+        tasks_per_array = min_tasks_per_array
+    n_array_tasks = int(np.ceil(n_sites / tasks_per_array))
+    array_time = 60 + job_time * tasks_per_array
+    hours, rem = divmod(array_time, 3600)
+    mins = np.ceil(rem / 60)
+
+    return tasks_per_array, n_array_tasks, hours, mins
+
 def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper, site_list=[], thresh_lims=[0, 3], thresh_step=0.01, nesi=False, nesi_step='prep', n_samples=100000,
                                min_tasks_per_array=100, n_array_tasks=100, mem=10, cpus=1, account='', job_time=60, remake_PPE=False, time_interval=['100']):
     """takes all the branch PPEs and combines them based on the branch weights into a weighted mean PPE dictionary
@@ -907,27 +944,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     if remake_PPE:
         intervals_list = [time_interval for _ in site_list]
     else:
-        # Check sites individually to see if they have been processed
-        site_list = []
-        intervals_list = []
-        for site in requested_sites:
-            if site in weighted_h5.keys():
-                required_intervals = []
-                for interval in time_interval:
-                    # Check each time interval
-                    if interval in weighted_h5[site].keys():
-                        if 'meta' in weighted_h5[site][interval].keys():
-                            min_thresh, max_thresh, thresh_delta, n_scenarios = weighted_h5[site][interval]['meta'][:]
-                            if any([min_thresh > thresh_lims[0], max_thresh < thresh_lims[1], thresh_delta != thresh_step, n_scenarios < n_samples]):  # Failure critieria
-                                required_intervals.append(interval)
-                    else:
-                        required_intervals.append(interval)
-                if len(required_intervals) > 0:
-                    site_list.append(site)
-                    intervals_list.append(required_intervals)
-            else:
-                site_list.append(site)
-                intervals_list.append(time_interval)
+        site_list, intervals_list = check_completed_weighted_sites(weighted_h5, requested_sites, time_interval, thresh_lims=thresh_lims, thresh_step=thresh_step, n_samples=n_samples)
 
     if len(site_list) == 0:
         print(f"All sites have been processed. Skipping...")
@@ -986,14 +1003,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                 for site in site_list:
                     f.write(f"../{out_directory}/weighted_sites/{site}.h5\n")
     
-            n_sites = len(site_list)
-            tasks_per_array = np.ceil(n_sites / n_array_tasks)
-            if tasks_per_array < min_tasks_per_array:
-                tasks_per_array = min_tasks_per_array
-            n_array_tasks = int(np.ceil(n_sites / tasks_per_array))
-            array_time = 60 + job_time * tasks_per_array
-            hours, rem = divmod(array_time, 3600)
-            mins = np.ceil(rem / 60)
+            tasks_per_array, n_array_tasks, hours, mins = calc_array_times(site_list, min_tasks_per_array, n_array_tasks, job_time)
 
             slurm_file = prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_array_tasks, site_file,
                                          hours=int(hours), mins=int(mins), mem=mem, cpus=cpus, account=account, job_time=job_time)
@@ -1005,14 +1015,28 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             printProgressBar(0, len(site_list), prefix=f'\tAdding Site {site_list[0]}', suffix='Complete 00:00:00 (00:00s/site)', length=50)
             for ix, site in enumerate(site_list):
                 site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
-                if remake_PPE and site in weighted_h5.keys():
-                    del weighted_h5[site]
-                site_group = weighted_h5.create_group(site)
+                # The key assumption here is that if a site.h5 exists, then this is the new data that needs to be added to the weighted.h5 file
+                # If a site in the site list doesn't exist, then that is because it has already been added to the weighted .h5 file in the first run before timeout, and removed from the directory
+                if not os.path.exists(site_h5_file):
+                    continue
+                if site in weighted_h5.keys():
+                    site_group = weighted_h5[site]
+                    if "site_coords" in site_group.keys():
+                        # Just delete the site coords, as this is going to be re-written
+                        del weighted_h5[site]["site_coords"]
+                else:
+                    # Create a site group if one does not yet exist
+                    site_group = weighted_h5.create_group(site)
+
                 with h5.File(site_h5_file, 'r') as site_h5:
                     # Take the data from the site_h5 and put it in the weighted_h5
                     site_group.create_dataset("site_coords", data=site_h5['site_coords'])
                     intervals = [key for key in site_h5.keys() if key.isnumeric()]
+                    all_intervals_prepared = all([True for interval in intervals_list[ix] if interval in intervals])
                     for interval in intervals:
+                        # Remove previous data
+                        if interval in site_group.keys():
+                            del site_group[interval]
                         interval_group = site_group.create_group(interval)
                         interval_group.create_dataset("meta", data=site_h5[interval]['meta'][:])
                         for exceed_type in exceed_type_list:
@@ -1020,11 +1044,33 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                             interval_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_h5[interval][f'branch_exceedance_probs_{exceed_type}'], compression='gzip', compression_opts=6)
                             interval_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = [branch for branch in site_h5['branch_id_list'].asstr()]
                             interval_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=site_h5[interval][f'{exceed_type}_weighted_percentile_error'], compression=None)
-
+                if all_intervals_prepared:
+                    # Remove the site file if it has added all requested intervals into the weighted_h5
+                    # If not, preserve as it'll need to be reprocessed
+                    os.remove(site_h5_file)
                 elapsed = time_elasped(time(), start, decimal=False)
                 printProgressBar(ix + 1, len(site_list), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
+
+            # Run a check to make sure all sites have been added correctly
+            site_list, intervals_list = check_completed_weighted_sites(weighted_h5, requested_sites, time_interval, thresh_lims=thresh_lims, thresh_step=thresh_step, n_samples=n_samples)
             weighted_h5.close()
-            shutil.rmtree(f"../{out_directory}/weighted_sites")
+            site_file = f"../{out_directory}/weighted_sites/site_list.txt"
+            if len(site_list) > 0:
+                # Create a new site list file with the sites that still need processing
+                print(f"Not all sites have been added correctly. {len(site_list)} sites still need processing.")
+                with open(f"{site_file}", "w") as f:
+                    for site in site_list:
+                        f.write(f"../{out_directory}/weighted_sites/{site}.h5\n")
+                
+                tasks_per_array, n_array_tasks, hours, mins = calc_array_times(site_list, min_tasks_per_array, n_array_tasks, job_time)
+
+                slurm_file = prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_array_tasks, site_file,
+                                         hours=int(hours), mins=int(mins), mem=mem, cpus=cpus, account=account, job_time=job_time)
+                print(f"Now rerun\n\tsbatch {slurm_file}")
+            else:
+                # Final cleanup if successfully reached the end of the function
+                os.remove(f"{site_file}")
+                os.rmdir(f"../{out_directory}/weighted_sites")
 
     return
 

@@ -491,7 +491,7 @@ if __name__ == "__main__":
                                 thresholds=combine_dict[branch]['thresholds'])
         print('\nAll branches combined!')
 
-    elif args.nesi_job == 'weighted_mean':
+    elif args.nesi_job == 'weighted_mean':  # Is this used anymore?
         nesiprint('Loading fault model PPE dictionary...')
         paired_PPE_filepath = f"../{args.outDir}/{args.PPE_name}"
         with open(paired_PPE_filepath, 'rb') as f:
