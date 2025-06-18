@@ -11,18 +11,19 @@ import h5py as h5
 This script will take the discretised fault patches, and calculate the Green's functions for each site in the site list.
 If the sites listed in the CSV already have a greens function calculated, then the script will skip that site.
 """
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_validation_sites"
+version_extension = "_version_0-1S"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
 # Define whch subduction zone ([_fq_]hikkerm / puysegur)
-sz_zone = '_hikkerm'
+sz_zone = '_puysegur'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-csvfile = 'validation_sites_points.csv'
+csvfile = 'cube_centroids_27000_9000_buffer_0_33S_points.csv'
 site_list_csv = os.path.join('..', 'sites', csvfile)
 sites_df = pd.read_csv(site_list_csv)
 
