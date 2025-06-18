@@ -217,3 +217,34 @@ centroid_df['Y'] = centroid_gdf.geometry.y
 centroid_df['id'] = np.arange(centroid_df.shape[0])
 centroid_df.to_csv(f'sites\\{centroid_name}.csv', index=False)
 print(f"Written sites\\{centroid_name}.csv")
+
+wellington = Point([1749150, 5428092])
+distance = 350  # Distance South of Wellington in km to include for hikurangi
+
+# For Hikurangi, find all centroids north of 350km south of Wellington
+northern_section = centroid_gdf[(centroid_gdf.geometry.y > wellington.y) | (centroid_gdf.distance(wellington) < distance * 1e3)]
+northern_section.to_file(f'sites\\{centroid_name}N.geojson', driver='GeoJSON')
+print(f"Written sites\\{centroid_name}N.geojson")
+
+centroid_df = pd.DataFrame(columns=['X', 'Y', 'id'])
+centroid_df['X'] = northern_section.geometry.x
+centroid_df['Y'] = northern_section.geometry.y
+centroid_df['id'] = northern_section.id
+centroid_df.to_csv(f'sites\\{centroid_name}N.csv', index=False)
+print(f"Written sites\\{centroid_name}N.csv")
+
+
+# Find South Island Centroids
+south_islands = coastline.geometry.apply(lambda x: shapely.centroid(x).y < 5500000)
+south_islands_coast = coastline[south_islands]
+
+south_islands_gdf = centroid_gdf[centroid_gdf.geometry.within(south_islands_coast.unary_union)]
+south_islands_gdf.to_file(f'sites\\{centroid_name}S.geojson', driver='GeoJSON')
+print(f"Written sites\\{centroid_name}N.geojson")
+
+centroid_df = pd.DataFrame(columns=['X', 'Y', 'id'])
+centroid_df['X'] = south_islands_gdf.geometry.x
+centroid_df['Y'] = south_islands_gdf.geometry.y
+centroid_df['id'] = south_islands_gdf.id
+centroid_df.to_csv(f'sites\\{centroid_name}S.csv', index=False)
+print(f"Written sites\\{centroid_name}S.csv")
