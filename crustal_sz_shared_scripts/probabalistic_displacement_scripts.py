@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
-from scipy.sparse import csc_array, csr_array
+from scipy.sparse import csc_array, csr_array, hstack
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, combine_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
 from concurrent.futures import ThreadPoolExecutor
@@ -320,8 +320,11 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
 
         print(f'\tPreparing {n_samples} Poissonian Scenarios for {n_ruptures} ruptures...')
         rng = np.random.default_rng()
+        step = int(1e8 / n_samples)  # step size for poisson sampling (100,000,000 elements per run, ~9GB)
         for interval in time_interval:
-            scenarios = csc_array(rng.poisson(float(interval) * rates, size=(int(n_samples), n_ruptures)))
+            scenarios = csc_array(rng.poisson(float(interval) * rates[0:step], size=(int(n_samples), step)))
+            for ii in range(step, n_ruptures, step):
+                scenarios = hstack([scenarios, csc_array(rng.poisson(float(interval) * rates[ii:ii + step], size=(int(n_samples), len(rates[ii:ii + step]))))])
 
             with open(f"{randdir}/{interval}_yr_scenarios.pkl", "wb") as fid:
                 pkl.dump(scenarios, fid)
@@ -680,8 +683,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 os.remove(f"../{model_version_results_directory}/branch_combine_list.txt")
             if os.path.exists(f"../{model_version_results_directory}/combine_site_meta.pkl"):
                 os.remove(f"../{model_version_results_directory}/combine_site_meta.pkl")
-                with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
-                    pkl.dump({}, f)
+            with open(f"../{model_version_results_directory}/combine_site_meta.pkl", "wb") as f:
+                pkl.dump({}, f)
 
     branch_weight_list = []
     fault_model_allbranch_PPE_dict = {}
@@ -816,7 +819,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         min_branches_per_array = 1
         if tasks_per_array < min_branches_per_array:
             tasks_per_array = min_branches_per_array
-        time_per_site = 0.2
+        time_per_site = 0.5
         array_time = 60 + time_per_site * n_sites * tasks_per_array
         hours, secs = divmod(array_time, 3600)
         mins = np.ceil(secs / 60)
@@ -1057,8 +1060,8 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 os.remove(f"../{out_directory}/branch_combine_list.txt")
             if os.path.exists(f"../{out_directory}/combine_site_meta.pkl"):
                 os.remove(f"../{out_directory}/combine_site_meta.pkl")
-                with open(f"../{out_directory}/combine_site_meta.pkl", "wb") as f:
-                    pkl.dump({}, f)
+            with open(f"../{out_directory}/combine_site_meta.pkl", "wb") as f:
+                pkl.dump({}, f)
 
     # Make crustal_sz pair list
     all_crustal_branches_site_disp_dict = get_all_branches_site_disp_dict(crustal_branch_weight_dict, gf_name, slip_taper,
@@ -1294,23 +1297,23 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
             interval_h5 = site_h5.create_group(interval)
             branch_disp_dict = {}
             for branch in branch_list:
-                fault_tag = branch.split('_')[-2]
-                branch_tag = branch.split('_')[-1]
-                if '_sz_' in branch:
-                    fault_type = 'sz'
-                    sz_name = 'hikkerm'
-                elif '_py_' in branch:
-                    fault_type = 'py'
-                    sz_name = 'puysegur'
-                if fault_tag == 'fq':
-                    fault_type += '_fq'
-                    sz_name = 'fq_' + sz_name
-
-                if fault_tag == 'c':
-                    fault_type = fault_tag
+                if '_c_' in branch:
+                    fault_type = 'c'
                     fault_dir = crustal_directory
                 else:
+                    if '_sz_' in branch:
+                        fault_type = 'sz'
+                        sz_name = 'hikkerm'
+                    elif '_py_' in branch:
+                        fault_type = 'py'
+                        sz_name = 'puysegur'
+                    
+                    if f"{fault_type}_fq" in branch:
+                        fault_type += '_fq'
+                        sz_name = 'fq_' + sz_name
                     fault_dir = next((sz_dir for sz_dir in sz_directory_list if f'/{sz_name}' in sz_dir))
+
+                branch_tag = branch.split(f'_{fault_type}_')[-1]
                 NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
                 with h5.File(NSHM_file, 'r') as NSHM_h5:
                     if site in NSHM_h5.keys():

@@ -15,18 +15,18 @@ os.chdir(os.path.dirname(__file__))
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
-crustal_site_names = "_EastCoastNI_10km"   # Name of the sites geojson
-sz_site_names = ["_EastCoastNI_5km", "_SouthIsland_5km"]       # Name of the sites geojson
+crustal_site_names = "_version_0-1"   # Name of the sites geojson
+sz_site_names = ["_version_0-1", "_version_0-1S"]       # Name of the sites geojson
 sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerm", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = False   # Prepares code for NESI runs
+nesi = True   # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
 fakequakes = True  # Use fakequakes for the subduction zone (applied only to hikkerk)
 
 # Processing Flags (True/False)
-single_branch = ["_sz_fq_3lhb110max9", "_sz_fq_plhb110max9"] # Allows you to specifically select which branches to calculate PPEs for. If None, all branches will be calculated
-rate_scaling = False           # Do you want to calculate PPEs for a single branch with different rate scalings?
+single_branch = None # Allows you to specifically select which branches to calculate PPEs for. If None, all branches will be calculated
+rate_scaling = True           # Do you want to calculate PPEs for a single branch with different rate scalings?
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = True             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
@@ -38,17 +38,18 @@ default_plot_order = True       # Do you want to plot haz curves for all sites, 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../sites/EastCoastNI_5km_transect_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
+branch_weight_csv = "branch_weight_data_v0-1"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
 
 # Processing Parameters
 time_interval = [100]     # Time span of hazard forecast (yrs)
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
-n_cpus = 10
+n_cpus = 1
 thresh_lims = [0, 30]
 thresh_step = 0.01
 
 # Nesi Parameters
 prep_sbatch = True   # Prep jobs for sbatch
-nesi_step = 'combine'  # 'prep' or 'combine'
+nesi_step = 'prep'  # 'prep' or 'combine'
 n_array_tasks = 250    # Number of array tasks
 min_tasks_per_array = 250   # Minimum number of sites per array
 min_branches_per_array = 1  # Minimum number of branches per array
@@ -68,14 +69,14 @@ if testing:
     mem = 1    # Memory allocation for cumu_PPE task array
 else:
     n_samples = 1e6   # Number of scenarios to run
-    job_time = 3    # Amount of time to allocate per site in the cumu_PPE task array
+    job_time = 5    # Amount of time to allocate per site in the cumu_PPE task array
     mem = 3    # Memory allocation for cumu_PPE task array
 
 if paired_crustal_sz and nesi_step == 'prep':
     if n_array_tasks < 500:
         n_array_tasks = 500
-    if job_time < 5:
-        job_time = 5
+    if job_time < 10:
+        job_time = 10
 
 if fault_type == 'crustal' and n_array_tasks < 500:
     n_array_tasks = 500
@@ -85,13 +86,14 @@ if fault_type == 'all':
     mem = 3
     min_tasks_per_array = 5
 
+if not calculate_fault_model_PPE and calculate_weighted_mean_PPE:
+    job_time = 20
+
 if isinstance(sz_site_names, str):
     sz_site_names = [sz_site_names]
 
 n_samples, job_time, mem, n_array_tasks, min_tasks_per_array = int(n_samples), int(job_time), int(mem), int(n_array_tasks), int(min_tasks_per_array)
 ## Solving processing conflicts
-# if calculate_fault_model_PPE and not nesi:
-#     calculate_weighted_mean_PPE = True  # If recalculating PPEs, you need to recalculate the weighted mean PPEs
 
 if paired_crustal_sz and calculate_weighted_mean_PPE:
     calculate_fault_model_PPE = True
@@ -226,7 +228,11 @@ for ix, model in enumerate(fault_type):
     version_discretise_directory.append(f"{results_directory}/{disc_version_list[ix]}")
 
 # get branch weights from the saved Excel spreadsheet
-branch_weight_file_path = os.path.relpath(os.path.join(os.path.dirname(__file__), f"../data/branch_weight_data.xlsx"))
+if branch_weight_csv is None:
+    branch_weight_csv = "branch_weight_data.xlsx"
+elif not branch_weight_csv.endswith('.xlsx'):
+    branch_weight_csv += ".xlsx"
+branch_weight_file_path = os.path.relpath(os.path.join(os.path.dirname(__file__), "..", "data", branch_weight_csv))
 crustal_sheet_name = "crustal_weights_4_2"
 sz_sheet_name = "sz_weights_4_0"
 py_sheet_name = "py_weights_4_0"
@@ -390,7 +396,7 @@ if paired_crustal_sz:
 
 # calculate weighted mean PPE for the branch or paired dataset
 weighted_mean_PPE_filepath = f"../{out_version_results_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
-if not paired_crustal_sz and calculate_weighted_mean_PPE or not os.path.exists(weighted_mean_PPE_filepath):
+if not paired_crustal_sz and calculate_weighted_mean_PPE:
     print('Calculating weighted mean PPE...')
     get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=out_version_results_directory, outfile_extension=outfile_extension,
                                slip_taper=slip_taper, nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples, min_tasks_per_array=10,

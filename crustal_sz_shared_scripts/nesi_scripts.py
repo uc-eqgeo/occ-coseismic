@@ -96,7 +96,7 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
 
     with open(slurm_file, "wb") as f:
         f.write("#!/bin/bash -e\n".encode())
-        f.write(f"#SBATCH --job-name=occ-{os.path.basename(model_version_results_directory)}\n".encode())
+        f.write(f"#SBATCH --job-name=02_{os.path.basename(model_version_results_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS), {job_time} secs/job\n".encode())
         f.write(f"#SBATCH --mem={mem}GB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
@@ -105,8 +105,8 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
             f.write("#SBATCH --partition=large\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
-        f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_sites_%j_task%a.out\n".encode())
-        f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_sites_%j_task%a.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/02_{os.path.basename(model_version_results_directory)}_sites_%j_task%a.out\n".encode())
+        f.write(f"#SBATCH -e logs/02_{os.path.basename(model_version_results_directory)}_sites_%j_task%a.err\n\n".encode())
 
         f.write("# Activate the conda environment\n".encode())
         f.write("mkdir -p logs\n".encode())
@@ -212,15 +212,15 @@ def prep_SLURM_combine_submission(combine_dict_file, branch_combine_list, model_
 
     with open(slurm_file, "wb") as f:
         f.write("#!/bin/bash -e\n".encode())
-        f.write(f"#SBATCH --job-name=occ-{os.path.basename(model_version_results_directory)}\n".encode())
+        f.write(f"#SBATCH --job-name=04-{os.path.basename(model_version_results_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
         f.write(f"#SBATCH --mem={mem}GB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
-        f.write(f"#SBATCH -o logs/{os.path.basename(model_version_results_directory)}_combine_%j_task%a.out\n".encode())
-        f.write(f"#SBATCH -e logs/{os.path.basename(model_version_results_directory)}_combine_%j_task%a.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/04_{os.path.basename(model_version_results_directory)}_combine_%j_task%a.out\n".encode())
+        f.write(f"#SBATCH -e logs/04_{os.path.basename(model_version_results_directory)}_combine_%j_task%a.err\n\n".encode())
 
         f.write("# Activate the conda environment\n".encode())
         f.write("mkdir -p logs\n".encode())
@@ -245,7 +245,7 @@ def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks
 
     with open(slurm_file, "wb") as f:
         f.write("#!/bin/bash -e\n".encode())
-        f.write(f"#SBATCH --job-name=occ-{os.path.basename(out_directory)}\n".encode())
+        f.write(f"#SBATCH --job-name=07_{os.path.basename(out_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS), {job_time} secs/site\n".encode())
         f.write(f"#SBATCH --mem={mem}GB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
@@ -254,8 +254,8 @@ def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks
             f.write("#SBATCH --partition=large\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
-        f.write(f"#SBATCH -o logs/{os.path.basename(out_directory)}_site_weights_%j_task%a.out\n".encode())
-        f.write(f"#SBATCH -e logs/{os.path.basename(out_directory)}_site_weights_%j_task%a.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/07_{os.path.basename(out_directory)}_weights_%j_task%a.out\n".encode())
+        f.write(f"#SBATCH -e logs/07_{os.path.basename(out_directory)}_weights_%j_task%a.err\n\n".encode())
 
         f.write("# Activate the conda environment\n".encode())
         f.write("mkdir -p logs\n".encode())
