@@ -19,11 +19,13 @@ import os
 #   named_rectangle_centroids.geojson,
 #   named_rectangle_polygons.geojson
 
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 ###### Inputs 1
 # Doesn't really matter which inversion solution because all the NSHM fault files are the same.
 NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"
 # provide model extension to match the mesh directory and name output directory
-discretised_extension = "_CFM_test"
+discretised_extension = "_CFM"
 
 mesh_directory = f"../data/mesh2500"
 # this must be the same length as the number of meshes and have some value that matches all the target fault sections

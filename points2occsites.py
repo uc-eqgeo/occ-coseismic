@@ -10,7 +10,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 
-searise_csv = ['.\\sites\\validation_sites.csv']
+searise_csv = ['.\\sites\\cube_centroids_27000_9000_buffer_0_33S.csv']
 data_format = 'qgis' # 'qgis' for qgis exports, 'searise' for searise exports, 'hamling' for Hamling VLM coast sites from paper
 out_csv_file = None  # If none, automatically set to the input file name with '_points' appended
 
