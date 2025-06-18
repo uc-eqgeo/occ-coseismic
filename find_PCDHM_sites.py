@@ -56,8 +56,12 @@ def split_cell(cell_dicts, parent_id, max_grid, min_grid, max_id, coastline, fau
             if not faults.intersects(poly).any():
                 # Stop if cell is acceptable resolution
                 if cell_dicts[max_id]['resolution'] <= max_grid:
-                    # If an inland cell and hires coast not needed
-                    if coastline.contains(poly).any() and hires_coast:
+                    # If it is a coastal cell and hires coasts are not needed
+                    if coastline.intersects(poly).any() and not hires_coast:
+                        cell_dicts[max_id]['split'] = False
+                        cell_dicts[max_id]['write_out'] = True
+                    # If an inland cell
+                    elif coastline.contains(poly).any():
                         cell_dicts[max_id]['split'] = False
                         cell_dicts[max_id]['write_out'] = True
 
@@ -71,18 +75,18 @@ def split_cell(cell_dicts, parent_id, max_grid, min_grid, max_id, coastline, fau
 search_type = 'cube'  # 'grid', 'cube' or 'quad'
 
 # Resolution
-max_grid = 9000  # Default resolution. Min grid will be adjusted to work with this
-min_grid = 1000  # Min grid is the highest resolution of the quad or cubetree. Must be reachable by halving or thirding max_grid 
+max_grid = 27000  # Default resolution. Min grid will be adjusted to work with this
+min_grid = 9000  # Min grid is the highest resolution of the quad or cubetree. Must be reachable by halving or thirding max_grid 
 
 grid_width = 1000e3  # Width of the grid in meters
 grid_length = 1500e3 # Length of the grid in meters
 
 # Keep as false to make sure all of coast is covered, and therefore all OCC sites can be queried in datamesh
-hires_coast = True # If True, keep splitting cells that intersect the coast
-coastal_trim = False  # If True, removes any centroids that are not overland, even if polygon crosses the coast
+hires_coast = False # If True, keep splitting cells that intersect the coast
+coastal_trim = True  # If True, removes any centroids that are not overland, even if polygon crosses the coast
 
-fault_buffer = 0
-min_slip_rate = 0 # Minimum slip rate for a fault to be included in the grid
+fault_buffer = None
+min_slip_rate = 1 # Minimum slip rate for a fault to be included in the grid
 
 if search_type == 'quad':
     split_factor = 2  # How many times to split each cell
