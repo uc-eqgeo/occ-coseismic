@@ -22,6 +22,7 @@ from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 from scipy.sparse import csc_array, csr_array, hstack
+from scipy.interpolate import NearestNDInterpolator, CloughTocher2DInterpolator
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, combine_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
 from concurrent.futures import ThreadPoolExecutor
@@ -2662,7 +2663,7 @@ def save_disp_prob_tifs(extension1, slip_taper, model_version_results_directory,
 def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0,
                            probs_lims=[0.01, 0.2], probs_step=0, output_thresh=True, output_probs=True, weighted=False,
                            output_grids=True, thresholds=None, probabilities=None, sites=[], out_tag='', single_branch='',
-                           time_intervals=['100']):
+                           time_intervals=['100'], interp_sites=None):
     """
     Add all results to x_array datasets, and save as netcdf files
     """
@@ -2767,9 +2768,29 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         site_x = (np.array(site_x) - x_data[0]) / x_res
         site_y = (np.array(site_y) - y_data[0]) / y_res
 
+        if interp_sites:
+            interp_df = pd.read_csv(interp_sites[0])
+            interp_x_data = np.unique(interp_df['Lon'].values)
+            interp_y_data = np.unique(interp_df['Lat'].values)
+
+            xmin, xmax = min(interp_x_data), max(interp_x_data)
+            ymin, ymax = min(interp_y_data), max(interp_y_data)
+            x_res, y_res = min(np.diff(interp_x_data)), min(np.diff(interp_y_data))
+
+            interp_x_data = np.arange(xmin, xmax + x_res, x_res)
+            interp_y_data = np.arange(ymin, ymax + y_res, y_res)
+
+            interp_x = (interp_df['Lon'].values - interp_df['Lon'].min()) / x_res
+            interp_y = (interp_df['Lat'].values - interp_df['Lat'].min()) / y_res
+
         # Create Datasets
         da = {}
         ds = xr.Dataset()
+
+        if interp_sites:
+            da_i = {}
+            ds_i = xr.Dataset()
+
         if extension1 == "":
             out_name = ''
             branch_name = os.path.basename(model_version_results_directory)
@@ -2809,6 +2830,22 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                 da[exceed_type].attrs['crs'] = 'EPSG:2193'
 
                 ds['disp_' + exceed_type] = da[exceed_type]
+
+                if interp_sites:
+                    interp_grd = np.zeros([len(thresholds), len(time_intervals), len(interp_y_data), len(interp_x_data)]) * np.nan
+                    for thresh_ix in range(len(thresholds)):
+                        for interval_ix in range(len(time_intervals)):
+                            data = thresh_grd[thresh_ix, interval_ix, :, :]
+                            y_ix, x_ix = np.where(~np.isnan(data))
+                            interp = NearestNDInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
+                            interp_grd[thresh_ix, interval_ix, interp_y.astype(int), interp_x.astype(int)] = interp((interp_df['Lon'].values, interp_df['Lat'].values))
+
+                    da_i[exceed_type] = xr.DataArray(interp_grd, dims=['threshold', 'interval', 'lat', 'lon'], coords={'threshold': thresholds, 'interval': np.array([int(i) for i in time_intervals]), 'lat': interp_y_data, 'lon': interp_x_data})
+                    da_i[exceed_type].attrs['exceed_type'] = exceed_type
+                    da_i[exceed_type].attrs['threshold'] = 'Displacement (m)'
+                    da_i[exceed_type].attrs['interval'] = 'Years'
+                    da_i[exceed_type].attrs['crs'] = 'EPSG:2193'
+                    ds_i['disp_' + exceed_type] = da_i[exceed_type]
             out_name += 'disp_'
 
         if output_probs:
@@ -2840,12 +2877,41 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                 da[exceed_type].attrs['crs'] = 'EPSG:2193'
 
                 ds['prob_' + exceed_type] = da[exceed_type]
+                if interp_sites:
+                    interp_grd = np.zeros([len(probabilities), len(time_intervals), len(interp_y_data), len(interp_x_data)]) * np.nan
+                    for prob_ix in range(len(probabilities)):
+                        for interval_ix in range(len(time_intervals)):
+                            data = thresh_grd[prob_ix, interval_ix, :, :]
+                            y_ix, x_ix = np.where(~np.isnan(data))
+                            interp = CloughTocher2DInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
+                            interp_vals = interp((interp_df['Lon'].values, interp_df['Lat'].values))
+                            nan_ix = np.where(np.isnan(interp_vals))[0]
+                            if len(nan_ix) > 0:
+                                interp = NearestNDInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
+                            interp_vals[nan_ix] = interp((interp_df['Lon'].values[nan_ix], interp_df['Lat'].values[nan_ix]))
+                            interp_grd[prob_ix, interval_ix, interp_y.astype(int), interp_x.astype(int)] = interp_vals
+
+                    da_i[exceed_type] = xr.DataArray(interp_grd, dims=['probability', 'interval', 'lat', 'lon'], coords={'probability': (probabilities * 100).astype(int), 'interval': np.array([int(i) for i in time_intervals]), 'lat': interp_y_data, 'lon': interp_x_data})
+                    da_i[exceed_type].attrs['exceed_type'] = exceed_type
+                    da_i[exceed_type].attrs['threshold'] = 'Exceedance Probability (%)'
+                    da_i[exceed_type].attrs['interval'] = 'Years'
+                    da_i[exceed_type].attrs['crs'] = 'EPSG:2193'
+                    ds_i['prob_' + exceed_type] = da_i[exceed_type]
+
             out_name += 'prob_'
 
         ds.attrs['branch'] = branch_name
         nc_name = f"{outfile_directory}/{model_id}_{out_name}{out_tag}_grids.nc".replace('__', '_')
         ds.to_netcdf(nc_name)
         print(f"\tWritten {nc_name}\n")
+
+        if interp_sites:
+            ds_i.attrs['branch'] = branch_name
+            ds_i.attrs['interp_sites'] = interp_sites[0]
+            ds_i.attrs['source_sites'] = interp_sites[1]
+            nc_name = f"{outfile_directory}/{model_id}_{out_name}{out_tag}_grids_interpolated.nc".replace('__', '_')
+            ds_i.to_netcdf(nc_name)
+            print(f"\tWritten {nc_name}\n")
 
     return ds
 

@@ -16,7 +16,7 @@ slip_taper = False                           # True or False, only matters if cr
 fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
 crustal_site_names = "_version_0-1"   # Name of the sites geojson
-sz_site_names = ["_version_0-1", "_version_0-1S"]       # Name of the sites geojson
+sz_site_names = ["_version_0-1N", "_version_0-1S"]       # Name of the sites geojson
 sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerm", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
@@ -34,6 +34,7 @@ remake_PPE = False            # Recalculate branch PPEs from scratch, rather tha
 calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
 remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 save_arrays = True         # Do you want to save the displacement and probability arrays?
+interp_sites = '../sites/cube_centroids_3000_3000_buffer_0_00S_points.csv'  # csv file with the sites to interpolate the displacements to for xarray output. None for default (i.e. use the sites in the PPE dictionary)
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../sites/EastCoastNI_5km_transect_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
@@ -413,10 +414,12 @@ if save_arrays:
         weighted = True
         branch_key = ['']
     for key in branch_key:
+        if interp_sites:
+            interp_sites = [interp_sites, site_geojson]
         ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
                             thresh_lims=[0, 3], thresh_step=1.00, output_thresh=True, probs_lims = [0.01, 0.10], probs_step=0.01,
                             output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key,
-                            time_intervals=time_interval)
+                            time_intervals=time_interval, interp_sites=interp_sites)
 
 if paired_crustal_sz:
     site_names_title = f"paired crustal{crustal_site_names} and "
