@@ -31,7 +31,7 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
 
 def nesiprint(string):
     os.system(f'echo {string}')
-    print(string)
+    #print(string)
 
 
 def prep_nesi_site_list(model_version_results_directory, sites_of_interest, extension1, S=""):
@@ -126,11 +126,28 @@ def slurm_timeout(slurm_id, min_time=30):
         mins, secs = int(timeleft[0]), int(timeleft[1])
         secsleft = mins * 60 + secs
         if secsleft < min_time:
-            print(f"\nSLURM job {slurm_id} is about to timeout in {':'.join(timeleft)}! (Timeout set to {min_time:.2f} seconds)")
+            print(f"\nSLURM job {slurm_id} is about to timeout in {':'.join(timeleft)}! (Timeout set to {min_time:.0f} seconds)")
             return True
     
     return False
-        
+
+def slurm_timeleft(slurm_id):
+    """
+    Find out timeleft on SLURM job
+    """
+    timeleft = os.popen(f"squeue -j {slurm_id}  --Format=TimeLeft").read().split('\n')[1].strip().split(':')
+    if len(timeleft) == 2:
+        mins, secs = int(timeleft[0]), int(timeleft[1])
+        secsleft = mins * 60 + secs
+    else:
+        if '-' in timeleft[0]:
+            days, hours = [int(unit) for unit in timeleft[0].split('-')]
+        else:
+            days, hours = 0, int(timeleft[0])
+        mins, secs = int(timeleft[1]), int(timeleft[2])
+        secsleft = days * 24 * 3600 + hours * 3600 + mins * 60 + secs
+    
+    return secsleft
 
 def combine_site_cumu_PPE(sites, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=None, thresholds=None, slurm_id=''):
     """
@@ -138,69 +155,102 @@ def combine_site_cumu_PPE(sites, model_version_results_directory, extension1, br
     For the sake of saving space, the individual site dictionaries are deleted after being combined into the branch dictionary.
     """
 
-    branch_h5 = h5.File(branch_h5file, "r+")
+    try:
+        start=time()
+        with h5.File(branch_h5file, "r+") as branch_h5:
+            branch_keys = list(branch_h5.keys())
+            if not 'thresholds' in branch_keys:
+                branch_h5.create_dataset('thresholds', data=thresholds)
+            if weight:
+                if weight > 0 and 'branch_weight' not in branch_keys:
+                    branch_h5.create_dataset('branch_weight', data=weight)
+        print(f"Branch h5 file {branch_h5file} opened in {time() - start:.2f} seconds")
+
+    except OSError:
+        print('OSError: Unable to synchronously open file (bad heap free list)')
+        print('Removing bad h5 file...')
+        os.remove(branch_h5file)
+        return
+
     if 'grid_meta' in sites:
         sites.remove('grid_meta')
     
     if S == "":
         S = taper_extension
 
-    if not 'thresholds' in branch_h5.keys():
-        branch_h5.create_dataset('thresholds', data=thresholds)
-
     all_good = True
     bad_sites = []
     bad_flag = ''
-    start = time()
     sites_added = 0
-    del_time = 0
-    printProgressBar(0, len(sites), prefix=f'\tAdded {0}/{len(sites)} Sites:', suffix='0 secs', length=50)
+    h52dict_time = 0
+    dict2h5_time = 0
+
+    if slurm_id != '':
+        sbatch_time = time()
+        slurm_time = slurm_timeleft(slurm_id)  # Find amount of time remaining in SLURM job
+        sbatch_time = time() - sbatch_time
+        print(f"{sbatch_time:.2f} seconds spent checking SLURM timeout")
+
+    start = time()
+    printProgressBar(0, len(sites), prefix=f'\tAdded {0}/{len(sites)} Sites:', suffix=f'0 seconds (0.0 s/site) {sites[0]}', length=50)
     for ix, site_of_interest in enumerate(sites):
+        if not os.path.exists(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5"):
+            printProgressBar(ix + 1, len(sites), prefix=f'\tAdded {ix + 1}/{len(sites)} Sites:', suffix=f'{time() - start:.0f} seconds ({(time() - start) / max([1, sites_added]):.1f} s/site) {sites[min([ix + 1, len(sites) - 1])]}{bad_flag}', length=50)
+            continue
+        add_to_branch = True
         try:
-            if not os.path.exists(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5"):
-                continue
             with h5.File(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5", "r") as site_h5:
-                if site_of_interest not in branch_h5.keys():
-                    branch_h5.create_group(site_of_interest)
-                if 'site_coords' not in branch_h5[site_of_interest].keys():
-                    branch_h5[site_of_interest].create_dataset('site_coords', data=site_h5[site_of_interest]['site_coords'][()])
                 intervals = [key for key in site_h5[site_of_interest].keys() if key != 'site_coords']
+                site_coords = site_h5[site_of_interest]['site_coords'][()]
                 if all_good:
+                    interval_dict = {}
                     for interval in intervals:
-                        if interval in branch_h5[site_of_interest].keys():
-                            del branch_h5[site_of_interest][interval]
-                        branch_h5[site_of_interest].create_group(interval)
-                        interval_dict = hdf5_to_dict(site_h5[site_of_interest][interval])
-                        dict_to_hdf5(branch_h5[site_of_interest][interval], interval_dict, compression='gzip', compression_opts=5)
-                    sites_added += 1
-                del_start = time()
-                os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5")
-                del_time += time() - del_start
-            printProgressBar(ix + 1, len(sites), prefix=f'\tAdded {ix + 1}/{len(sites)} Sites:', suffix=f'{time() - start:.0f} seconds ({(time() - start) / sites_added:.1f} s/site) {site_of_interest}{bad_flag}', length=50)
+                        h52dict_start = time()
+                        interval_dict[interval] = hdf5_to_dict(site_h5[site_of_interest][interval])
+                        h52dict_time += time() - h52dict_start
         except:
             bad_sites.append(site_of_interest)
-            all_good = False
+            add_to_branch, all_good = False, False
             bad_flag = f" (Error with {len(bad_sites)} sites)"
-            del branch_h5[site_of_interest]
-        
+            printProgressBar(ix + 1, len(sites), prefix=f'\tAdded {ix + 1}/{len(sites)} Sites:', suffix=f'{time() - start:.0f} seconds ({(time() - start) / max([1, sites_added]):.1f} s/site) {sites[min([ix + 1, len(sites) - 1])]}{bad_flag}', length=50)
+            os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5")
+
+        if add_to_branch:
+            with h5.File(branch_h5file, "r+") as branch_h5:
+                if site_of_interest not in branch_keys:
+                    branch_h5.create_group(site_of_interest)
+                if 'site_coords' not in branch_h5[site_of_interest].keys():
+                    branch_h5[site_of_interest].create_dataset('site_coords', data=site_coords)
+                for interval in intervals:
+                    if interval in branch_h5[site_of_interest].keys():
+                            del branch_h5[site_of_interest][interval]
+                    branch_h5[site_of_interest].create_group(interval)
+                    dict2h5_start = time()
+                    dict_to_hdf5(branch_h5[site_of_interest][interval], interval_dict[interval], compression='gzip', compression_opts=5)
+                    dict2h5_time += time() - dict2h5_start
+                sites_added += 1
+            os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5")
+        printProgressBar(ix + 1, len(sites), prefix=f'\tAdded {ix + 1}/{len(sites)} Sites:', suffix=f'{time() - start:.0f} seconds ({(time() - start) / sites_added:.1f} s/site) {sites[min([ix + 1, len(sites) - 1])]}{bad_flag}', length=50)
+
         # Check if the SLURM job is about to timeout, and quit the process if it is
-        site_batch = 5 # Number of sites to check before checking SLURM timeout
-        if slurm_id != '' and (ix + 1) % site_batch == 0:
-            timeout = slurm_timeout(slurm_id, min_time=max([30, site_batch * (time() - start) / sites_added]))  # Check if SLURM job is about to timeout
+        site_batch = int(len(sites) / 100) # Number of sites to check before checking SLURM timeout
+        if slurm_id != '' and (ix + 1) % site_batch == 0 and sites_added > 0:
+            time_elasped = time() - start
+            time_left = slurm_time - time_elasped
+            site_time = (time() - start) / sites_added * 2 * site_batch # Estimate time for next batch of sites
+            timeout = True if time_left < site_time else False
             if timeout:
-                branch_h5.close()
-                print(f"{del_time:.2f} seconds spent deleting files")
-                raise Exception(f"SLURM job {slurm_id} is about to timeout! Stopping process to prevent data loss.")
+                print(f"{h52dict_time:.2f} seconds spent converting h5 to dict ({h52dict_time / sites_added:.5f} s/site)")
+                print(f"{dict2h5_time:.2f} seconds spent converting dict to h5 ({dict2h5_time / sites_added:.5f} s/site)")
+                raise Exception(f"SLURM job {slurm_id} is about to timeout! Stopping process after {sites_added} sites to prevent data loss.")
 
-    if weight:
-        if weight > 0 and 'branch_weight' not in branch_h5.keys():
-            branch_h5.create_dataset('branch_weight', data=weight)
+    print('')
+    if sites_added > 0:
+        print(f"{h52dict_time:.2f} seconds spent converting h5 to dict ({h52dict_time / sites_added:.5f} s/site)")
+        print(f"{dict2h5_time:.2f} seconds spent converting dict to h5 ({dict2h5_time / sites_added:.5f} s/site)")
 
-    branch_h5.close()
-    print(f"{del_time:.2f} seconds spent deleting files")
-    if all_good:
-        print(f'\nSuccessfully added new sites to ../{model_version_results_directory}/{extension1}/{os.path.basename(branch_h5file)}!')
-    else:
+    print(f'\nSuccessfully added {sites_added} new sites to ../{model_version_results_directory}/{extension1}/{os.path.basename(branch_h5file)}!')
+    if not all_good:
         print(f"\nError adding {len(bad_sites)} sites: ../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}")
         with open(f"../{model_version_results_directory}/bad_sites_{os.path.basename(branch_h5file).replace('.h5', '.txt')}", "w") as f:
             for site in bad_sites:
@@ -516,12 +566,14 @@ if __name__ == "__main__":
        
         for branch in task_branches:
             site_list = combine_dict[branch]['sites']
-            # with h5.File(combine_dict[branch]['branch_site_disp_dict'], "r") as branch_h5:
-                # site_list = [key for key in branch_h5.keys() if key not in ['rates', 'scaled_rates']]
-            nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
-            combine_site_cumu_PPE(site_list, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
-                                branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'],
-                                thresholds=combine_dict[branch]['thresholds'], slurm_id=args.jobID)
+            # check branch h5 exists, and was deleted due to corruption in a previous run
+            if os.path.exists(combine_dict[branch]['branch_h5file']):
+                nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
+                combine_site_cumu_PPE(site_list, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
+                                    branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'],
+                                    thresholds=combine_dict[branch]['thresholds'], slurm_id=args.jobID)
+            else:
+                nesiprint(f"Branch {branch} h5 file {combine_dict[branch]['branch_h5file']} does not exist, skipping...")
         print('\nAll branches combined!')
 
     elif args.nesi_job == 'weighted_mean':  # Is this used anymore?
