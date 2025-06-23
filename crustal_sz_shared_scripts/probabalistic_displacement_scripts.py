@@ -1035,7 +1035,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                     # Take the data from the site_h5 and put it in the weighted_h5
                     site_group.create_dataset("site_coords", data=site_h5['site_coords'])
                     intervals = [key for key in site_h5.keys() if key.isnumeric()]
-                    all_intervals_prepared = all([True for interval in intervals_list[ix] if interval in intervals])
+                    all_intervals_prepared = all([True if interval in intervals else False for interval in intervals_list])
                     for interval in intervals:
                         # Remove previous data
                         if interval in site_group.keys():
