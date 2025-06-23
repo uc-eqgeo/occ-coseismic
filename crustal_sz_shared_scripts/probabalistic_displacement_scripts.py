@@ -822,7 +822,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         min_branches_per_array = 1
         if tasks_per_array < min_branches_per_array:
             tasks_per_array = min_branches_per_array
-        time_per_site = 0.5
+        time_per_site = 2
         array_time = 60 + time_per_site * n_sites * tasks_per_array
         hours, secs = divmod(array_time, 3600)
         mins = np.ceil(secs / 60)
@@ -2708,7 +2708,13 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
     for meta in metadata_keys:
         if meta in sites:
             sites.remove(meta)
-    
+
+    # check sites have been processed
+    PPEh5_sites = set(PPEh5.keys())
+    if len(sites) != len([site for site in sites if site in PPEh5_sites]):
+        print(f"Only {len([site for site in sites if site in PPEh5_sites])} of {len(sites)} requested sites have been processed")
+        sites = [site for site in sites if site in PPEh5_sites]
+
     if thresholds is None:
         if thresh_step != 0:
             thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
@@ -2839,8 +2845,13 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                         for interval_ix in range(len(time_intervals)):
                             data = thresh_grd[thresh_ix, interval_ix, :, :]
                             y_ix, x_ix = np.where(~np.isnan(data))
-                            interp = NearestNDInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
-                            interp_grd[thresh_ix, interval_ix, interp_y.astype(int), interp_x.astype(int)] = interp((interp_df['Lon'].values, interp_df['Lat'].values))
+                            interp = CloughTocher2DInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
+                            interp_vals = interp((interp_df['Lon'].values, interp_df['Lat'].values))
+                            nan_ix = np.where(np.isnan(interp_vals))[0]
+                            if len(nan_ix) > 0:
+                                interp = NearestNDInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
+                            interp_vals[nan_ix] = interp((interp_df['Lon'].values[nan_ix], interp_df['Lat'].values[nan_ix]))
+                            interp_grd[thresh_ix, interval_ix, interp_y.astype(int), interp_x.astype(int)] = interp_vals
 
                     da_i[exceed_type] = xr.DataArray(interp_grd, dims=['threshold', 'interval', 'lat', 'lon'], coords={'threshold': thresholds, 'interval': np.array([int(i) for i in time_intervals]), 'lat': interp_y_data, 'lon': interp_x_data})
                     da_i[exceed_type].attrs['exceed_type'] = exceed_type
