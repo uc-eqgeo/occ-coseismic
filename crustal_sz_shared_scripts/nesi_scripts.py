@@ -117,7 +117,22 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
         f.write(f"--sd {sd} --nesi_job site_PPE {NSHM} --thresh_lims {thresh_lims[0]}/{thresh_lims[1]} --thresh_step {thresh_step}\n\n".encode())
 
 
-def combine_site_cumu_PPE(sites, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=None, thresholds=None):
+def slurm_timeout(slurm_id, min_time=30):
+    """
+    Flag if SLURM job is about to timeout
+    """
+    timeleft = os.popen(f"squeue -j {slurm_id}  --Format=TimeLeft").read().split('\n')[1].strip().split(':')
+    if len(timeleft) == 2:
+        mins, secs = int(timeleft[0]), int(timeleft[1])
+        secsleft = mins * 60 + secs
+        if secsleft < min_time:
+            print(f"\nSLURM job {slurm_id} is about to timeout in {':'.join(timeleft)}! (Timeout set to {min_time:.2f} seconds)")
+            return True
+    
+    return False
+        
+
+def combine_site_cumu_PPE(sites, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=None, thresholds=None, slurm_id=''):
     """
     Script to recompile all individual site PPE dictionaries into a single branch dictionary.
     For the sake of saving space, the individual site dictionaries are deleted after being combined into the branch dictionary.
@@ -137,6 +152,8 @@ def combine_site_cumu_PPE(sites, model_version_results_directory, extension1, br
     bad_sites = []
     bad_flag = ''
     start = time()
+    sites_added = 0
+    del_time = 0
     printProgressBar(0, len(sites), prefix=f'\tAdded {0}/{len(sites)} Sites:', suffix='0 secs', length=50)
     for ix, site_of_interest in enumerate(sites):
         try:
@@ -155,18 +172,32 @@ def combine_site_cumu_PPE(sites, model_version_results_directory, extension1, br
                         branch_h5[site_of_interest].create_group(interval)
                         interval_dict = hdf5_to_dict(site_h5[site_of_interest][interval])
                         dict_to_hdf5(branch_h5[site_of_interest][interval], interval_dict, compression='gzip', compression_opts=5)
-            printProgressBar(ix + 1, len(sites), prefix=f'\tAdded {ix + 1}/{len(sites)} Sites:', suffix=f'{time() - start:.2f} seconds {site_of_interest}{bad_flag}', length=50)
+                    sites_added += 1
+                del_start = time()
+                os.remove(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{S}/{site_of_interest}.h5")
+                del_time += time() - del_start
+            printProgressBar(ix + 1, len(sites), prefix=f'\tAdded {ix + 1}/{len(sites)} Sites:', suffix=f'{time() - start:.0f} seconds ({(time() - start) / sites_added:.1f} s/site) {site_of_interest}{bad_flag}', length=50)
         except:
             bad_sites.append(site_of_interest)
             all_good = False
             bad_flag = f" (Error with {len(bad_sites)} sites)"
             del branch_h5[site_of_interest]
+        
+        # Check if the SLURM job is about to timeout, and quit the process if it is
+        site_batch = 5 # Number of sites to check before checking SLURM timeout
+        if slurm_id != '' and (ix + 1) % site_batch == 0:
+            timeout = slurm_timeout(slurm_id, min_time=max([30, site_batch * (time() - start) / sites_added]))  # Check if SLURM job is about to timeout
+            if timeout:
+                branch_h5.close()
+                print(f"{del_time:.2f} seconds spent deleting files")
+                raise Exception(f"SLURM job {slurm_id} is about to timeout! Stopping process to prevent data loss.")
 
     if weight:
         if weight > 0 and 'branch_weight' not in branch_h5.keys():
             branch_h5.create_dataset('branch_weight', data=weight)
 
     branch_h5.close()
+    print(f"{del_time:.2f} seconds spent deleting files")
     if all_good:
         print(f'\nSuccessfully added new sites to ../{model_version_results_directory}/{extension1}/{os.path.basename(branch_h5file)}!')
     else:
@@ -227,7 +258,8 @@ def prep_SLURM_combine_submission(combine_dict_file, branch_combine_list, model_
         f.write("module purge  2>/dev/null\n".encode())
         f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
 
-        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {tasks_per_array} --combine_dict_file {combine_dict_file} --branch_combine_list {branch_combine_list} --nesi_job combine_sites\n\n".encode())
+        f.write(f"echo python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {tasks_per_array} --combine_dict_file {combine_dict_file} --branch_combine_list {branch_combine_list} --nesi_job combine_sites  --jobID $SLURM_JOB_ID\n\n".encode())
+        f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {tasks_per_array} --combine_dict_file {combine_dict_file} --branch_combine_list {branch_combine_list} --nesi_job combine_sites  --jobID $SLURM_JOB_ID\n\n".encode())
 
 
 def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks, site_file,
@@ -323,6 +355,7 @@ if __name__ == "__main__":
     parser.add_argument("--outfile_extension", type=str, default="", help="Extension for the output file")
     parser.add_argument("--combine_dict_file", type=str, default="", help="File containing the dictionary of sites to combine")
     parser.add_argument("--branch_combine_list", type=str, default="", help="List of branches to combine")
+    parser.add_argument("--jobID", type=str, default="", help="Job ID for the SLURM job (if applicable)")
     args = parser.parse_args()
 
     start = time()
@@ -488,7 +521,7 @@ if __name__ == "__main__":
             nesiprint(f"\tCombining site dictionaries into {combine_dict[branch]['branch_h5file']}....")
             combine_site_cumu_PPE(site_list, combine_dict[branch]['model_version_results_directory'], combine_dict[branch]['extension1'],
                                 branch_h5file=combine_dict[branch]['branch_h5file'], taper_extension=combine_dict[branch]['taper_extension'], S=combine_dict[branch]['S'], weight=combine_dict[branch]['weight'],
-                                thresholds=combine_dict[branch]['thresholds'])
+                                thresholds=combine_dict[branch]['thresholds'], slurm_id=args.jobID)
         print('\nAll branches combined!')
 
     elif args.nesi_job == 'weighted_mean':  # Is this used anymore?
