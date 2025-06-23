@@ -806,6 +806,30 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
 
     return NSHM_directory_list, file_suffix_list, n_branches
 
+def write_sites_to_geojson(h5_file, intervals=['100']):
+    """
+    This function will read in the h5 file, and write a geojson file of all the sites that have been processed
+    to some extent
+    """
+
+    for interval in intervals:
+        with h5.File(h5_file, 'r') as f:
+            # Gets a list of sites
+            sites = np.array([site for site in f.keys() if site.split('_')[0].isdigit()])
+            # Gets a list of sites that have been processed for this interval
+            sites = [site for site in sites if interval in f[site].keys()]
+
+        points = [Point(int(s.split('_')[0]), int(s.split('_')[1])) for s in sites]
+        sites_ll = np.array([[int(s.split('_')[0]), int(s.split('_')[1])] for s in sites if s.split('_')[0].isdigit()])
+
+        data_dict = {"siteId": sites, "Lon": sites_ll[:, 0], "Lat": sites_ll[:, 1], "Height": np.zeros_like(sites_ll[:, 0])}
+        gdf = gpd.GeoDataFrame(data_dict, geometry=points, crs="EPSG:2193")
+
+        outfile = h5_file.replace('.h5', f'_all_processed_{interval}.geojson')
+        gdf.to_file(outfile, driver='GeoJSON')
+
+    return
+
 
 ## These scripts are those required by numpy v2.0.0 to run the weighted percentiles.
 # As numpy v2.0 does not have backwards compatibility (and I couldn't install it), I have ripped

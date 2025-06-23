@@ -4,7 +4,7 @@ try:
     from rasterio.transform import Affine
 except:
     print("Running on NESI. Some functions won't work....")
-from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile, maximum_displacement_plot, dict_to_hdf5, hdf5_to_dict
+from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile, maximum_displacement_plot, dict_to_hdf5, hdf5_to_dict, write_sites_to_geojson
 import xarray as xr
 import h5py as h5
 import json
@@ -1074,6 +1074,8 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                 # Final cleanup if successfully reached the end of the function
                 os.remove(f"{site_file}")
                 os.rmdir(f"../{out_directory}/weighted_sites")
+    
+    write_sites_to_geojson(weighted_h5_file, time_interval)
 
     return
 
