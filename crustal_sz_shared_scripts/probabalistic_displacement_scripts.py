@@ -690,6 +690,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
     branch_weight_list = []
     fault_model_allbranch_PPE_dict = {}
     combine_branches = 0
+    n_jobs = 0
     for counter, branch_id in enumerate(branch_weight_dict.keys()):
         print(f"calculating {branch_id} PPE\t({counter + 1} of {len(branch_weight_dict.keys())} branches)")
 
@@ -748,6 +749,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             branch_PPEh5.close()
 
         prep_list = [site for site in inv_sites if site not in well_processed_sites]
+        n_jobs += len(prep_list)
         
         if len(prep_list) == 0:
             print(f"\tAll sites have been processed for {branch_id}. Skipping...")
@@ -802,7 +804,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
     n_sites = len(prep_list)
     if nesi and nesi_step == 'prep':
-        n_jobs = len(branch_weight_dict.keys()) * n_sites
+        # n_jobs = len(branch_weight_dict.keys()) * n_sites
         tasks_per_array = np.ceil(n_jobs / n_array_tasks)
         if tasks_per_array < min_tasks_per_array:
             tasks_per_array = min_tasks_per_array
