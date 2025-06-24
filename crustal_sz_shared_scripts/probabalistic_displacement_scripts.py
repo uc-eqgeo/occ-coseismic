@@ -170,6 +170,7 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
         rate_scaling_factor = branch_weight_dict[branch_id]["S"]
 
         branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.h5"
+        branch_cumu_file = f"../{model_version_results_directory}/{extension1}/{branch_id}_cumu_PPE.h5"
         if os.path.exists(branch_site_disp_dict_file):
             try:  # check in case h5 is corrupted
                 branch_h5 = h5.File(branch_site_disp_dict_file, "a")
@@ -186,7 +187,8 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
 
 
         all_branches_site_disp_dict[branch_id] = {"site_disp_dict":branch_site_disp_dict_file,
-                                                "branch_weight":branch_weight_dict[branch_id]["total_weight_RN"]}
+                                                "branch_weight":branch_weight_dict[branch_id]["total_weight_RN"],
+                                                "cumu_file":branch_cumu_file}
 
     return all_branches_site_disp_dict
 
@@ -1138,14 +1140,21 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     all_crustal_branches_site_disp_dict = get_all_branches_site_disp_dict(crustal_branch_weight_dict, gf_name, slip_taper,
                                                                           crustal_model_version_results_directory)
     
-    with h5.File(all_crustal_branches_site_disp_dict[list(crustal_branch_weight_dict.keys())[0]]["site_disp_dict"]) as crust_h5:
-        processed_site_names = [site for site in crust_h5.keys() if "rates" not in site]
+    with h5.File(all_crustal_branches_site_disp_dict[list(crustal_branch_weight_dict.keys())[0]]["cumu_file"]) as crust_h5:
+        crustal_processed_site_names = set([site for site in crust_h5.keys() if "branch_weight" not in site])
+    for branch_id in list(crustal_branch_weight_dict.keys())[1:]:
+        with h5.File(all_crustal_branches_site_disp_dict[branch_id]["cumu_file"]) as crust_h5:
+            crustal_processed_site_names = list(set(crustal_processed_site_names) & set([site for site in crust_h5.keys() if "branch_weight" not in site]))
 
     if isinstance(site_gdf, list):
         site_names = site_gdf
     else:
         site_names = site_gdf['siteId'].values.tolist()
-        site_gdf['tree_count'] = 0
+
+    # Check that all sites exists as a crustal site. Subduction sites are optional
+    n_requested = len(site_names)
+    site_names = list(set(site_names) & set(crustal_processed_site_names))
+    print(f"{len(site_names)}/{n_requested} sites present in crustal branch PPE for processing...")
 
     # make a dictionary of displacements at each site from all the crustal earthquake scenarios
     all_sz_branches_site_disp_dict = {}
@@ -1158,8 +1167,6 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
             processed_site_names = list(set(processed_site_names + [site for site in sz_h5.keys() if "rates" not in site]))
             processed_site_names.sort()
 
-        if not isinstance(site_gdf, list):
-            site_gdf['tree_count'] += [1 if site in processed_site_names else 0 for site in site_names]
         all_sz_branches_site_disp_dict = all_sz_branches_site_disp_dict | all_single_sz_branches_site_disp_dict
 
         # make all the combinations of crustal and subduction zone branch pairs
@@ -1168,11 +1175,6 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
         if isinstance(crustal_sz_branch_pairs[0][0], tuple):
             crustal_sz_branch_pairs = [t1 + tuple([t2]) for t1, t2 in crustal_sz_branch_pairs]
-
-    if not isinstance(site_gdf, list):
-        site_gdf.to_file(f"../{out_directory}/{out_directory.split('/')[-1]}_site_locations.geojson", driver="GeoJSON")
-    missing_sites = [site for site in site_names if site not in processed_site_names]
-    assert len(missing_sites) == 0, f"Missing sites: {missing_sites}"
 
     pair_weight_list = []
     pair_id_list = []
