@@ -1459,12 +1459,14 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                     if dataset.replace('*-*', exceed_type) in interval_h5.keys():
                         del interval_h5[dataset.replace('*-*', exceed_type)]
                 site_probabilities_df = pd.DataFrame(site_df_dict[exceed_type])
+                # Reduce dataframe to non-zero rows
+                site_probabilities_df = site_probabilities_df.loc[site_probabilities_df.sum(axis=1) > 0]
 
                 # collapse each row into a weighted mean value
                 branch_weighted_mean_probs = site_probabilities_df.apply(
                     lambda x: np.average(x, weights=branch_weights), axis=1)
 
-                interval_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs[branch_weighted_mean_probs > 0], compression=compression)
+                interval_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs, compression=compression)
                 try:
                     non_zero_row = np.where(site_probabilities_df.sum(axis=1))[0][-1] + 1
                 except IndexError:  # if all rows are zero
