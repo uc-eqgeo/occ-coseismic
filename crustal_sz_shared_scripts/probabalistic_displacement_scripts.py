@@ -24,7 +24,8 @@ from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 from scipy.sparse import csc_array, csr_array, hstack
 from scipy.interpolate import NearestNDInterpolator, CloughTocher2DInterpolator
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, combine_site_cumu_PPE, \
-                         prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
+                         prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission, \
+                         slurm_timeleft
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
@@ -952,11 +953,11 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     if len(site_list) == 0:
         print(f"All sites have been processed. Skipping...")
         weighted_h5.close()
+        write_sites_to_geojson(weighted_h5_file, time_interval)
         return
     else:
         print(f"{len(site_list)}/{len(requested_sites)} requested sites need processing...")
 
-    n_sites = len(site_list)
     if not nesi:
         start = time()
         elapsed, per_site = time_elasped(time(), start, 1, decimal=False)
@@ -1014,7 +1015,15 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             raise Exception(f"Now run\n\tsbatch {slurm_file}")
         
         elif nesi_step == 'combine':
+            if len(os.popen('echo $SLURM_JOB_ID').read().strip()) > 0:
+                slurm_id = int(os.popen('echo $SLURM_JOB_ID').read().strip())
+                slurm_time = slurm_timeleft(slurm_id)
+                print('\tSLURM ID:', slurm_id, 'Time left:', slurm_time)
+            else:
+                slurm_time = None
+
             start = time()
+            sites_added = 0
             printProgressBar(0, len(site_list), prefix=f'\tAdding Site {site_list[0]}', suffix='Complete 00:00:00 (00:00s/site)', length=50)
             for ix, site in enumerate(site_list):
                 site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
@@ -1035,7 +1044,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                     # Take the data from the site_h5 and put it in the weighted_h5
                     site_group.create_dataset("site_coords", data=site_h5['site_coords'])
                     intervals = [key for key in site_h5.keys() if key.isnumeric()]
-                    all_intervals_prepared = all([True if interval in intervals else False for interval in intervals_list])
+                    all_intervals_prepared = all([True if interval in intervals else False for interval in intervals_list[ix]])
                     for interval in intervals:
                         # Remove previous data
                         if interval in site_group.keys():
@@ -1051,8 +1060,18 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                     # Remove the site file if it has added all requested intervals into the weighted_h5
                     # If not, preserve as it'll need to be reprocessed
                     os.remove(site_h5_file)
+                sites_added += 1
                 elapsed = time_elasped(time(), start, decimal=False)
-                printProgressBar(ix + 1, len(site_list), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
+                printProgressBar(ix + 1, len(site_list), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / max([sites_added, 1]):.2f}s/site)', length=50)
+                # Add break in the event that this is a SLURM job
+                if slurm_time:
+                    runtime = time() - start
+                    time_left = slurm_time - runtime
+                    required_time = 60 + 5 * (time() - start) / sites_added # Require enough projected time for 5 more sites and finishing function
+                    timeout = True if time_left < required_time else False
+                    if timeout:
+                        print(f"\n\tSLURM Timeout reached. Exiting to preserve weighted_h5...")
+                        break
 
             # Run a check to make sure all sites have been added correctly
             site_list, intervals_list = check_completed_weighted_sites(weighted_h5, requested_sites, time_interval, thresh_lims=thresh_lims, thresh_step=thresh_step, n_samples=n_samples)
