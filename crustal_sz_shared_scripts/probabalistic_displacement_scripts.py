@@ -323,6 +323,7 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
         print(f'\tPreparing {n_samples} Poissonian Scenarios for {n_ruptures} ruptures...')
         rng = np.random.default_rng()
         step = int(1e8 / n_samples)  # step size for poisson sampling (100,000,000 elements per run, ~9GB)
+        step = step if step < rates.shape[0] else rates.shape[0]  # ensure step is not larger than number of ruptures
         for interval in time_interval:
             scenarios = csc_array(rng.poisson(float(interval) * rates[0:step], size=(int(n_samples), step)))
             for ii in range(step, n_ruptures, step):
