@@ -1140,32 +1140,36 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     all_crustal_branches_site_disp_dict = get_all_branches_site_disp_dict(crustal_branch_weight_dict, gf_name, slip_taper,
                                                                           crustal_model_version_results_directory)
     
-    with h5.File(all_crustal_branches_site_disp_dict[list(crustal_branch_weight_dict.keys())[0]]["cumu_file"]) as crust_h5:
-        crustal_processed_site_names = set([site for site in crust_h5.keys() if "branch_weight" not in site])
-    for branch_id in list(crustal_branch_weight_dict.keys())[1:]:
-        with h5.File(all_crustal_branches_site_disp_dict[branch_id]["cumu_file"]) as crust_h5:
-            crustal_processed_site_names = list(set(crustal_processed_site_names) & set([site for site in crust_h5.keys() if "branch_weight" not in site]))
-
     if isinstance(site_gdf, list):
         site_names = site_gdf
     else:
         site_names = site_gdf['siteId'].values.tolist()
 
     # Check that all sites exists as a crustal site. Subduction sites are optional
+    crustal_processed_site_names = set(site_names)
+    for branch_id in list(crustal_branch_weight_dict.keys()):
+        with h5.File(all_crustal_branches_site_disp_dict[branch_id]["cumu_file"]) as crust_h5:
+            crustal_processed_site_names = crustal_processed_site_names & set([site for site in crust_h5.keys() if "branch_weight" not in site])
+
     n_requested = len(site_names)
     site_names = list(set(site_names) & set(crustal_processed_site_names))
-    print(f"{len(site_names)}/{n_requested} sites present in crustal branch PPE for processing...")
+    print(f"{len(site_names)}/{n_requested} sites present in crustal branch PPE for pairing...")
 
     # make a dictionary of displacements at each site from all the crustal earthquake scenarios
     all_sz_branches_site_disp_dict = {}
     crustal_sz_branch_pairs = list(crustal_branch_weight_dict.keys())
+
+    # Build an array that contains a flag for each site and which fault typs it has been processed for
+    fault_flag_array = np.zeros((len(site_names), 1 + len(sz_branch_weight_dict_list)), dtype=int)
+    fault_flag_array[:, 0] = 1  # Crustal flag (all sites)
     for ix, sz_branch_weight_dict in enumerate(sz_branch_weight_dict_list):
         all_single_sz_branches_site_disp_dict = get_all_branches_site_disp_dict(sz_branch_weight_dict, gf_name, slip_taper,
                                                                                 sz_model_version_results_directory_list[ix])
-
-        with h5.File(all_single_sz_branches_site_disp_dict[list(sz_branch_weight_dict.keys())[0]]["site_disp_dict"]) as sz_h5:
-            processed_site_names = list(set(processed_site_names + [site for site in sz_h5.keys() if "rates" not in site]))
-            processed_site_names.sort()
+        sz_processed_sites = set(site_names)
+        for branch_id in list(sz_branch_weight_dict.keys()):
+            with h5.File(all_single_sz_branches_site_disp_dict[branch_id]["cumu_file"], 'r') as sz_h5:
+                sz_processed_sites = sz_processed_sites & set([site for site in sz_h5.keys() if "branch_weight" not in site])
+        fault_flag_array[:, ix + 1] = np.array([1 if site in sz_processed_sites else 0 for site in site_names])
 
         all_sz_branches_site_disp_dict = all_sz_branches_site_disp_dict | all_single_sz_branches_site_disp_dict
 
@@ -1229,11 +1233,13 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     requested_sites = site_names
     if remake_PPE:
         intervals_list = [time_interval for _ in site_names]
+        fault_flag_list = [fault_flag_array[ix, :] for ix in range(fault_flag_array.shape[0])]
     else:
         # Check sites individually to see if they have been processed
         site_names = []
         intervals_list = []
-        for site in requested_sites:
+        fault_flag_list = []
+        for ix, site in enumerate(requested_sites):
             if site in weighted_h5.keys():
                 required_intervals = []
                 for interval in time_interval:
@@ -1248,9 +1254,11 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 if len(required_intervals) > 0:
                     site_names.append(site)
                     intervals_list.append(required_intervals)
+                    fault_flag_list.append(fault_flag_array[ix, :])
             else:
                 site_names.append(site)
                 intervals_list.append(time_interval)
+                fault_flag_list.append(fault_flag_array[ix, :])
 
     if len(site_names) == 0:
         print(f"All sites have been processed. Skipping...")
@@ -1276,7 +1284,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 with h5.File(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"], 'r') as branch_site_h5:
                     site_group.create_dataset("site_coords", data=branch_site_h5[site]["site_coords"])
             create_site_weighted_mean(site_group, site, n_samples, crustal_model_version_results_directory, sz_model_version_results_directory_list, gf_name, thresholds,
-                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list, intervals=intervals_list[ix])
+                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list, intervals=intervals_list[ix], fault_flag=fault_flag_list[ix])
             weighted_h5.close()
             elapsed, per_site = time_elasped(time(), start, ix + 1, decimal=False)
         printProgressBar(ix + 1, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
@@ -1300,7 +1308,8 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     'exceed_type_list': exceed_type_list,
                                     'branch_id_list': pair_id_list,
                                     'sigma_lims': sigma_lims,
-                                    'branch_weights': pair_weight_list}
+                                    'branch_weights': pair_weight_list,
+                                    'fault_flag': fault_flag_array[ix, :]}
                 with h5.File(site_h5_file, 'w') as site_h5:
                     dict_to_hdf5(site_h5, site_meta_dict)
             
@@ -1348,7 +1357,7 @@ def process_pair(pair_id, branch_disp_dict):
         cumulative_value += branch_disp_dict[branch]
     return pair_id, cumulative_value
 
-def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None, intervals=['100']):    
+def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None, intervals=['100'], fault_flag=None):    
 
         benchmarking = False
         if benchmarking:
@@ -1363,6 +1372,12 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
         site_df_abs = {}
         site_df_up = {}
         site_df_down = {}
+
+        # Trim pair_id_list to only unique combinations if not all branches are needed (useful to paired crustal_subduction)
+        if fault_flag is not None:
+            pair_array = np.array([[pair_id.split('_-_')[ix] for ix in range(len(fault_flag)) if fault_flag[ix] == 1] for pair_id in pair_id_list])
+            branch_weights = [branch_weights[ix] for ix in np.unique(pair_array, axis=0, return_index=True)[1]]
+            pair_id_list = ['_-_'.join([branch for branch in pair]) for pair in np.unique(pair_array, axis=0)]
 
         # For each branch, load in the displacements and put in a dictionary
         branch_list = list(set([branch for pair_id in pair_id_list for branch in pair_id.split('_-_')]))
@@ -1415,6 +1430,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                     # cumulative_pair_dict[pair_id] = branch_disp_dict[pair_id.split('_-_')[0]]
                     # for branch in pair_id.split('_-_')[1:]:
                     #     cumulative_pair_dict[pair_id] += branch_disp_dict[branch]
+            del branch_disp_dict # Clear memory
 
             if benchmarking:
                 print(f'{len(pair_id_list)} cumulative disp scenarios created: {time() - lap:.2f}s')

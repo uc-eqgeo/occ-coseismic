@@ -612,6 +612,10 @@ if __name__ == "__main__":
         for site in task_sites:
             site_name = os.path.basename(site).replace('.h5', '')
             with h5.File(site, "a") as site_h5:
+                if 'fault_flag' in site_h5.keys():
+                    fault_flag = site_h5['fault_flag'][:]
+                else:
+                    fault_flag = None
                 create_site_weighted_mean(site_h5, site_name, site_h5['n_samples'][()], 
                                           site_h5['crustal_model_version_results_directory'][()].decode('utf-8'), 
                                           [val.decode('utf-8') for val in site_h5['sz_model_version_results_directory_list'][()]], 
@@ -622,7 +626,8 @@ if __name__ == "__main__":
                                           site_h5['sigma_lims'], 
                                           site_h5['branch_weights'],
                                           compression='gzip',
-                                          intervals=[str(interval) for interval in investigation_time])
+                                          intervals=[str(interval) for interval in investigation_time],
+                                          fault_flag=fault_flag)
             nesiprint(f"Site {site_name} complete")
         print('\nAll sites complete!')
 
