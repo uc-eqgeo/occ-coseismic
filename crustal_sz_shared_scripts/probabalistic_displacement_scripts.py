@@ -1249,6 +1249,12 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                             min_thresh, max_thresh, thresh_delta, n_scenarios = weighted_h5[site][interval]['meta'][:]
                             if any([min_thresh > thresh_lims[0], max_thresh < thresh_lims[1], thresh_delta != thresh_step, n_scenarios < n_samples]):  # Failure critieria
                                 required_intervals.append(interval)
+                            else:
+                                if 'fault_flag' in weighted_h5[site][interval].keys():
+                                    if any(weighted_h5[site][interval]['fault_flag'] != fault_flag_array[ix, :]):
+                                        required_intervals.append(interval)
+                                else: # Can't confirm the faults used in the weighting. Require reprocessing
+                                    required_intervals.append(interval)
                     else:
                         required_intervals.append(interval)
                 if len(required_intervals) > 0:
@@ -1472,6 +1478,8 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indices", data=percentiles_csc.indices, compression='gzip', compression_opts=6)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indptr", data=percentiles_csc.indptr, compression='gzip', compression_opts=6)
             interval_h5.create_dataset(f"meta", data=np.array([thresholds[0], thresholds[-1], thresholds[1] - thresholds[0], n_samples]))
+            if fault_flag is not None:
+                interval_h5.create_dataset("fault_flag", data=fault_flag, compression=None)
 
             if benchmarking:
                     print(f'Weights made: {time() - lap:.2f}s')
