@@ -14,7 +14,7 @@ import os
 searise_csv = ['.\\sites\\cube_centroids_3000_3000_buffer_0_00.csv']  # Put in multiple csv_files if you want to combine into one output file
 data_format = 'qgis' # 'qgis' for qgis exports, 'searise' for searise exports, 'hamling' for Hamling VLM coast sites from paper
 out_csv_file = None  # If none, automatically set to the input file name with '_points' appended
-extra_suffixes = ['N', 'S', 'SI']  # Extra suffixes to append to the output file name (Works if you have subsets of 1 CSV file, e.g. northern and southern sections of a fault model, or south islands only)
+extra_suffixes = ['N', 'S']  # Extra suffixes to append to the output file name (Works if you have subsets of 1 CSV file, e.g. northern and southern sections of a fault model, or south islands only)
 
 if len(searise_csv) > 1 and len(extra_suffixes) > 0:
     print("Warning: Multiple CSV files provided, but extra suffixes will not be used. Output file will be a combination of all input files.")
