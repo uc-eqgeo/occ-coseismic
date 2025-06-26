@@ -697,7 +697,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
     n_jobs = 0
     for counter, branch_id in enumerate(branch_weight_dict.keys()):
         print(f"calculating {branch_id} PPE\t({counter + 1} of {len(branch_weight_dict.keys())} branches)")
-
+        remake_branch_PPE = remake_PPE
         # get site displacement dictionary and branch weights
         extension1 = gf_name + branch_weight_dict[branch_id]["file_suffix"]
         branch_weight = branch_weight_dict[branch_id]["total_weight_RN"]
@@ -728,7 +728,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         # Reduce site list to only those that have not been processed or not processed to the required number of samples
         thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
         well_processed_sites = []
-        if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_PPE:
+        if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_branch_PPE:
             print('\tChecking for existing PPE at each site...')
             with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r") as branch_PPEh5:
                 # Checks that sites have been processed
