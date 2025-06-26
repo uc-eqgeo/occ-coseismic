@@ -760,7 +760,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             continue
         else:
             print(f"\t{len(prep_list)}/{len(inv_sites)} requested sites need processing for {branch_id}...")
-            remake_PPE = True
+            remake_branch_PPE = True
 
         ### get exceedance probability dictionary
         if nesi:
