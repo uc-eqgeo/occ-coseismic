@@ -1,11 +1,11 @@
+import os
 try:
     import geopandas as gpd
     from shapely.geometry import Point
 except:
-    print("Running on NESI. Some functions won't work....")
+    os.system(f"echo Running on NESI. Some functions wont work....")
 finally:
     import pandas as pd
-    import os
     import h5py as h5
     from functools import reduce
     import numpy as np

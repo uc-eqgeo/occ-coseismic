@@ -29,9 +29,9 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
         print()
 
 
-def nesiprint(string):
+def nesiprint(string, end=''):
     os.system(f'echo {string}')
-    #print(string)
+    #print(string, end='')
 
 
 def prep_nesi_site_list(model_version_results_directory, sites_of_interest, extension1, S=""):

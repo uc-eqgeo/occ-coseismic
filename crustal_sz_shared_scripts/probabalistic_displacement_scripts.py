@@ -1,14 +1,14 @@
+import os
 try:
     import geopandas as gpd
     import rasterio
     from rasterio.transform import Affine
 except:
-    print("Running on NESI. Some functions won't work....")
-from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile, maximum_displacement_plot, dict_to_hdf5, hdf5_to_dict, write_sites_to_geojson
+    os.system(f"echo Running on NESI. Some functions wont work....")
+from helper_scripts import make_qualitative_colormap, get_probability_color, percentile, dict_to_hdf5, hdf5_to_dict, write_sites_to_geojson
 import xarray as xr
 import h5py as h5
 import json
-import os
 import shutil
 import random
 import itertools
@@ -21,11 +21,11 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
-from scipy.sparse import csc_array, csr_array, hstack
+from scipy.sparse import csc_array, csr_array, hstack, csr_matrix
 from scipy.interpolate import NearestNDInterpolator, CloughTocher2DInterpolator
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, combine_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission, \
-                         slurm_timeleft
+                         slurm_timeleft, nesiprint
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
@@ -826,7 +826,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         min_branches_per_array = 1
         if tasks_per_array < min_branches_per_array:
             tasks_per_array = min_branches_per_array
-        time_per_site = 2
+        time_per_site = 1
         array_time = 60 + time_per_site * n_sites * tasks_per_array
         hours, secs = divmod(array_time, 3600)
         mins = np.ceil(secs / 60)
@@ -988,7 +988,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             weighted_h5.close()
             os.makedirs(f"../{out_directory}/weighted_sites", exist_ok=True)
             for ix, site in enumerate(site_list):
-                print(f'Preparing site {site} for NESI task array... ({100 * ix / len(site_list):.0f}%)', end ='\r')
+                print(f'Preparing site {ix}: {site} for NESI task array... ({100 * ix / len(site_list):.0f}%)', end ='\r')
                 site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
                 if os.path.exists(site_h5_file):
                     os.remove(site_h5_file)
@@ -1367,7 +1367,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
 
         benchmarking = False
         if benchmarking:
-            print('')
+            nesiprint(site)
         start = time()
         lap = time()
 
@@ -1384,6 +1384,9 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
             pair_array = np.array([[pair_id.split('_-_')[ix] for ix in range(len(fault_flag)) if fault_flag[ix] == 1] for pair_id in pair_id_list])
             branch_weights = [branch_weights[ix] for ix in np.unique(pair_array, axis=0, return_index=True)[1]]
             pair_id_list = ['_-_'.join([branch for branch in pair]) for pair in np.unique(pair_array, axis=0)]
+            if benchmarking:
+                nesiprint(f'{len(pair_id_list)} pair ids created: {time() - lap:.2f}s')
+                lap = time()
 
         # For each branch, load in the displacements and put in a dictionary
         branch_list = list(set([branch for pair_id in pair_id_list for branch in pair_id.split('_-_')]))
@@ -1428,19 +1431,23 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                     func = partial(process_pair, branch_disp_dict=branch_disp_dict)
                     results = executor.map(func, pair_id_list)
                 cumulative_pair_dict = dict(results)
+                if benchmarking:
+                    nesiprint(f'{len(pair_id_list)} cumulative disp scenarios created Parallel: {time() - lap:.2f}s')
+                    lap = time()
             else:
                 # Don't delete this yet as not tested as a nesi task array (paralleling it might kill it)
                 cumulative_pair_dict = {}
                 for ix, pair_id in enumerate(pair_id_list):
                     _, cumulative_pair_dict[pair_id] = process_pair(pair_id, branch_disp_dict)
-                    # cumulative_pair_dict[pair_id] = branch_disp_dict[pair_id.split('_-_')[0]]
-                    # for branch in pair_id.split('_-_')[1:]:
-                    #     cumulative_pair_dict[pair_id] += branch_disp_dict[branch]
+                if benchmarking:
+                    nesiprint(f'{len(pair_id_list)} cumulative disp scenarios created Serial: {time() - lap:.2f}s')
+                    lap = time()
+
             del branch_disp_dict # Clear memory
 
-            if benchmarking:
-                print(f'{len(pair_id_list)} cumulative disp scenarios created: {time() - lap:.2f}s')
-                lap = time()
+                if benchmarking:
+                    nesiprint(f'Exceedances thresholded with numba: {time() - lap:.2f}s')
+                    lap = time()
 
             # Work out the exceedances for each branch combination
             for ix, pair_id in enumerate(pair_id_list):
@@ -1484,9 +1491,9 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 interval_h5.create_dataset("fault_flag", data=fault_flag, compression=None)
 
             if benchmarking:
-                    print(f'Weights made: {time() - lap:.2f}s')
+                    nesiprint(f'Weights made: {time() - lap:.2f}s')
         if benchmarking:
-            print(f'Site complete: {time() - start:.2f}s\n')
+            nesiprint(f'Site complete: {time() - start:.2f}s\n')
 
 def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type, site_list, weighted=False, err_index=None, interval='100'):
     """returns displacements at the X% probabilities of exceedance for each site
