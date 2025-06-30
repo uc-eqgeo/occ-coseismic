@@ -33,6 +33,8 @@ numba_flag = True
 if numba_flag:
     try:
         from numba import njit, prange
+        from numba.typed import Dict, List
+        from numba.core import types
     except:
         numba_flag = False
         print('No numba found. Some functions will be slower.')
@@ -258,6 +260,70 @@ if numba_flag:
 
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
+    @njit(parallel=True)
+    def compute_exceedances(pair_id_list, data_list, indptr_list, thresholds, n_samples):
+        site_df_abs, site_df_up, site_df_down = {}, {}, {}
+        n_pairs = len(data_list)
+
+        for ix in range(n_pairs):
+            ix = np.int64(ix)
+            pair_id = pair_id_list[ix]
+            data = data_list[ix]
+            indptr = indptr_list[ix]
+
+            n_total_abs, n_up, n_down = sparse_thresholds(thresholds, data, indptr)
+
+            site_df_abs[pair_id] = (n_total_abs / n_samples).reshape(-1)
+            site_df_up[pair_id] = (n_up / n_samples).reshape(-1)
+            site_df_down[pair_id] = (n_down / n_samples).reshape(-1)
+
+        return site_df_abs, site_df_up, site_df_down
+
+    @njit(parallel=False)
+    def numba_csr_array(array):
+        rows, cols = array.shape
+        # Convert to CSC parts manually (row-major traversal for CSR)
+        data_list = []
+        indices_list = []
+        indptr = [0]
+        nnz = 0
+
+        for row in range(rows):
+            for col in range(cols):
+                val = array[row, col]
+                if val != 0.0:
+                    data_list.append(val)
+                    indices_list.append(col)
+                    nnz += 1
+            indptr.append(nnz)
+
+        # Store in Numba-compatible nested dictionary
+        csr_dict = Dict.empty(key_type=types.unicode_type, value_type=types.float64[:])
+        csr_dict["data"] = np.array(data_list).astype(np.float64)
+        csr_dict["indices"] = np.array(indices_list).astype(np.float64)
+        csr_dict["indptr"] = np.array(indptr).astype(np.float64)
+
+        return csr_dict
+
+    @njit(parallel=True)
+    def numba_process_pair(pair_id_list, parts_id_list, branch_disp_dict, cumulative_pair_dict, n_samples):
+        for ix in prange(len(parts_id_list)):
+            ix = np.int64(ix)
+            pair_cumu = np.zeros((3, n_samples), dtype=np.float64)
+            pair_dict = Dict.empty(key_type=types.unicode_type, value_type=types.float64[:])
+            for branch in parts_id_list[ix]:
+                indices = branch_disp_dict[branch]['indices'].astype(np.int32)
+                indptr = branch_disp_dict[branch]['indptr'].astype(np.int32)
+                if sum(indptr) == 0:
+                    continue
+                for ii in range(3):
+                    pair_cumu[ii, indices[indptr[ii]:indptr[ii + 1]]] += branch_disp_dict[branch]['data'][indptr[ii]:indptr[ii + 1]]
+            
+            pair_dict = numba_csr_array(pair_cumu)
+            cumulative_pair_dict[pair_id_list[ix]] = pair_dict
+
+        return cumulative_pair_dict
+
 else:
     def calc_thresholds(thresholds, cumulative_disp_scenarios, uix=0, dix=1, aix=2):
         n_thresholds = len(thresholds)
@@ -292,7 +358,7 @@ else:
             if max_disp < thresholds[-1]:
                 n_thresholds = np.where(thresholds > max_disp)[0][0]
             
-            for tix in prange(n_thresholds):
+            for tix in range(n_thresholds):
                 threshold = thresholds[tix]
                 count_total_abs, count_up, count_down = 0, 0, 0
                 for disp in cumulative_disp_scenarios[rows[0]:rows[1]]:
@@ -1363,21 +1429,36 @@ def process_pair(pair_id, branch_disp_dict):
         cumulative_value += branch_disp_dict[branch]
     return pair_id, cumulative_value
 
+def sparse_pair_dict(pair_id, cumulative_pair_dict, n_samples):
+    return pair_id, csr_matrix((cumulative_pair_dict[pair_id]['data'], cumulative_pair_dict[pair_id]['indices'], cumulative_pair_dict[pair_id]['indptr']), shape=(3, n_samples))
+
 def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None, intervals=['100'], fault_flag=None):    
 
-        benchmarking = False
+        benchmarking = True
         if benchmarking:
             nesiprint(site)
         start = time()
         lap = time()
 
+        run_parallel = False if numba_flag else True
         if numba_flag:
+            # Initialise numba
+            prep_array = np.array([[0, 1, 1, 1, 1], [2, 2, 2, 0, 2], [3, 3, 3, 0, 0]])
+            branch_dict_type = types.DictType(types.unicode_type, types.Array(types.float64, 1, 'C'))
+            prep_pair_dict_numba = Dict.empty(key_type=types.unicode_type, value_type=branch_dict_type)
+            prep_disp_dict_numba = Dict.empty(key_type=types.unicode_type, value_type=branch_dict_type)
+            prep_id_list, prep_parts_list, prep_id = List(), List(), List()
+            prep_id_list.append('prep')
+            prep_id.append('prep')
+            prep_parts_list.append(prep_id)
+            prep_disp_dict_numba['prep'] = numba_csr_array(prep_array)
+            _ = numba_process_pair(prep_id_list, prep_parts_list, prep_disp_dict_numba, prep_pair_dict_numba, prep_array.shape[1])
             _ = calc_thresholds(np.arange(0,1,1), np.ones((3, 1, 100)))
             _ = sparse_thresholds(np.arange(0,1,1), np.ones(3), np.arange(0, 4, 1))
-
-        site_df_abs = {}
-        site_df_up = {}
-        site_df_down = {}
+            del prep_pair_dict_numba, prep_disp_dict_numba, prep_id_list, prep_parts_list, prep_id
+            if benchmarking:
+                nesiprint(f'Numba functions initialised: {time() - lap:.2f}s')
+                lap = time()
 
         # Trim pair_id_list to only unique combinations if not all branches are needed (useful to paired crustal_subduction)
         if fault_flag is not None:
@@ -1391,8 +1472,15 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
         # For each branch, load in the displacements and put in a dictionary
         branch_list = list(set([branch for pair_id in pair_id_list for branch in pair_id.split('_-_')]))
         for interval in intervals:
+            if interval in site_h5.keys():
+                # Should only occur if site threw an error on a previous run
+                del site_h5[interval]
             interval_h5 = site_h5.create_group(interval)
-            branch_disp_dict = {}
+            if numba_flag:
+                branch_disp_dict = Dict.empty(key_type=types.unicode_type, value_type=branch_dict_type)
+            else:
+                branch_disp_dict = {}
+
             for branch in branch_list:
                 if '_c_' in branch:
                     fault_type = 'c'
@@ -1415,18 +1503,41 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 with h5.File(NSHM_file, 'r') as NSHM_h5:
                     if site in NSHM_h5.keys():
                         NSHM_displacements = np.zeros((3, n_samples))
-                        for ix, exceed_type in enumerate(['up', 'down', 'total_abs']):
-                            if exceed_type in exceed_type_list:
-                                slip_scenarios = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['scenario_ix'][:]
-                                NSHM_displacements[ix, slip_scenarios] = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['displacements'][:]
-                        branch_disp_dict[branch] = csr_array(NSHM_displacements)   
+                        if numba_flag:
+                            branch_disp_dict[branch] = numba_csr_array(NSHM_displacements)
+                        else:
+                            for ix, exceed_type in enumerate(['up', 'down', 'total_abs']):
+                                if exceed_type in exceed_type_list:
+                                    slip_scenarios = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['scenario_ix'][:]
+                                    if slip_scenarios.shape[0] > 0:
+                                        max_scenario = -1 if n_samples > slip_scenarios[-1] else np.where(slip_scenarios >= n_samples)[0][0]
+                                        NSHM_displacements[ix, slip_scenarios[:max_scenario]] = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['displacements'][:max_scenario]
+                            branch_disp_dict[branch] = csr_array(NSHM_displacements)
+
             if benchmarking:
-                print(f'{len(branch_list)} branch displacements loaded: {time() - lap:.2f}s')
+                nesiprint(f'{len(branch_list)} branch displacements loaded: {time() - lap:.2f}s')
                 lap = time()
 
             # Work out the cumulative displacement for all branch pairs
-            run_parallel = True
-            if run_parallel:
+            if numba_flag:
+                cumulative_pair_dict = Dict.empty(key_type=types.unicode_type, value_type=branch_dict_type)
+                numba_id_list, numba_parts_list = List(), List()
+                for pair_id in pair_id_list:
+                    numba_id_list.append(pair_id)
+                    id_list = List()
+                    for part in pair_id.split('_-_'):
+                        id_list.append(part)
+                    numba_parts_list.append(id_list)
+                cumulative_pair_dict = numba_process_pair(numba_id_list, numba_parts_list, branch_disp_dict, cumulative_pair_dict, n_samples)
+                if benchmarking:
+                    nesiprint(f'{len(pair_id_list)} cumulative disp scenarios created Numba_process_pair: {time() - lap:.2f}s')
+                    lap = time()
+                missing_pairs = set(numba_id_list) - set(cumulative_pair_dict.keys())
+                if len(missing_pairs) > 0:
+                    nesiprint(f'Warning: {len(missing_pairs)} pairs missing from Numba cumulative pair dict: {missing_pairs}')
+                    del site_h5[interval]
+                    return
+            elif run_parallel:
                 with ThreadPoolExecutor() as executor:
                     func = partial(process_pair, branch_disp_dict=branch_disp_dict)
                     results = executor.map(func, pair_id_list)
@@ -1445,22 +1556,35 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
 
             del branch_disp_dict # Clear memory
 
+            site_df_dict = {"total_abs": {}, "up": {}, "down": {}}
+
+            if numba_flag:
+                pair_id_list = list(cumulative_pair_dict.keys())
+                data_array_list, indptr_array_list = List(), List()
+                for pid in pair_id_list:
+                    data_array_list.append(np.array(cumulative_pair_dict[pid]['data'], dtype=np.float64))
+                    indptr_array_list.append(np.array(cumulative_pair_dict[pid]['indptr'], dtype=np.int32))
+
+                # Run
+                numba_df_abs, numba_df_up, numba_df_down = compute_exceedances(numba_id_list, data_array_list, indptr_array_list, thresholds, n_samples)
+
                 if benchmarking:
                     nesiprint(f'Exceedances thresholded with numba: {time() - lap:.2f}s')
                     lap = time()
 
-            # Work out the exceedances for each branch combination
-            for ix, pair_id in enumerate(pair_id_list):
-                n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = sparse_thresholds(thresholds, cumulative_pair_dict[pair_id].data, cumulative_pair_dict[pair_id].indptr)
-                site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)
-                site_df_up[pair_id] = (n_exceedances_up / n_samples).reshape(-1)
-                site_df_down[pair_id] = (n_exceedances_down / n_samples).reshape(-1)
-            if benchmarking:
-                    print(f'Exceedances thresholded: {time() - lap:.2f}s')
-                    lap = time()
+                site_df_dict["total_abs"], site_df_dict["up"], site_df_dict["down"] = dict(numba_df_abs), dict(numba_df_up), dict(numba_df_down)
+            else:
+                # Work out the exceedances for each branch combination
+                for ix, pair_id in enumerate(pair_id_list):
+                    n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = sparse_thresholds(thresholds, cumulative_pair_dict[pair_id].data, cumulative_pair_dict[pair_id].indptr)
+                    site_df_dict["total_abs"][pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)
+                    site_df_dict["up"] = (n_exceedances_up / n_samples).reshape(-1)
+                    site_df_dict["down"] = (n_exceedances_down / n_samples).reshape(-1)
+                if benchmarking:
+                        nesiprint(f'Exceedances thresholded: {time() - lap:.2f}s')
+                        lap = time()
 
             # Calculate the weighted exceedances for the site
-            site_df_dict = {"total_abs": site_df_abs, "up": site_df_up, "down": site_df_down}
             for exceed_type in exceed_type_list:
                 for dataset in ['weighted_exceedance_probs_*-*', '*-*_max_vals', '*-*_min_vals', 'branch_exceedance_probs_*-*', '*-*_weighted_percentile_error']:
                     if dataset.replace('*-*', exceed_type) in interval_h5.keys():
