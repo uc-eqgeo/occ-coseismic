@@ -29,9 +29,13 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
         print()
 
 
-def nesiprint(string, end=''):
-    os.system(f'echo {string}')
-    #print(string, end='')
+def nesiprint(string, end='\n'):
+    if 'posix' == os.name:
+        # For Unix-like systems, use echo command to print (good for nesi outputs)
+        os.system(f'echo {string}')
+    else:
+        # For Windows, use print function directly
+        print(string, end=end)
 
 
 def prep_nesi_site_list(model_version_results_directory, sites_of_interest, extension1, S=""):
@@ -611,6 +615,7 @@ if __name__ == "__main__":
         nesiprint(f"Finding weighted means for {len(task_sites)} sites...")
         for site in task_sites:
             site_name = os.path.basename(site).replace('.h5', '')
+            nesiprint(f"\tProcessing site {site}...")
             with h5.File(site, "a") as site_h5:
                 if 'fault_flag' in site_h5.keys():
                     fault_flag = site_h5['fault_flag'][:]
