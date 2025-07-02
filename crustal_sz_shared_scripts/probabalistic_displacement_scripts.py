@@ -1745,12 +1745,12 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
 
         if err_index:
             if weighted:
-                data = site_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"]
-                indices = site_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error_indices"]
-                indptr = site_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error_indptr"]
+                data = site_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error"]
+                indices = site_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indices"]
+                indptr = site_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indptr"]
                 site_err_PPE = csc_array((data, indices, indptr)).toarray()
             else:
-                site_err_PPE = site_PPE_dictionary[site][f'{exceed_type}_{prefix}percentile_error']
+                site_err_PPE = site_PPE_dictionary[site][interval][f'{exceed_type}_{prefix}percentile_error']
             site_err = []
             for err_ind in err_index:
                 exceedance_index = next((index for index, value in enumerate(site_err_PPE[err_ind, :]) if value <= round(probability,4)), -1)
