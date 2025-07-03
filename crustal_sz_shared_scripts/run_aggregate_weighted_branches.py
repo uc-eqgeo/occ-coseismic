@@ -42,7 +42,8 @@ use_saved_dictionary = True   # Use a saved dictionary if it exists
 branch_weight_csv = "branch_weight_data_v0-1"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
 
 # Processing Parameters
-time_interval = [100]     # Time span of hazard forecast (yrs)
+time_interval = [5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150]     # Time span of hazard forecast (yrs)
+time_interval = [100]
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 1
 thresh_lims = [0, 30]
@@ -76,16 +77,15 @@ else:
 if paired_crustal_sz and nesi_step == 'prep':
     if n_array_tasks < 500:
         n_array_tasks = 500
-    if job_time < 10:
-        job_time = 10
+    job_time = 0
+    mem = 0
+    n_cpus = 0
 
 if fault_type == 'crustal' and n_array_tasks < 500:
     n_array_tasks = 500
 
 if fault_type == 'all':
-    job_time = 120
-    mem = 3
-    min_tasks_per_array = 5
+    min_tasks_per_array = 100
 
 if not calculate_fault_model_PPE and calculate_weighted_mean_PPE:
     job_time = 20
@@ -386,7 +386,6 @@ if paired_crustal_sz:
 
     #### skip this part if you've already run it once and saved to a pickle file
     if calculate_fault_model_PPE or not use_saved_dictionary:
-
         make_sz_crustal_paired_PPE_dict(
             crustal_branch_weight_dict=branch_weight_dict_list[0], sz_branch_weight_dict_list=branch_weight_dict_list[1:],
             crustal_model_version_results_directory=version_discretise_directory[0],

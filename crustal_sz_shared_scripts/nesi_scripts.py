@@ -318,12 +318,12 @@ def prep_SLURM_combine_submission(combine_dict_file, branch_combine_list, model_
 
 def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks, site_file,
                                          hours: int = 0, mins: int = 3, mem: int = 45, cpus: int = 1, account: str = 'uc03610',
-                                         job_time = 0, time_interval = ['100']):
+                                         job_time = 0, time_interval = ['100'], fault_combo=''):
     """
     Prep the SLURM submission script to create a task array to calculate the weighted mean PPE for each site
     """
 
-    slurm_file = f"../{out_directory}/weighted_sites_slurm_task_array.sl"
+    slurm_file = f"../{out_directory}/weighted_sites_slurm_task_array{fault_combo}.sl"
 
     if os.path.exists(slurm_file):
                 os.remove(slurm_file)
@@ -336,12 +336,12 @@ def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks
         f.write(f"#SBATCH --mem={mem}GB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
-        if mem > 25:
-            f.write("#SBATCH --partition=large\n".encode())
+        # if mem > 25:
+        #     f.write("#SBATCH --partition=large\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
-        f.write(f"#SBATCH -o logs/07_{os.path.basename(out_directory)}_weights_%j_task%a.out\n".encode())
-        f.write(f"#SBATCH -e logs/07_{os.path.basename(out_directory)}_weights_%j_task%a.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/07_{os.path.basename(out_directory)}_weights{fault_combo}_%j_task%a.out\n".encode())
+        f.write(f"#SBATCH -e logs/07_{os.path.basename(out_directory)}_weights{fault_combo}_%j_task%a.err\n\n".encode())
 
         f.write("# Activate the conda environment\n".encode())
         f.write("mkdir -p logs\n".encode())
@@ -616,6 +616,7 @@ if __name__ == "__main__":
         for site in task_sites:
             site_name = os.path.basename(site).replace('.h5', '')
             nesiprint(f"\tProcessing site {site}...")
+            lap = time()
             with h5.File(site, "a") as site_h5:
                 if 'fault_flag' in site_h5.keys():
                     fault_flag = site_h5['fault_flag'][:]
@@ -633,7 +634,7 @@ if __name__ == "__main__":
                                           compression='gzip',
                                           intervals=[str(interval) for interval in investigation_time],
                                           fault_flag=fault_flag)
-            nesiprint(f"Site {site_name} complete")
+            nesiprint(f"Site {site_name} complete in {time() - lap:.2f} seconds")
         print('\nAll sites complete!')
 
     else:

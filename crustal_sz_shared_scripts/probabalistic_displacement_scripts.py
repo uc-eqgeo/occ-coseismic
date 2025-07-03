@@ -1438,25 +1438,53 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     'fault_flag': fault_flag_array[ix, :]}
                 with h5.File(site_h5_file, 'w') as site_h5:
                     dict_to_hdf5(site_h5, site_meta_dict)
-            
-            site_file = f"../{out_directory}/weighted_sites/site_list.txt"
-            with open(site_file, "w") as f:
-                for site in site_names:
-                    f.write(f"../{out_directory}/weighted_sites/{site}.h5\n")
-    
-            n_sites = len(site_names)
-            tasks_per_array = np.ceil(n_sites / n_array_tasks)
-            if tasks_per_array < min_tasks_per_array:
-                tasks_per_array = min_tasks_per_array
-            n_array_tasks = int(np.ceil(n_sites / tasks_per_array))
-            array_time = 60 + job_time * tasks_per_array
-            hours, rem = divmod(array_time, 3600)
-            mins = np.ceil(rem / 60)
 
-            slurm_file = prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_array_tasks, site_file,
-                                         hours=int(hours), mins=int(mins), mem=mem, cpus=cpus, account=account, job_time=job_time, time_interval=time_interval)
+            # Allow for adaptive task arrays based o pairings
+            c_sz_pair_array = np.array([pair_id.split('_-_') for pair_id in pair_id_list])
+            for flag_combo in np.unique(fault_flag_array, axis=0):
+                flag_ix = [ix for ix, flag in enumerate(flag_combo) if flag == 1]
+                n_pairs = np.unique(c_sz_pair_array[:, flag_ix], axis=0).shape[0]
 
-            raise Exception(f"Now run\n\tsbatch {slurm_file}")
+                site_file = f"../{out_directory}/weighted_sites/site_list_{'-'.join([str(ix) for ix in flag_ix])}.txt"
+                n_sites = 0
+                with open(site_file, "w") as f:
+                    for ix, site in enumerate(site_names):
+                        if all(fault_flag_array[ix, :] == flag_combo):
+                            f.write(f"../{out_directory}/weighted_sites/{site}.h5\n")
+                            n_sites += 1
+                if n_pairs < 50:
+                    combo_mem = 5 if mem == 0 else mem
+                    combo_time = 15 if job_time == 0 else job_time
+                    n_cpus = 4 if cpus == 0 else cpus
+                elif n_pairs < 150:
+                    combo_mem = 10 if mem == 0 else mem
+                    combo_time = 30 if job_time == 0 else job_time
+                    n_cpus = 8 if cpus == 0 else cpus
+                elif n_pairs < 300:
+                    combo_mem = 20 if mem == 0 else mem
+                    combo_time = 60 if job_time == 0 else job_time
+                    n_cpus = 10 if cpus == 0 else cpus
+                else:
+                    combo_mem = 30 if mem == 0 else mem
+                    combo_time = 90 if job_time == 0 else job_time
+                    n_cpus = 12 if cpus == 0 else cpus
+
+                combo_time = combo_time * len(time_interval)  # Multiply by number of time intervals to process
+
+                tasks_per_array = np.ceil(n_sites / n_array_tasks)
+                if tasks_per_array < min_tasks_per_array:
+                    tasks_per_array = min_tasks_per_array
+                combo_array_tasks = int(np.ceil(n_sites / tasks_per_array))
+                array_time = 60 + combo_time * tasks_per_array
+                hours, rem = divmod(array_time, 3600)
+                mins = np.ceil(rem / 60)
+
+                slurm_file = prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, combo_array_tasks, site_file,
+                                            hours=int(hours), mins=int(mins), mem=combo_mem, cpus=n_cpus, account=account, job_time=combo_time, time_interval=time_interval, fault_combo=f"_{'-'.join([str(ix) for ix in flag_ix])}")
+                
+                print(f"Now run sbatch {slurm_file}")
+
+            raise Exception(f"Run slurm files for each fault flag combination")
         
         elif nesi_step == 'combine':
             start = time()
@@ -1534,9 +1562,9 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
         start = time()
         lap = time()
 
-        run_numba = False
-        run_parallel = False
-        run_sequential = True
+        run_numba = False  # Trys using numba dictionaries. Doesn't seem to improve anything
+        run_parallel = False # Uses numba for sparse thresholds, whilst processings branches sequentially
+        run_sequential = True # Uses number for sparse thresholds, but processes branches sequentially
         if numba_flag:
             # Initialise numba
             prep_array = np.array([[0, 1, 1, 1, 1], [2, 2, 2, 0, 2], [3, 3, 3, 0, 0]])
@@ -1684,16 +1712,6 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
 
                 # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
                 percentiles = percentile(site_probabilities_df, sigma_lims, axis=1, weights=branch_weights)
-                # import seaborn as sns
-                # site_probabilities_df = site_probabilities_df.set_index(thresholds[:site_probabilities_df.shape[0]])
-                # percentile_df = pd.DataFrame(percentiles.T, columns=sigma_lims)
-                # percentile_df.set_index(site_probabilities_df.index, inplace=True)
-                # # sns.lineplot(site_probabilities_df, legend=False)
-                # sns.lineplot(percentile_df), plt.yscale('log'), plt.xscale('log')
-                # plt.plot(thresholds[:site_probabilities_df.shape[0]], branch_weighted_mean_probs, 'k:')
-                # plt.scatter([1.93, 0.72, 0.48, 0.40,0.35], [0.01, 0.02, 0.03, 0.04, 0.05])
-                # plt.ylim([1e-7, 1]), plt.xlim([1e-3, 11])
-                # plt.show()
 
                 percentiles_csc = csc_array(percentiles)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles_csc.data, compression='gzip', compression_opts=6)
