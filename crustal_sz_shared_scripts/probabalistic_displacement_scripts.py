@@ -1226,7 +1226,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     slip_taper, n_samples, out_directory, outfile_extension,
                                     nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
                                     n_array_tasks=100, min_tasks_per_array=100, time_interval=['100'], job_time=3, remake_PPE=True,
-                                    thresh_lims=[0, 3], thresh_step=0.01, site_gdf=None):
+                                    thresh_lims=[0, 3], thresh_step=0.01, site_gdf=None, max_array_time=7200):
 
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
@@ -1484,10 +1484,17 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 tasks_per_array = np.ceil(n_sites / n_array_tasks)
                 if tasks_per_array < min_tasks_per_array:
                     tasks_per_array = min_tasks_per_array
-                combo_array_tasks = int(np.ceil(n_sites / tasks_per_array))
                 array_time = 60 + combo_time * tasks_per_array
+                # Reduce the number of tasks per array if the array time is too long
+                if array_time > max_array_time:
+                    tasks_per_array = np.floor(max_array_time / combo_time)
+                    # Still keep the minimum number of tasks per array
+                    if tasks_per_array < min_tasks_per_array:
+                        tasks_per_array = min_tasks_per_array
+                array_time = 60 + combo_time * tasks_per_array            
                 hours, rem = divmod(array_time, 3600)
                 mins = np.ceil(rem / 60)
+                combo_array_tasks = int(np.ceil(n_sites / tasks_per_array))
 
                 slurm_file = prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, combo_array_tasks, site_file,
                                             hours=int(hours), mins=int(mins), mem=combo_mem, cpus=n_cpus, account=account, job_time=combo_time, time_interval=time_interval, fault_combo=f"_{'-'.join([str(ix) for ix in flag_ix])}")
@@ -1735,8 +1742,6 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles_csc.data, compression='gzip', compression_opts=6)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indices", data=percentiles_csc.indices, compression='gzip', compression_opts=6)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indptr", data=percentiles_csc.indptr, compression='gzip', compression_opts=6)
-                if fault_flag is not None:
-                    interval_h5.create_dataset(f"fault_flag", data=fault_flag, compression=None)
             interval_h5.create_dataset(f"meta", data=np.array([thresholds[0], thresholds[-1], thresholds[1] - thresholds[0], n_samples]))
             if fault_flag is not None:
                 interval_h5.create_dataset("fault_flag", data=fault_flag, compression=None)
@@ -2973,7 +2978,7 @@ def save_disp_prob_tifs(extension1, slip_taper, model_version_results_directory,
 def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0,
                            probs_lims=[0.01, 0.2], probs_step=0, output_thresh=True, output_probs=True, weighted=False,
                            output_grids=True, thresholds=None, probabilities=None, sites=[], out_tag='', single_branch='',
-                           time_intervals=['100'], interp_sites=None):
+                           time_intervals=['100'], interp_sites=None, model_id=None):
     """
     Add all results to x_array datasets, and save as netcdf files
     """
@@ -2992,8 +2997,9 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
     if weighted:
         h5_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict{extension1}{taper_extension}.h5"
         outfile_directory = f"../{model_version_results_directory}/weighted_mean_xarray"
-        model_id = model_version_results_directory.split('/')[-1]
-        print("Saving data arrays for weighted mean displacements...")
+        if model_id is None:
+            model_id = model_version_results_directory.split('/')[-1]
+        print("Saving data arrays for weighted mean displacements {model_id}...")
     elif single_branch != '':
         branch_suffix = '_'.join(single_branch.split('_')[6:])
         h5_file = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/{single_branch}_cumu_PPE.h5"

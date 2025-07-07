@@ -13,28 +13,28 @@ except ImportError:
 os.chdir(os.path.dirname(__file__))
 #### USER INPUTS #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "all"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
-crustal_site_names = "_version_0-1"   # Name of the sites geojson
-sz_site_names = ["_version_0-1N", "_version_0-1S"]       # Name of the sites geojson
+crustal_site_names = "_national_27km"   # Name of the sites geojson
+sz_site_names = ["_north_27km", "_south_27km"]       # Name of the sites geojson
 sz_list_order = ["sz", "py"]         # Order of the subduction zones
 sz_names = ["hikkerm", "puysegur"]   # Name of the subduction zone
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = True   # Prepares code for NESI runs
+nesi = False   # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
-fakequakes = True  # Use fakequakes for the subduction zone (applied only to hikkerk)
+fakequakes = True  # Use fakequakes for the subduction zone (applied only to hikkerm)
 
 # Processing Flags (True/False)
 single_branch = None # Allows you to specifically select which branches to calculate PPEs for. If None, all branches will be calculated
 rate_scaling = True           # Do you want to calculate PPEs for a single branch with different rate scalings?
-paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+paired_crustal_sz = True      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = True             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = False            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
 remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 save_arrays = True         # Do you want to save the displacement and probability arrays?
-interp_sites = '../sites/cube_centroids_3000_3000_buffer_0_00S_points.csv'  # csv file with the sites to interpolate the displacements to for xarray output. None for default (i.e. use the sites in the PPE dictionary)
+interp_sites = '../sites/cube_centroids_3000_3000_buffer_0_00_points.csv'  # csv file with the sites to interpolate the displacements to for xarray output. None for default (i.e. use the sites in the PPE dictionary)
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../sites/EastCoastNI_5km_transect_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
@@ -55,6 +55,7 @@ nesi_step = 'prep'  # 'prep' or 'combine'
 n_array_tasks = 250    # Number of array tasks
 min_tasks_per_array = 250   # Minimum number of sites per array
 min_branches_per_array = 1  # Minimum number of branches per array
+max_array_time = 7200 # Maximum time per array task when running paired model weighting (seconds). Won't supercede min tasks per array
 account = 'uc03610' # NESI account to use
 
 # Parameters that shouldn't need to be changed
@@ -85,7 +86,7 @@ if fault_type == 'crustal' and n_array_tasks < 500:
     n_array_tasks = 500
 
 if fault_type == 'all':
-    min_tasks_per_array = 100
+    min_tasks_per_array = 25
 
 if not calculate_fault_model_PPE and calculate_weighted_mean_PPE:
     job_time = 20
@@ -394,7 +395,7 @@ if paired_crustal_sz:
             out_directory=out_version_results_directory, outfile_extension=outfile_extension,
             nesi=nesi, nesi_step=nesi_step, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array,
             mem=mem, time_interval=time_interval, job_time=job_time, remake_PPE=remake_PPE, account=account,
-            thresh_lims=thresh_lims, thresh_step=thresh_step, site_gdf=site_gdf)
+            thresh_lims=thresh_lims, thresh_step=thresh_step, site_gdf=site_gdf, max_array_time=max_array_time)
 
 # calculate weighted mean PPE for the branch or paired dataset
 weighted_mean_PPE_filepath = f"../{out_version_results_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
