@@ -1280,8 +1280,8 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     crustal_sz_branch_pairs = list(crustal_branch_weight_dict.keys())
 
     # Build an array that contains a flag for each site and which fault typs it has been processed for
-    fault_flag_array = np.zeros((len(site_names), 1 + len(sz_branch_weight_dict_list)), dtype=int)
-    fault_flag_array[:, 0] = 1  # Crustal flag (all sites)
+    fault_flag_array = np.zeros((len(site_names), 1 + len(sz_branch_weight_dict_list)), dtype=np.bool_)
+    fault_flag_array[:, 0] = True  # Crustal flag (all sites)
     for ix, sz_branch_weight_dict in enumerate(sz_branch_weight_dict_list):
         all_single_sz_branches_site_disp_dict = get_all_branches_site_disp_dict(sz_branch_weight_dict, gf_name, slip_taper,
                                                                                 sz_model_version_results_directory_list[ix])
@@ -1289,7 +1289,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         for branch_id in list(sz_branch_weight_dict.keys()):
             with h5.File(all_single_sz_branches_site_disp_dict[branch_id]["cumu_file"], 'r') as sz_h5:
                 sz_processed_sites = sz_processed_sites & set([site for site in sz_h5.keys() if "branch_weight" not in site])
-        fault_flag_array[:, ix + 1] = np.array([1 if site in sz_processed_sites else 0 for site in site_names])
+        fault_flag_array[:, ix + 1] = np.array([True if site in sz_processed_sites else False for site in site_names])
 
         all_sz_branches_site_disp_dict = all_sz_branches_site_disp_dict | all_single_sz_branches_site_disp_dict
 
@@ -1367,6 +1367,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 for interval in time_interval:
                     # Check each time interval
                     if interval in weighted_h5[site].keys():
+                        # check metadata to ensure limits and thresholds are correct
                         if 'meta' in weighted_h5[site][interval].keys():
                             min_thresh, max_thresh, thresh_delta, n_scenarios = weighted_h5[site][interval]['meta'][:]
                             if any([min_thresh > thresh_lims[0], max_thresh < thresh_lims[1], thresh_delta != thresh_step, n_scenarios < n_samples]):  # Failure critieria
@@ -1377,6 +1378,9 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                         required_intervals.append(interval)
                                 else: # Can't confirm the faults used in the weighting. Require reprocessing
                                     required_intervals.append(interval)
+                        else:
+                            # No metadata, so require reprocessing
+                            required_intervals.append(interval)
                     else:
                         required_intervals.append(interval)
                 if len(required_intervals) > 0:
@@ -1437,7 +1441,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     'branch_id_list': pair_id_list,
                                     'sigma_lims': sigma_lims,
                                     'branch_weights': pair_weight_list,
-                                    'fault_flag': fault_flag_array[ix, :],
+                                    'fault_flag': fault_flag_list[ix],
                                     'required_intervals': [str(interval) for interval in intervals_list[ix]]}
                 with h5.File(site_h5_file, 'w') as site_h5:
                     dict_to_hdf5(site_h5, site_meta_dict)
@@ -1445,31 +1449,34 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
             # Allow for adaptive task arrays based o pairings
             c_sz_pair_array = np.array([pair_id.split('_-_') for pair_id in pair_id_list])
             for flag_combo in np.unique(fault_flag_array, axis=0):
-                flag_ix = [ix for ix, flag in enumerate(flag_combo) if flag == 1]
+                flag_ix = [ix for ix, flag in enumerate(flag_combo) if flag]
                 n_pairs = np.unique(c_sz_pair_array[:, flag_ix], axis=0).shape[0]
 
                 site_file = f"../{out_directory}/weighted_sites/site_list_{'-'.join([str(ix) for ix in flag_ix])}.txt"
                 n_sites = 0
                 with open(site_file, "w") as f:
                     for ix, site in enumerate(site_names):
-                        if all(fault_flag_array[ix, :] == flag_combo):
+                        if all(fault_flag_list[ix] == flag_combo):
                             f.write(f"../{out_directory}/weighted_sites/{site}.h5\n")
                             n_sites += 1
+                if n_sites == 0:
+                    print(f"No sites found for fault flag combination {flag_combo}. Skipping...")
+                    continue
                 if n_pairs < 50:
                     combo_mem = 5 if mem == 0 else mem
-                    combo_time = 15 if job_time == 0 else job_time
+                    combo_time = 20 if job_time == 0 else job_time
                     n_cpus = 4 if cpus == 0 else cpus
                 elif n_pairs < 150:
                     combo_mem = 10 if mem == 0 else mem
-                    combo_time = 30 if job_time == 0 else job_time
+                    combo_time = 60 if job_time == 0 else job_time
                     n_cpus = 8 if cpus == 0 else cpus
                 elif n_pairs < 300:
                     combo_mem = 20 if mem == 0 else mem
-                    combo_time = 45 if job_time == 0 else job_time
+                    combo_time = 120 if job_time == 0 else job_time
                     n_cpus = 10 if cpus == 0 else cpus
                 else:
                     combo_mem = 30 if mem == 0 else mem
-                    combo_time = 90 if job_time == 0 else job_time
+                    combo_time = 240 if job_time == 0 else job_time
                     n_cpus = 12 if cpus == 0 else cpus
 
                 combo_time = combo_time * len(time_interval)  # Multiply by number of time intervals to process
@@ -1607,7 +1614,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
 
         # Trim pair_id_list to only unique combinations if not all branches are needed (useful to paired crustal_subduction)
         if fault_flag is not None:
-            pair_array = np.array([[pair_id.split('_-_')[ix] for ix in range(len(fault_flag)) if fault_flag[ix] == 1] for pair_id in pair_id_list])
+            pair_array = np.array([[pair_id.split('_-_')[ix] for ix in range(len(fault_flag)) if fault_flag[ix]] for pair_id in pair_id_list])
             branch_weights = [branch_weights[ix] for ix in np.unique(pair_array, axis=0, return_index=True)[1]]
             pair_id_list = ['_-_'.join([branch for branch in pair]) for pair in np.unique(pair_array, axis=0)]
             if benchmarking:
@@ -1728,6 +1735,8 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles_csc.data, compression='gzip', compression_opts=6)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indices", data=percentiles_csc.indices, compression='gzip', compression_opts=6)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indptr", data=percentiles_csc.indptr, compression='gzip', compression_opts=6)
+                if fault_flag is not None:
+                    interval_h5.create_dataset(f"fault_flag", data=fault_flag, compression=None)
             interval_h5.create_dataset(f"meta", data=np.array([thresholds[0], thresholds[-1], thresholds[1] - thresholds[0], n_samples]))
             if fault_flag is not None:
                 interval_h5.create_dataset("fault_flag", data=fault_flag, compression=None)
