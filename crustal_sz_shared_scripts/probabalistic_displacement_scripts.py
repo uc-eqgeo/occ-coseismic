@@ -1352,10 +1352,12 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     
     requested_sites = site_names
     if remake_PPE:
+        print('Remaking PPE for all sites...')
         intervals_list = [time_interval for _ in site_names]
         fault_flag_list = [fault_flag_array[ix, :] for ix in range(fault_flag_array.shape[0])]
     else:
         # Check sites individually to see if they have been processed
+        print('Checking sites individually to see if they have been processed...')
         site_names = []
         intervals_list = []
         fault_flag_list = []
@@ -1435,7 +1437,8 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     'branch_id_list': pair_id_list,
                                     'sigma_lims': sigma_lims,
                                     'branch_weights': pair_weight_list,
-                                    'fault_flag': fault_flag_array[ix, :]}
+                                    'fault_flag': fault_flag_array[ix, :],
+                                    'required_intervals': [str(interval) for interval in intervals_list[ix]]}
                 with h5.File(site_h5_file, 'w') as site_h5:
                     dict_to_hdf5(site_h5, site_meta_dict)
 
@@ -1462,7 +1465,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                     n_cpus = 8 if cpus == 0 else cpus
                 elif n_pairs < 300:
                     combo_mem = 20 if mem == 0 else mem
-                    combo_time = 60 if job_time == 0 else job_time
+                    combo_time = 45 if job_time == 0 else job_time
                     n_cpus = 10 if cpus == 0 else cpus
                 else:
                     combo_mem = 30 if mem == 0 else mem
@@ -1489,14 +1492,14 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
         elif nesi_step == 'combine':
             start = time()
             printProgressBar(0, len(site_names), prefix=f'\tAdding Site {site_names[0]}', suffix='Complete 00:00:00 (00:00s/site)', length=50)
-            dataset_list = ['weighted_exceedance_probs_*-*', '*-*_max_vals', '*-*_min_vals', 'branch_exceedance_probs_*-*']
+            dataset_list = ['weighted_exceedance_probs_*-*', 'branch_exceedance_probs_*-*']
             sites_added, no_site_h5, missing_data = 0, 0, 0
             for ix, site in enumerate(site_names):
                 site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
                 if not os.path.exists(site_h5_file):
                     no_site_h5 += 1
                     continue
-                remove_site = [False]
+                remove_site = True
                 if site not in weighted_h5.keys():
                     weighted_h5.create_group(site)
                 site_group = weighted_h5[site]     
@@ -1505,19 +1508,27 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 
                 with h5.File(site_h5_file, 'r') as site_h5:
                     site_group.create_dataset("site_coords", data=site_h5['site_coords'])
-                    for interval in time_interval:
+                    if 'requested_intervals' in site_h5.keys():
+                        requested_intervals = site_h5['requested_intervals'][:]
+                    else:
+                        requested_intervals = time_interval
+                    for interval in requested_intervals:
                         if interval in site_h5.keys():
-                            if all([True if dataset.replace('*-*', exceed) in site_h5.keys() else False for exceed in exceed_type_list for dataset in dataset_list]):
+                            if all([True if dataset.replace('*-*', exceed) in site_h5[interval].keys() else False for exceed in exceed_type_list for dataset in dataset_list]):
                                 if interval in site_group.keys():
                                     del site_group[interval]
+                                interval_group = site_group.create_group(interval)
                                 for exceed_type in exceed_type_list:
                                     for dataset in dataset_list:
-                                        site_group.create_dataset(dataset.replace('*-*', exceed_type), data=site_h5[dataset.replace('*-*', exceed_type)], compression=None)
-                                remove_site.append(True)
+                                        interval_group.create_dataset(dataset.replace('*-*', exceed_type), data=site_h5[interval][dataset.replace('*-*', exceed_type)], compression=None)
                             else:
-                                remove_site.append(False)
+                                # Site is missing data in some interval
+                                remove_site = False
+                        else:
+                            # If the interval is not in the site_h5, then that interval hasn't been processed yet for some reason
+                            remove_site = False
                         
-                if all(remove_site[1:]):
+                if remove_site:
                     sites_added += 1
                     os.remove(site_h5_file)  # Remove the site file if it has added all requested intervals into the weighted_h5
                 else:
@@ -1525,7 +1536,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 elapsed = time_elasped(time(), start, decimal=False)
                 printProgressBar(ix + 1, len(site_names), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (sites_added + 1):.2f}s/site)', length=50)
             weighted_h5.close()
-            print(f"Added {sites_added}/{len(site_names)} sites to the weighted_h5 file.\n{no_site_h5} sites did not have a site.h5 file.\n{missing_data} sites were missing data for some intervals.")
+            print(f"\nAdded {sites_added}/{len(site_names)} sites to the weighted_h5 file.\n{no_site_h5} sites did not have a site.h5 file.\n{missing_data} sites were missing data for some intervals.")
             h5_files = glob(f"../{out_directory}/weighted_sites/*.h5")
 
             if len(h5_files) == 0:
