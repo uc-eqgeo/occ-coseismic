@@ -342,11 +342,11 @@ if not paired_crustal_sz:
 
 ##### paired crustal and sz PPE
 if paired_crustal_sz:
-    out_version_results_directory = f"{results_directory}/paired_c{crustal_site_names}"
-    pickle_prefix = ''
+    out_version_results_directory = f"{results_directory}/paired_c{crustal_mesh_version}"
+    model_id = f"paired_c{crustal_site_names}" # for creating xarray files for specific site combinations
     for sub in fault_type[1:]:
-        out_version_results_directory += f"_{sub}{sz_site_names[sz_list_order.index(sub)]}"
-        pickle_prefix += f"{sub}_"
+        out_version_results_directory += f"_{sub}_{disc_version_list[1:][sz_list_order.index(sub)]}"
+        model_id += f"_{sub}{sz_site_names[sz_list_order.index(sub)]}"
     if not os.path.exists(f"../{out_version_results_directory}"):
         os.mkdir(f"../{out_version_results_directory}")
     for ix, branch_weight_dict in enumerate(branch_weight_dict_list):
@@ -412,13 +412,15 @@ if save_arrays:
     else:
         weighted = True
         branch_key = ['']
+    if not paired_crustal_sz:
+        model_id = None
     for key in branch_key:
         if interp_sites:
             interp_sites = [interp_sites, site_geojson]
         ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
                             thresh_lims=[0, 3], thresh_step=1.00, output_thresh=True, probs_lims = [0.01, 0.10], probs_step=0.01,
                             output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key,
-                            time_intervals=time_interval, interp_sites=interp_sites)
+                            time_intervals=time_interval, interp_sites=interp_sites, model_id=model_id)
 
 if paired_crustal_sz:
     site_names_title = f"paired crustal{crustal_site_names} and "
