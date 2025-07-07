@@ -613,28 +613,34 @@ if __name__ == "__main__":
             raise Exception(f"Task {args.task_number} has no sites to process")
     
         nesiprint(f"Finding weighted means for {len(task_sites)} sites...")
-        for site in task_sites:
+        width = len(str(len(task_sites)))
+        for ix, site in enumerate(task_sites):
             site_name = os.path.basename(site).replace('.h5', '')
-            nesiprint(f"\tProcessing site {site}...")
-            lap = time()
-            with h5.File(site, "a") as site_h5:
-                if 'fault_flag' in site_h5.keys():
-                    fault_flag = site_h5['fault_flag'][:]
-                else:
-                    fault_flag = None
-                create_site_weighted_mean(site_h5, site_name, site_h5['n_samples'][()], 
-                                          site_h5['crustal_model_version_results_directory'][()].decode('utf-8'), 
-                                          [val.decode('utf-8') for val in site_h5['sz_model_version_results_directory_list'][()]], 
-                                          site_h5['gf_name'][()].decode('utf-8'), 
-                                          site_h5['thresholds'][:],
-                                          [val.decode('utf-8') for val in site_h5['exceed_type_list'][()]],
-                                          [val.decode('utf-8') for val in site_h5['branch_id_list'][()]], 
-                                          site_h5['sigma_lims'], 
-                                          site_h5['branch_weights'],
-                                          compression='gzip',
-                                          intervals=[str(interval) for interval in investigation_time],
-                                          fault_flag=fault_flag)
-            nesiprint(f"Site {site_name} complete in {time() - lap:.2f} seconds")
+            if os.path.exists(site): # This check is incase you're rerunning the sbatch after partial success
+                nesiprint(f"\t{ix:0{width}d}: Processing {site}...")
+                lap = time()
+                with h5.File(site, "r+") as site_h5:
+                    if 'fault_flag' in site_h5.keys():
+                        fault_flag = site_h5['fault_flag'][:]
+                    else:
+                        fault_flag = None
+                    if 'required_intervals' in site_h5.keys():
+                        investigation_time = [str(interval.decode('utf-8')) for interval in site_h5['required_intervals'][()]]
+                    else:
+                        investigation_time = [str(interval) for interval in investigation_time]
+                    create_site_weighted_mean(site_h5, site_name, site_h5['n_samples'][()], 
+                                            site_h5['crustal_model_version_results_directory'][()].decode('utf-8'), 
+                                            [val.decode('utf-8') for val in site_h5['sz_model_version_results_directory_list'][()]], 
+                                            site_h5['gf_name'][()].decode('utf-8'), 
+                                            site_h5['thresholds'][:],
+                                            [val.decode('utf-8') for val in site_h5['exceed_type_list'][()]],
+                                            [val.decode('utf-8') for val in site_h5['branch_id_list'][()]], 
+                                            site_h5['sigma_lims'], 
+                                            site_h5['branch_weights'],
+                                            compression='gzip',
+                                            intervals=[str(interval) for interval in investigation_time],
+                                            fault_flag=fault_flag)
+                nesiprint(f"\tSite {site_name} complete in {time() - lap:.2f} seconds")
         print('\nAll sites complete!')
 
     else:
