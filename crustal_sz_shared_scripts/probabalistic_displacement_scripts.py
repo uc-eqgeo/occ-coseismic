@@ -1481,22 +1481,20 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
                 combo_time = combo_time * len(time_interval)  # Multiply by number of time intervals to process
 
-                tasks_per_array = np.ceil(n_sites / n_array_tasks)
-                if tasks_per_array < min_tasks_per_array:
-                    tasks_per_array = min_tasks_per_array
-                array_time = 60 + combo_time * tasks_per_array
+                combo_tasks_per_job = n_array_tasks  # Number of tasks per each array job
+                array_time = 60 + combo_time * combo_tasks_per_job  # Amount of time that will be required for each array job, with 60 seconds overhead
                 # Reduce the number of tasks per array if the array time is too long
                 if array_time > max_array_time:
-                    tasks_per_array = np.floor(max_array_time / combo_time)
-                    # Still keep the minimum number of tasks per array
-                    if tasks_per_array < min_tasks_per_array:
-                        tasks_per_array = min_tasks_per_array
-                array_time = 60 + combo_time * tasks_per_array            
+                    combo_tasks_per_job = np.floor((max_array_time - 60) / combo_time)
+                # Still keep the minimum number of tasks per array
+                if combo_tasks_per_job < min_tasks_per_array:
+                    combo_tasks_per_job = min_tasks_per_array
+                array_time = 60 + combo_time * combo_tasks_per_job
                 hours, rem = divmod(array_time, 3600)
                 mins = np.ceil(rem / 60)
-                combo_array_tasks = int(np.ceil(n_sites / tasks_per_array))
+                n_jobs = int(np.ceil(n_sites / combo_tasks_per_job))  # Number of jobs required to process all sites
 
-                slurm_file = prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, combo_array_tasks, site_file,
+                slurm_file = prep_SLURM_weighted_sites_submission(out_directory, combo_tasks_per_job, n_jobs, site_file,
                                             hours=int(hours), mins=int(mins), mem=combo_mem, cpus=n_cpus, account=account, job_time=combo_time, time_interval=time_interval, fault_combo=f"_{'-'.join([str(ix) for ix in flag_ix])}")
                 
                 print(f"Now run sbatch {slurm_file}")

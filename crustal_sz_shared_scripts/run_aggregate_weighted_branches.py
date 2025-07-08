@@ -83,10 +83,10 @@ if paired_crustal_sz and nesi_step == 'prep':
     n_cpus = 0
 
 if fault_type == 'crustal' and n_array_tasks < 500:
-    n_array_tasks = 500
+    n_array_tasks = 100
 
 if fault_type == 'all':
-    min_tasks_per_array = 25
+    min_tasks_per_array = 50
 
 if not calculate_fault_model_PPE and calculate_weighted_mean_PPE:
     job_time = 20
