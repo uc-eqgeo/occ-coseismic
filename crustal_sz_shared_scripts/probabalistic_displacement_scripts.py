@@ -1374,7 +1374,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                 required_intervals.append(interval)
                             else:
                                 if 'fault_flag' in weighted_h5[site][interval].keys():
-                                    if any(weighted_h5[site][interval]['fault_flag'] != fault_flag_array[ix, :]):
+                                    if any(weighted_h5[site][interval]['fault_flag'][:] != fault_flag_array[ix, :]):
                                         required_intervals.append(interval)
                                 else: # Can't confirm the faults used in the weighting. Require reprocessing
                                     required_intervals.append(interval)
@@ -1464,7 +1464,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                     continue
                 if n_pairs < 50:
                     combo_mem = 5 if mem == 0 else mem
-                    combo_time = 20 if job_time == 0 else job_time
+                    combo_time = 30 if job_time == 0 else job_time
                     n_cpus = 4 if cpus == 0 else cpus
                 elif n_pairs < 150:
                     combo_mem = 10 if mem == 0 else mem
@@ -1485,10 +1485,11 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 array_time = 60 + combo_time * combo_tasks_per_job  # Amount of time that will be required for each array job, with 60 seconds overhead
                 # Reduce the number of tasks per array if the array time is too long
                 if array_time > max_array_time:
-                    combo_tasks_per_job = np.floor((max_array_time - 60) / combo_time)
+                    combo_tasks_per_job = np.floor((max_array_time - 60) / combo_time).astype(int)
                 # Still keep the minimum number of tasks per array
                 if combo_tasks_per_job < min_tasks_per_array:
                     combo_tasks_per_job = min_tasks_per_array
+                combo_tasks_per_job = np.min([combo_tasks_per_job, n_sites])  # If you have fewer sites than the task limit, reduce so less time is requested
                 array_time = 60 + combo_time * combo_tasks_per_job
                 hours, rem = divmod(array_time, 3600)
                 mins = np.ceil(rem / 60)
@@ -1525,11 +1526,14 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                     else:
                         requested_intervals = time_interval
                     for interval in requested_intervals:
-                        if interval in site_h5.keys():
+                        if interval in site_h5.keys():                                
                             if all([True if dataset.replace('*-*', exceed) in site_h5[interval].keys() else False for exceed in exceed_type_list for dataset in dataset_list]):
                                 if interval in site_group.keys():
                                     del site_group[interval]
                                 interval_group = site_group.create_group(interval)
+                                if 'fault_flag' in site_h5[interval].keys():
+                                    interval_group.create_dataset('fault_flag', data=site_h5[interval]['fault_flag'][:])
+                                interval_group.create_dataset('meta', data=site_h5[interval]['meta'][:])
                                 for exceed_type in exceed_type_list:
                                     for dataset in dataset_list:
                                         interval_group.create_dataset(dataset.replace('*-*', exceed_type), data=site_h5[interval][dataset.replace('*-*', exceed_type)], compression=None)
