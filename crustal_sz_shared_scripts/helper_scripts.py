@@ -727,7 +727,10 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
                                     # "_sz_fq_lw25_b0-95", "_sz_fq_lw25_b1-10", "_sz_fq_lw25_b1-24",
                                     # "_sz_fq_lock_b0-95", "_sz_fq_lock_b1-10", "_sz_fq_lock_b1-24",
                                     #   # 8) Corrected Sensitivity Analysis
-                                    "_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nhb110", "_sz_fq_pnhb110", "_sz_fq_3lhb110", "_sz_fq_plhb110"]
+                                    "_sz_fq_3nub110", "_sz_fq_pnub110",
+                                    "_sz_fq_3nhb110", "_sz_fq_pnhb110",
+                                    # "_sz_fq_3lhb110", "_sz_fq_plhb110",
+                                    ]
                                     
 
                 NSHM_directory_list_i = [# "sz_solutions/FakeQuakes_hk_3e10_nolocking_uniformSlip_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10",
@@ -774,12 +777,12 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
                                         #  "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10",
                                         #  "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-24_pMax6233_nIt500000_narchi10",
                                         #   # 8) Corrected Sensitivity Analysis
-                                         "sz_solutions/FQ_hk_3e10_locking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
-                                         "sz_solutions/FQ_hk_3e10_nolocking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
                                          "sz_solutions/FQ_hk_3e10_nolocking_uniformSlip_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
-                                         "sz_solutions/FQ_hk_prem_locking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
-                                         "sz_solutions/FQ_hk_prem_nolocking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
                                          "sz_solutions/FQ_hk_prem_nolocking_uniformSlip_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
+                                         "sz_solutions/FQ_hk_3e10_nolocking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
+                                         "sz_solutions/FQ_hk_prem_nolocking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
+                                        #  "sz_solutions/FQ_hk_3e10_locking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
+                                        #  "sz_solutions/FQ_hk_prem_locking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
                                         ]
 
             else:
