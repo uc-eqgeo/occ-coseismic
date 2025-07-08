@@ -1474,15 +1474,20 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                     combo_mem = 20 if mem == 0 else mem
                     combo_time = 120 if job_time == 0 else job_time
                     n_cpus = 10 if cpus == 0 else cpus
+                elif n_pairs < 500:
+                    combo_mem = 25 if mem == 0 else mem
+                    combo_time = 240 if job_time == 0 else job_time
+                    n_cpus = 12 if cpus == 0 else cpus
                 else:
                     combo_mem = 30 if mem == 0 else mem
-                    combo_time = 240 if job_time == 0 else job_time
+                    combo_time = 400 if job_time == 0 else job_time
                     n_cpus = 12 if cpus == 0 else cpus
 
                 combo_time = combo_time * len(time_interval)  # Multiply by number of time intervals to process
 
                 combo_tasks_per_job = n_array_tasks  # Number of tasks per each array job
-                array_time = 60 + combo_time * combo_tasks_per_job  # Amount of time that will be required for each array job, with 60 seconds overhead
+                # Amount of time that will be required for each array job, with 60 seconds overhead, and extra long for the first site for numba to power up
+                array_time = 60 + combo_time * (combo_tasks_per_job + 20)
                 # Reduce the number of tasks per array if the array time is too long
                 if array_time > max_array_time:
                     combo_tasks_per_job = np.floor((max_array_time - 60) / combo_time).astype(int)
@@ -1490,7 +1495,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 if combo_tasks_per_job < min_tasks_per_array:
                     combo_tasks_per_job = min_tasks_per_array
                 combo_tasks_per_job = np.min([combo_tasks_per_job, n_sites])  # If you have fewer sites than the task limit, reduce so less time is requested
-                array_time = 60 + combo_time * combo_tasks_per_job
+                array_time = 60 + combo_time * (combo_tasks_per_job + 20)
                 hours, rem = divmod(array_time, 3600)
                 mins = np.ceil(rem / 60)
                 n_jobs = int(np.ceil(n_sites / combo_tasks_per_job))  # Number of jobs required to process all sites
@@ -1557,6 +1562,8 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
             if len(h5_files) == 0:
                 shutil.rmtree(f"../{out_directory}/weighted_sites")
+            
+            write_sites_to_geojson(weighted_h5_file, time_interval)
     
     return
 

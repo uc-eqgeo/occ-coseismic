@@ -55,7 +55,7 @@ nesi_step = 'prep'  # 'prep' or 'combine'
 n_array_tasks = 250    # Number of array tasks
 min_tasks_per_array = 250   # Minimum number of sites per array
 min_branches_per_array = 1  # Minimum number of branches per array
-max_array_time = 7200 # Maximum time per array task when running paired model weighting (seconds). Won't supercede min tasks per array
+max_array_time = 3600 * 3 # Maximum time per array task when running paired model weighting (seconds). Won't supercede min tasks per array
 account = 'uc03610' # NESI account to use
 
 # Parameters that shouldn't need to be changed
