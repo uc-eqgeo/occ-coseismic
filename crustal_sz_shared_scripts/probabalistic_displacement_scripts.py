@@ -2997,7 +2997,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         outfile_directory = f"../{model_version_results_directory}/weighted_mean_xarray"
         if model_id is None:
             model_id = model_version_results_directory.split('/')[-1]
-        print("Saving data arrays for weighted mean displacements {model_id}...")
+        print(f"Saving data arrays for weighted mean displacements {model_id}...")
     elif single_branch != '':
         branch_suffix = '_'.join(single_branch.split('_')[6:])
         h5_file = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/{single_branch}_cumu_PPE.h5"
