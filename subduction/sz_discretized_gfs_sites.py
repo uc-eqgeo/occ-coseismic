@@ -15,15 +15,15 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_version_0-1S"
+version_extension = "_north_1km"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
 # Define whch subduction zone ([_fq_]hikkerm / puysegur)
-sz_zone = '_puysegur'
+sz_zone = '_fq_hikkerm'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-csvfile = 'cube_centroids_27000_9000_buffer_0_33S_points.csv'
+csvfile = 'cube_centroids_1000_1000_buffer_0_00N_points.csv'
 site_list_csv = os.path.join('..', 'sites', csvfile)
 sites_df = pd.read_csv(site_list_csv)
 
@@ -31,7 +31,7 @@ sites_df = pd.read_csv(site_list_csv)
 gf_site_names = [str(site) for site in sites_df['siteId']]
 gf_site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
 
-geojson_only = False  # True if you are generating gfs for a subset of sites that you have already prepared
+geojson_only = False # True if you are generating gfs for a subset of sites that you have already prepared
 #############################################
 gf_type = "sites"
 

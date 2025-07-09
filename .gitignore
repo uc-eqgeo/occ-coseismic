@@ -35,3 +35,7 @@ pcdhm/
 testing.ipynb
 subduction/plot_greensFunctions.ipynb
 data/branch_weight_data.xlsx
+crustal_sz_shared_scripts/check_site_pairing_time.ipynb
+crustal_sz_shared_scripts/site_times_0-1.txt
+crustal_sz_shared_scripts/site_times_0-2.txt
+crustal_sz_shared_scripts/site_times_0.txt
