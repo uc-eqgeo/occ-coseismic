@@ -1,14 +1,15 @@
+import os
 try:
     import geopandas as gpd
     import rasterio
     from rasterio.transform import Affine
 except:
-    print("Running on NESI. Some functions won't work....")
-from helper_scripts import get_figure_bounds, make_qualitative_colormap, tol_cset, get_probability_color, percentile, maximum_displacement_plot, dict_to_hdf5, hdf5_to_dict
+    os.system(f"echo Running on NESI. Some functions wont work....")
+from helper_scripts import make_qualitative_colormap, get_probability_color, percentile, dict_to_hdf5, hdf5_to_dict, write_sites_to_geojson
 import xarray as xr
 import h5py as h5
+from glob import glob
 import json
-import os
 import shutil
 import random
 import itertools
@@ -21,16 +22,20 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
-from scipy.sparse import csc_array, csr_array, hstack
+from scipy.sparse import csc_array, csr_array, hstack, csr_matrix
+from scipy.interpolate import NearestNDInterpolator, CloughTocher2DInterpolator
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, combine_site_cumu_PPE, \
-                         prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission
+                         prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission, \
+                         slurm_timeleft, nesiprint
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
 numba_flag = True
 if numba_flag:
     try:
-        from numba import njit, prange
+        from numba import njit, prange, get_num_threads
+        from numba.typed import Dict, List
+        from numba.core import types
     except:
         numba_flag = False
         print('No numba found. Some functions will be slower.')
@@ -168,6 +173,7 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
         rate_scaling_factor = branch_weight_dict[branch_id]["S"]
 
         branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.h5"
+        branch_cumu_file = f"../{model_version_results_directory}/{extension1}/{branch_id}_cumu_PPE.h5"
         if os.path.exists(branch_site_disp_dict_file):
             try:  # check in case h5 is corrupted
                 branch_h5 = h5.File(branch_site_disp_dict_file, "a")
@@ -184,7 +190,8 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
 
 
         all_branches_site_disp_dict[branch_id] = {"site_disp_dict":branch_site_disp_dict_file,
-                                                "branch_weight":branch_weight_dict[branch_id]["total_weight_RN"]}
+                                                "branch_weight":branch_weight_dict[branch_id]["total_weight_RN"],
+                                                "cumu_file":branch_cumu_file}
 
     return all_branches_site_disp_dict
 
@@ -254,6 +261,121 @@ if numba_flag:
 
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
+    @njit(parallel=True)
+    def compute_exceedances(pair_id_list, data_list, indptr_list, thresholds, n_samples):
+        site_df_abs, site_df_up, site_df_down = {}, {}, {}
+        n_pairs = len(data_list)
+
+        for ix in range(n_pairs):
+            ix = np.int64(ix)
+            pair_id = pair_id_list[ix]
+            data = data_list[ix]
+            indptr = indptr_list[ix]
+
+            n_total_abs, n_up, n_down = sparse_thresholds(thresholds, data, indptr)
+
+            site_df_abs[pair_id] = (n_total_abs / n_samples).reshape(-1)
+            site_df_up[pair_id] = (n_up / n_samples).reshape(-1)
+            site_df_down[pair_id] = (n_down / n_samples).reshape(-1)
+
+        return site_df_abs, site_df_up, site_df_down
+
+    @njit(parallel=False)
+    def numba_csr_array(array):
+        rows, cols = array.shape
+        # Convert to CSC parts manually (row-major traversal for CSR)
+        data_list = []
+        indices_list = []
+        indptr = [0]
+        nnz = 0
+
+        for row in range(rows):
+            for col in range(cols):
+                val = array[row, col]
+                if val != 0.0:
+                    data_list.append(val)
+                    indices_list.append(col)
+                    nnz += 1
+            indptr.append(nnz)
+
+        # Store in Numba-compatible nested dictionary
+        csr_dict = Dict.empty(key_type=types.unicode_type, value_type=types.float64[:])
+        csr_dict["data"] = np.array(data_list).astype(np.float64)
+        csr_dict["indices"] = np.array(indices_list).astype(np.float64)
+        csr_dict["indptr"] = np.array(indptr).astype(np.float64)
+
+        return csr_dict
+
+    @njit(parallel=False)
+    def numba_csr_tuple(array):
+        rows, cols = array.shape
+        # Convert to CSC parts manually (row-major traversal for CSR)
+        data_list = []
+        indices_list = []
+        indptr = [0]
+        nnz = 0
+
+        for row in range(rows):
+            for col in range(cols):
+                val = array[row, col]
+                if val != 0.0:
+                    data_list.append(val)
+                    indices_list.append(col)
+                    nnz += 1
+            indptr.append(nnz)
+
+        # Return as elements
+        return np.array(data_list).astype(np.float64), np.array(indices_list), np.array(indptr)
+
+    @njit(parallel=True)
+    def numba_process_pair(pair_id_list, parts_id_list, branch_disp_dict, cumulative_pair_dict, n_samples, step=10):
+        # Split into groups to reduce memory useage
+        for group in np.arange(0, len(pair_id_list), step):
+            for sub_ix in prange(step):
+                ix = np.int64(sub_ix + group)
+                if ix >= len(pair_id_list):
+                    continue
+                pair_cumu = np.zeros((3, n_samples), dtype=np.float64)
+                pair_dict = Dict.empty(key_type=types.unicode_type, value_type=types.float64[:])
+                for branch in parts_id_list[ix]:
+                    indices = branch_disp_dict[branch]['indices'].astype(np.int32)
+                    indptr = branch_disp_dict[branch]['indptr'].astype(np.int32)
+                    if sum(indptr) == 0:
+                        continue
+                    for ii in range(3):
+                        pair_cumu[ii, indices[indptr[ii]:indptr[ii + 1]]] += branch_disp_dict[branch]['data'][indptr[ii]:indptr[ii + 1]]
+                
+                pair_dict = numba_csr_array(pair_cumu)
+                cumulative_pair_dict[pair_id_list[ix]] = pair_dict
+        
+        return cumulative_pair_dict
+
+    @njit(parallel=True)
+    def numba_full_process_pair(pair_id_list, parts_id_list, branch_disp_dict, n_samples, thresholds, step=1000):
+        site_df_abs, site_df_up, site_df_down = {}, {}, {}
+        # Split into groups to reduce memory useage
+        for group in np.arange(0, len(pair_id_list), step):
+            for sub_ix in range(step):
+                ix = np.int64(sub_ix + group)
+                if ix >= len(pair_id_list):
+                    continue
+                pair_cumu = np.zeros((3, n_samples), dtype=np.float64)
+                for branch in parts_id_list[ix]:
+                    indices = branch_disp_dict[branch]['indices'].astype(np.int32)
+                    indptr = branch_disp_dict[branch]['indptr'].astype(np.int32)
+                    if sum(indptr) == 0:
+                        continue
+                    for ii in range(3):
+                        pair_cumu[ii, indices[indptr[ii]:indptr[ii + 1]]] += branch_disp_dict[branch]['data'][indptr[ii]:indptr[ii + 1]]
+                
+                data, indices, indptr = numba_csr_tuple(pair_cumu)
+                n_total_abs, n_up, n_down = sparse_thresholds(thresholds, data, indptr)
+                site_df_abs[pair_id_list[ix]] = (n_total_abs / n_samples).reshape(-1)
+                site_df_up[pair_id_list[ix]] = (n_up / n_samples).reshape(-1)
+                site_df_down[pair_id_list[ix]] = (n_down / n_samples).reshape(-1)
+        
+        return site_df_abs, site_df_up, site_df_down
+
 else:
     def calc_thresholds(thresholds, cumulative_disp_scenarios, uix=0, dix=1, aix=2):
         n_thresholds = len(thresholds)
@@ -288,7 +410,7 @@ else:
             if max_disp < thresholds[-1]:
                 n_thresholds = np.where(thresholds > max_disp)[0][0]
             
-            for tix in prange(n_thresholds):
+            for tix in range(n_thresholds):
                 threshold = thresholds[tix]
                 count_total_abs, count_up, count_down = 0, 0, 0
                 for disp in cumulative_disp_scenarios[rows[0]:rows[1]]:
@@ -321,6 +443,7 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
         print(f'\tPreparing {n_samples} Poissonian Scenarios for {n_ruptures} ruptures...')
         rng = np.random.default_rng()
         step = int(1e8 / n_samples)  # step size for poisson sampling (100,000,000 elements per run, ~9GB)
+        step = step if step < rates.shape[0] else rates.shape[0]  # ensure step is not larger than number of ruptures
         for interval in time_interval:
             scenarios = csc_array(rng.poisson(float(interval) * rates[0:step], size=(int(n_samples), step)))
             for ii in range(step, n_ruptures, step):
@@ -689,9 +812,10 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
     branch_weight_list = []
     fault_model_allbranch_PPE_dict = {}
     combine_branches = 0
+    n_jobs = 0
     for counter, branch_id in enumerate(branch_weight_dict.keys()):
         print(f"calculating {branch_id} PPE\t({counter + 1} of {len(branch_weight_dict.keys())} branches)")
-
+        remake_branch_PPE = remake_PPE
         # get site displacement dictionary and branch weights
         extension1 = gf_name + branch_weight_dict[branch_id]["file_suffix"]
         branch_weight = branch_weight_dict[branch_id]["total_weight_RN"]
@@ -722,7 +846,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         # Reduce site list to only those that have not been processed or not processed to the required number of samples
         thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
         well_processed_sites = []
-        if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_PPE:
+        if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_branch_PPE:
             print('\tChecking for existing PPE at each site...')
             with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r") as branch_PPEh5:
                 # Checks that sites have been processed
@@ -745,15 +869,17 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         else:
             branch_PPEh5 = h5.File(fault_model_allbranch_PPE_dict[branch_id], "a")
             branch_PPEh5.close()
+            remake_branch_PPE = True
 
         prep_list = [site for site in inv_sites if site not in well_processed_sites]
+        n_jobs += len(prep_list)
         
         if len(prep_list) == 0:
             print(f"\tAll sites have been processed for {branch_id}. Skipping...")
             continue
         else:
             print(f"\t{len(prep_list)}/{len(inv_sites)} requested sites need processing for {branch_id}...")
-            remake_PPE = True
+            remake_branch_PPE = True
 
         ### get exceedance probability dictionary
         if nesi:
@@ -778,7 +904,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                                         taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", thresholds=thresholds)
 
         else:
-            if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_PPE:
+            if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_branch_PPE:
                 print(f"\tFound Pre-Prepared Branch PPE:  {fault_model_allbranch_PPE_dict[branch_id]}")
             else:
                 if load_random:
@@ -801,7 +927,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
     n_sites = len(prep_list)
     if nesi and nesi_step == 'prep':
-        n_jobs = len(branch_weight_dict.keys()) * n_sites
+        # n_jobs = len(branch_weight_dict.keys()) * n_sites
         tasks_per_array = np.ceil(n_jobs / n_array_tasks)
         if tasks_per_array < min_tasks_per_array:
             tasks_per_array = min_tasks_per_array
@@ -819,7 +945,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         min_branches_per_array = 1
         if tasks_per_array < min_branches_per_array:
             tasks_per_array = min_branches_per_array
-        time_per_site = 0.5
+        time_per_site = 1
         array_time = 60 + time_per_site * n_sites * tasks_per_array
         hours, secs = divmod(array_time, 3600)
         mins = np.ceil(secs / 60)
@@ -846,6 +972,43 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             pkl.dump(fault_model_allbranch_PPE_dict, f)
 
         return fault_model_allbranch_PPE_dict
+
+def check_completed_weighted_sites(weighted_h5, requested_sites, time_interval, thresh_lims=[0, 3], thresh_step=0.01, n_samples=100000):
+        # Check sites individually to see if they have been processed
+        site_list = []
+        intervals_list = []
+        for site in requested_sites:
+            if site in weighted_h5.keys():
+                required_intervals = []
+                for interval in time_interval:
+                    # Check each time interval
+                    if interval in weighted_h5[site].keys():
+                        if 'meta' in weighted_h5[site][interval].keys():
+                            min_thresh, max_thresh, thresh_delta, n_scenarios = weighted_h5[site][interval]['meta'][:]
+                            if any([min_thresh > thresh_lims[0], max_thresh < thresh_lims[1], thresh_delta != thresh_step, n_scenarios < n_samples]):  # Failure critieria
+                                required_intervals.append(interval)
+                    else:
+                        required_intervals.append(interval)
+                if len(required_intervals) > 0:
+                    site_list.append(site)
+                    intervals_list.append(required_intervals)
+            else:
+                site_list.append(site)
+                intervals_list.append(time_interval)
+        return site_list, intervals_list
+
+def calc_array_times(site_list, min_tasks_per_array=100, n_array_tasks=100, job_time=60):
+    # Calculate number of task arrays and required time for each array
+    n_sites = len(site_list)
+    tasks_per_array = np.ceil(n_sites / n_array_tasks)
+    if tasks_per_array < min_tasks_per_array:
+        tasks_per_array = min_tasks_per_array
+    n_array_tasks = int(np.ceil(n_sites / tasks_per_array))
+    array_time = 60 + job_time * tasks_per_array
+    hours, rem = divmod(array_time, 3600)
+    mins = np.ceil(rem / 60)
+
+    return tasks_per_array, n_array_tasks, hours, mins
 
 def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper, site_list=[], thresh_lims=[0, 3], thresh_step=0.01, nesi=False, nesi_step='prep', n_samples=100000,
                                min_tasks_per_array=100, n_array_tasks=100, mem=10, cpus=1, account='', job_time=60, remake_PPE=False, time_interval=['100']):
@@ -907,36 +1070,16 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     if remake_PPE:
         intervals_list = [time_interval for _ in site_list]
     else:
-        # Check sites individually to see if they have been processed
-        site_list = []
-        intervals_list = []
-        for site in requested_sites:
-            if site in weighted_h5.keys():
-                required_intervals = []
-                for interval in time_interval:
-                    # Check each time interval
-                    if interval in weighted_h5[site].keys():
-                        if 'meta' in weighted_h5[site][interval].keys():
-                            min_thresh, max_thresh, thresh_delta, n_scenarios = weighted_h5[site][interval]['meta'][:]
-                            if any([min_thresh > thresh_lims[0], max_thresh < thresh_lims[1], thresh_delta != thresh_step, n_scenarios < n_samples]):  # Failure critieria
-                                required_intervals.append(interval)
-                    else:
-                        required_intervals.append(interval)
-                if len(required_intervals) > 0:
-                    site_list.append(site)
-                    intervals_list.append(required_intervals)
-            else:
-                site_list.append(site)
-                intervals_list.append(time_interval)
+        site_list, intervals_list = check_completed_weighted_sites(weighted_h5, requested_sites, time_interval, thresh_lims=thresh_lims, thresh_step=thresh_step, n_samples=n_samples)
 
     if len(site_list) == 0:
         print(f"All sites have been processed. Skipping...")
         weighted_h5.close()
+        write_sites_to_geojson(weighted_h5_file, time_interval)
         return
     else:
         print(f"{len(site_list)}/{len(requested_sites)} requested sites need processing...")
 
-    n_sites = len(site_list)
     if not nesi:
         start = time()
         elapsed, per_site = time_elasped(time(), start, 1, decimal=False)
@@ -964,7 +1107,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             weighted_h5.close()
             os.makedirs(f"../{out_directory}/weighted_sites", exist_ok=True)
             for ix, site in enumerate(site_list):
-                print(f'Preparing site {site} for NESI task array... ({100 * ix / len(site_list):.0f}%)', end ='\r')
+                print(f'Preparing site {ix}: {site} for NESI task array... ({100 * ix / len(site_list):.0f}%)', end ='\r')
                 site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
                 if os.path.exists(site_h5_file):
                     os.remove(site_h5_file)
@@ -986,14 +1129,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                 for site in site_list:
                     f.write(f"../{out_directory}/weighted_sites/{site}.h5\n")
     
-            n_sites = len(site_list)
-            tasks_per_array = np.ceil(n_sites / n_array_tasks)
-            if tasks_per_array < min_tasks_per_array:
-                tasks_per_array = min_tasks_per_array
-            n_array_tasks = int(np.ceil(n_sites / tasks_per_array))
-            array_time = 60 + job_time * tasks_per_array
-            hours, rem = divmod(array_time, 3600)
-            mins = np.ceil(rem / 60)
+            tasks_per_array, n_array_tasks, hours, mins = calc_array_times(site_list, min_tasks_per_array, n_array_tasks, job_time)
 
             slurm_file = prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_array_tasks, site_file,
                                          hours=int(hours), mins=int(mins), mem=mem, cpus=cpus, account=account, job_time=job_time)
@@ -1001,18 +1137,40 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             raise Exception(f"Now run\n\tsbatch {slurm_file}")
         
         elif nesi_step == 'combine':
+            if len(os.popen('echo $SLURM_JOB_ID').read().strip()) > 0:
+                slurm_id = int(os.popen('echo $SLURM_JOB_ID').read().strip())
+                slurm_time = slurm_timeleft(slurm_id)
+                print('\tSLURM ID:', slurm_id, 'Time left:', slurm_time)
+            else:
+                slurm_time = None
+
             start = time()
+            sites_added = 0
             printProgressBar(0, len(site_list), prefix=f'\tAdding Site {site_list[0]}', suffix='Complete 00:00:00 (00:00s/site)', length=50)
             for ix, site in enumerate(site_list):
                 site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
-                if remake_PPE and site in weighted_h5.keys():
-                    del weighted_h5[site]
-                site_group = weighted_h5.create_group(site)
+                # The key assumption here is that if a site.h5 exists, then this is the new data that needs to be added to the weighted.h5 file
+                # If a site in the site list doesn't exist, then that is because it has already been added to the weighted .h5 file in the first run before timeout, and removed from the directory
+                if not os.path.exists(site_h5_file):
+                    continue
+                if site in weighted_h5.keys():
+                    site_group = weighted_h5[site]
+                    if "site_coords" in site_group.keys():
+                        # Just delete the site coords, as this is going to be re-written
+                        del weighted_h5[site]["site_coords"]
+                else:
+                    # Create a site group if one does not yet exist
+                    site_group = weighted_h5.create_group(site)
+
                 with h5.File(site_h5_file, 'r') as site_h5:
                     # Take the data from the site_h5 and put it in the weighted_h5
                     site_group.create_dataset("site_coords", data=site_h5['site_coords'])
                     intervals = [key for key in site_h5.keys() if key.isnumeric()]
+                    all_intervals_prepared = all([True if interval in intervals else False for interval in intervals_list[ix]])
                     for interval in intervals:
+                        # Remove previous data
+                        if interval in site_group.keys():
+                            del site_group[interval]
                         interval_group = site_group.create_group(interval)
                         interval_group.create_dataset("meta", data=site_h5[interval]['meta'][:])
                         for exceed_type in exceed_type_list:
@@ -1020,11 +1178,45 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                             interval_group.create_dataset(f"branch_exceedance_probs_{exceed_type}", data=site_h5[interval][f'branch_exceedance_probs_{exceed_type}'], compression='gzip', compression_opts=6)
                             interval_group[f'branch_exceedance_probs_{exceed_type}'].attrs['branch_ids'] = [branch for branch in site_h5['branch_id_list'].asstr()]
                             interval_group.create_dataset(f"{exceed_type}_weighted_percentile_error", data=site_h5[interval][f'{exceed_type}_weighted_percentile_error'], compression=None)
-
+                if all_intervals_prepared:
+                    # Remove the site file if it has added all requested intervals into the weighted_h5
+                    # If not, preserve as it'll need to be reprocessed
+                    os.remove(site_h5_file)
+                sites_added += 1
                 elapsed = time_elasped(time(), start, decimal=False)
-                printProgressBar(ix + 1, len(site_list), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
+                printProgressBar(ix + 1, len(site_list), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / max([sites_added, 1]):.2f}s/site)', length=50)
+                # Add break in the event that this is a SLURM job
+                if slurm_time:
+                    runtime = time() - start
+                    time_left = slurm_time - runtime
+                    required_time = 60 + 5 * (time() - start) / sites_added # Require enough projected time for 5 more sites and finishing function
+                    timeout = True if time_left < required_time else False
+                    if timeout:
+                        print(f"\n\tSLURM Timeout reached. Exiting to preserve weighted_h5...")
+                        break
+
+            # Run a check to make sure all sites have been added correctly
+            site_list, intervals_list = check_completed_weighted_sites(weighted_h5, requested_sites, time_interval, thresh_lims=thresh_lims, thresh_step=thresh_step, n_samples=n_samples)
             weighted_h5.close()
-            shutil.rmtree(f"../{out_directory}/weighted_sites")
+            site_file = f"../{out_directory}/weighted_sites/site_list.txt"
+            if len(site_list) > 0:
+                # Create a new site list file with the sites that still need processing
+                print(f"Not all sites have been added correctly. {len(site_list)} sites still need processing.")
+                with open(f"{site_file}", "w") as f:
+                    for site in site_list:
+                        f.write(f"../{out_directory}/weighted_sites/{site}.h5\n")
+                
+                tasks_per_array, n_array_tasks, hours, mins = calc_array_times(site_list, min_tasks_per_array, n_array_tasks, job_time)
+
+                slurm_file = prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_array_tasks, site_file,
+                                         hours=int(hours), mins=int(mins), mem=mem, cpus=cpus, account=account, job_time=job_time)
+                print(f"Now rerun\n\tsbatch {slurm_file}")
+            else:
+                # Final cleanup if successfully reached the end of the function
+                os.remove(f"{site_file}")
+                os.rmdir(f"../{out_directory}/weighted_sites")
+    
+    write_sites_to_geojson(weighted_h5_file, time_interval)
 
     return
 
@@ -1034,7 +1226,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     slip_taper, n_samples, out_directory, outfile_extension,
                                     nesi=False, nesi_step='prep', hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
                                     n_array_tasks=100, min_tasks_per_array=100, time_interval=['100'], job_time=3, remake_PPE=True,
-                                    thresh_lims=[0, 3], thresh_step=0.01, site_gdf=None):
+                                    thresh_lims=[0, 3], thresh_step=0.01, site_gdf=None, max_array_time=7200):
 
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
@@ -1067,28 +1259,38 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     all_crustal_branches_site_disp_dict = get_all_branches_site_disp_dict(crustal_branch_weight_dict, gf_name, slip_taper,
                                                                           crustal_model_version_results_directory)
     
-    with h5.File(all_crustal_branches_site_disp_dict[list(crustal_branch_weight_dict.keys())[0]]["site_disp_dict"]) as crust_h5:
-        processed_site_names = [site for site in crust_h5.keys() if "rates" not in site]
-
     if isinstance(site_gdf, list):
         site_names = site_gdf
     else:
         site_names = site_gdf['siteId'].values.tolist()
-        site_gdf['tree_count'] = 0
+
+    # Check that all sites exists as a crustal site. Subduction sites are optional
+    crustal_processed_site_names = set(site_names)
+    for branch_id in list(crustal_branch_weight_dict.keys()):
+        with h5.File(all_crustal_branches_site_disp_dict[branch_id]["cumu_file"]) as crust_h5:
+            crustal_processed_site_names = crustal_processed_site_names & set([site for site in crust_h5.keys() if "branch_weight" not in site])
+
+    n_requested = len(site_names)
+    site_names = list(set(site_names) & set(crustal_processed_site_names))
+    site_names.sort()
+    print(f"{len(site_names)}/{n_requested} sites present in crustal branch PPE for pairing...")
 
     # make a dictionary of displacements at each site from all the crustal earthquake scenarios
     all_sz_branches_site_disp_dict = {}
     crustal_sz_branch_pairs = list(crustal_branch_weight_dict.keys())
+
+    # Build an array that contains a flag for each site and which fault typs it has been processed for
+    fault_flag_array = np.zeros((len(site_names), 1 + len(sz_branch_weight_dict_list)), dtype=np.bool_)
+    fault_flag_array[:, 0] = True  # Crustal flag (all sites)
     for ix, sz_branch_weight_dict in enumerate(sz_branch_weight_dict_list):
         all_single_sz_branches_site_disp_dict = get_all_branches_site_disp_dict(sz_branch_weight_dict, gf_name, slip_taper,
                                                                                 sz_model_version_results_directory_list[ix])
+        sz_processed_sites = set(site_names)
+        for branch_id in list(sz_branch_weight_dict.keys()):
+            with h5.File(all_single_sz_branches_site_disp_dict[branch_id]["cumu_file"], 'r') as sz_h5:
+                sz_processed_sites = sz_processed_sites & set([site for site in sz_h5.keys() if "branch_weight" not in site])
+        fault_flag_array[:, ix + 1] = np.array([True if site in sz_processed_sites else False for site in site_names])
 
-        with h5.File(all_single_sz_branches_site_disp_dict[list(sz_branch_weight_dict.keys())[0]]["site_disp_dict"]) as sz_h5:
-            processed_site_names = list(set(processed_site_names + [site for site in sz_h5.keys() if "rates" not in site]))
-            processed_site_names.sort()
-
-        if not isinstance(site_gdf, list):
-            site_gdf['tree_count'] += [1 if site in processed_site_names else 0 for site in site_names]
         all_sz_branches_site_disp_dict = all_sz_branches_site_disp_dict | all_single_sz_branches_site_disp_dict
 
         # make all the combinations of crustal and subduction zone branch pairs
@@ -1097,11 +1299,6 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
         if isinstance(crustal_sz_branch_pairs[0][0], tuple):
             crustal_sz_branch_pairs = [t1 + tuple([t2]) for t1, t2 in crustal_sz_branch_pairs]
-
-    if not isinstance(site_gdf, list):
-        site_gdf.to_file(f"../{out_directory}/{out_directory.split('/')[-1]}_site_locations.geojson", driver="GeoJSON")
-    missing_sites = [site for site in site_names if site not in processed_site_names]
-    assert len(missing_sites) == 0, f"Missing sites: {missing_sites}"
 
     pair_weight_list = []
     pair_id_list = []
@@ -1155,29 +1352,45 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     
     requested_sites = site_names
     if remake_PPE:
+        print('Remaking PPE for all sites...')
         intervals_list = [time_interval for _ in site_names]
+        fault_flag_list = [fault_flag_array[ix, :] for ix in range(fault_flag_array.shape[0])]
     else:
         # Check sites individually to see if they have been processed
+        print('Checking sites individually to see if they have been processed...')
         site_names = []
         intervals_list = []
-        for site in requested_sites:
+        fault_flag_list = []
+        for ix, site in enumerate(requested_sites):
             if site in weighted_h5.keys():
                 required_intervals = []
                 for interval in time_interval:
                     # Check each time interval
                     if interval in weighted_h5[site].keys():
+                        # check metadata to ensure limits and thresholds are correct
                         if 'meta' in weighted_h5[site][interval].keys():
                             min_thresh, max_thresh, thresh_delta, n_scenarios = weighted_h5[site][interval]['meta'][:]
                             if any([min_thresh > thresh_lims[0], max_thresh < thresh_lims[1], thresh_delta != thresh_step, n_scenarios < n_samples]):  # Failure critieria
                                 required_intervals.append(interval)
+                            else:
+                                if 'fault_flag' in weighted_h5[site][interval].keys():
+                                    if any(weighted_h5[site][interval]['fault_flag'][:] != fault_flag_array[ix, :]):
+                                        required_intervals.append(interval)
+                                else: # Can't confirm the faults used in the weighting. Require reprocessing
+                                    required_intervals.append(interval)
+                        else:
+                            # No metadata, so require reprocessing
+                            required_intervals.append(interval)
                     else:
                         required_intervals.append(interval)
                 if len(required_intervals) > 0:
                     site_names.append(site)
                     intervals_list.append(required_intervals)
+                    fault_flag_list.append(fault_flag_array[ix, :])
             else:
                 site_names.append(site)
                 intervals_list.append(time_interval)
+                fault_flag_list.append(fault_flag_array[ix, :])
 
     if len(site_names) == 0:
         print(f"All sites have been processed. Skipping...")
@@ -1203,7 +1416,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 with h5.File(all_crustal_branches_site_disp_dict[crustal_unique_id]["site_disp_dict"], 'r') as branch_site_h5:
                     site_group.create_dataset("site_coords", data=branch_site_h5[site]["site_coords"])
             create_site_weighted_mean(site_group, site, n_samples, crustal_model_version_results_directory, sz_model_version_results_directory_list, gf_name, thresholds,
-                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list, intervals=intervals_list[ix])
+                                      exceed_type_list, pair_id_list, sigma_lims, pair_weight_list, intervals=intervals_list[ix], fault_flag=fault_flag_list[ix])
             weighted_h5.close()
             elapsed, per_site = time_elasped(time(), start, ix + 1, decimal=False)
         printProgressBar(ix + 1, len(site_names), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
@@ -1227,44 +1440,130 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     'exceed_type_list': exceed_type_list,
                                     'branch_id_list': pair_id_list,
                                     'sigma_lims': sigma_lims,
-                                    'branch_weights': pair_weight_list}
+                                    'branch_weights': pair_weight_list,
+                                    'fault_flag': fault_flag_list[ix],
+                                    'required_intervals': [str(interval) for interval in intervals_list[ix]]}
                 with h5.File(site_h5_file, 'w') as site_h5:
                     dict_to_hdf5(site_h5, site_meta_dict)
-            
-            site_file = f"../{out_directory}/weighted_sites/site_list.txt"
-            with open(site_file, "w") as f:
-                for site in site_names:
-                    f.write(f"../{out_directory}/weighted_sites/{site}.h5\n")
-    
-            n_sites = len(site_names)
-            tasks_per_array = np.ceil(n_sites / n_array_tasks)
-            if tasks_per_array < min_tasks_per_array:
-                tasks_per_array = min_tasks_per_array
-            n_array_tasks = int(np.ceil(n_sites / tasks_per_array))
-            array_time = 60 + job_time * tasks_per_array
-            hours, rem = divmod(array_time, 3600)
-            mins = np.ceil(rem / 60)
 
-            slurm_file = prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_array_tasks, site_file,
-                                         hours=int(hours), mins=int(mins), mem=mem, cpus=cpus, account=account, job_time=job_time, time_interval=time_interval)
+            # Allow for adaptive task arrays based o pairings
+            c_sz_pair_array = np.array([pair_id.split('_-_') for pair_id in pair_id_list])
+            for flag_combo in np.unique(fault_flag_array, axis=0):
+                flag_ix = [ix for ix, flag in enumerate(flag_combo) if flag]
+                n_pairs = np.unique(c_sz_pair_array[:, flag_ix], axis=0).shape[0]
 
-            raise Exception(f"Now run\n\tsbatch {slurm_file}")
+                site_file = f"../{out_directory}/weighted_sites/site_list_{'-'.join([str(ix) for ix in flag_ix])}.txt"
+                n_sites = 0
+                with open(site_file, "w") as f:
+                    for ix, site in enumerate(site_names):
+                        if all(fault_flag_list[ix] == flag_combo):
+                            f.write(f"../{out_directory}/weighted_sites/{site}.h5\n")
+                            n_sites += 1
+                if n_sites == 0:
+                    print(f"No sites found for fault flag combination {flag_combo}. Skipping...")
+                    continue
+                if n_pairs < 50:
+                    combo_mem = 5 if mem == 0 else mem
+                    combo_time = 30 if job_time == 0 else job_time
+                    n_cpus = 4 if cpus == 0 else cpus
+                elif n_pairs < 150:
+                    combo_mem = 10 if mem == 0 else mem
+                    combo_time = 60 if job_time == 0 else job_time
+                    n_cpus = 8 if cpus == 0 else cpus
+                elif n_pairs < 300:
+                    combo_mem = 20 if mem == 0 else mem
+                    combo_time = 120 if job_time == 0 else job_time
+                    n_cpus = 10 if cpus == 0 else cpus
+                elif n_pairs < 500:
+                    combo_mem = 25 if mem == 0 else mem
+                    combo_time = 240 if job_time == 0 else job_time
+                    n_cpus = 12 if cpus == 0 else cpus
+                else:
+                    combo_mem = 30 if mem == 0 else mem
+                    combo_time = 400 if job_time == 0 else job_time
+                    n_cpus = 12 if cpus == 0 else cpus
+
+                combo_time = combo_time * len(time_interval)  # Multiply by number of time intervals to process
+
+                combo_tasks_per_job = n_array_tasks  # Number of tasks per each array job
+                # Amount of time that will be required for each array job, with 60 seconds overhead, and extra long for the first site for numba to power up
+                array_time = 60 + combo_time * (combo_tasks_per_job + 20)
+                # Reduce the number of tasks per array if the array time is too long
+                if array_time > max_array_time:
+                    combo_tasks_per_job = np.floor((max_array_time - 60) / combo_time).astype(int)
+                # Still keep the minimum number of tasks per array
+                if combo_tasks_per_job < min_tasks_per_array:
+                    combo_tasks_per_job = min_tasks_per_array
+                combo_tasks_per_job = np.min([combo_tasks_per_job, n_sites])  # If you have fewer sites than the task limit, reduce so less time is requested
+                array_time = 60 + combo_time * (combo_tasks_per_job + 20)
+                hours, rem = divmod(array_time, 3600)
+                mins = np.ceil(rem / 60)
+                n_jobs = int(np.ceil(n_sites / combo_tasks_per_job))  # Number of jobs required to process all sites
+
+                slurm_file = prep_SLURM_weighted_sites_submission(out_directory, combo_tasks_per_job, n_jobs, site_file,
+                                            hours=int(hours), mins=int(mins), mem=combo_mem, cpus=n_cpus, account=account, job_time=combo_time, time_interval=time_interval, fault_combo=f"_{'-'.join([str(ix) for ix in flag_ix])}")
+                
+                print(f"Now run sbatch {slurm_file}")
+
+            raise Exception(f"Run slurm files for each fault flag combination")
         
         elif nesi_step == 'combine':
             start = time()
             printProgressBar(0, len(site_names), prefix=f'\tAdding Site {site_names[0]}', suffix='Complete 00:00:00 (00:00s/site)', length=50)
+            dataset_list = ['weighted_exceedance_probs_*-*', 'branch_exceedance_probs_*-*']
+            sites_added, no_site_h5, missing_data = 0, 0, 0
             for ix, site in enumerate(site_names):
                 site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
-                site_group = weighted_h5.create_group(site)
+                if not os.path.exists(site_h5_file):
+                    no_site_h5 += 1
+                    continue
+                remove_site = True
+                if site not in weighted_h5.keys():
+                    weighted_h5.create_group(site)
+                site_group = weighted_h5[site]     
+                if 'site_coords' in site_group.keys():
+                    del site_group['site_coords']
+                
                 with h5.File(site_h5_file, 'r') as site_h5:
                     site_group.create_dataset("site_coords", data=site_h5['site_coords'])
-                    for exceed_type in exceed_type_list:
-                        for dataset in ['weighted_exceedance_probs_*-*', '*-*_max_vals', '*-*_min_vals', 'branch_exceedance_probs_*-*']:
-                            site_group.create_dataset(dataset.replace('*-*', exceed_type), data=site_h5[dataset.replace('*-*', exceed_type)], compression=None)
+                    if 'requested_intervals' in site_h5.keys():
+                        requested_intervals = site_h5['requested_intervals'][:]
+                    else:
+                        requested_intervals = time_interval
+                    for interval in requested_intervals:
+                        if interval in site_h5.keys():                                
+                            if all([True if dataset.replace('*-*', exceed) in site_h5[interval].keys() else False for exceed in exceed_type_list for dataset in dataset_list]):
+                                if interval in site_group.keys():
+                                    del site_group[interval]
+                                interval_group = site_group.create_group(interval)
+                                if 'fault_flag' in site_h5[interval].keys():
+                                    interval_group.create_dataset('fault_flag', data=site_h5[interval]['fault_flag'][:])
+                                interval_group.create_dataset('meta', data=site_h5[interval]['meta'][:])
+                                for exceed_type in exceed_type_list:
+                                    for dataset in dataset_list:
+                                        interval_group.create_dataset(dataset.replace('*-*', exceed_type), data=site_h5[interval][dataset.replace('*-*', exceed_type)], compression=None)
+                            else:
+                                # Site is missing data in some interval
+                                remove_site = False
+                        else:
+                            # If the interval is not in the site_h5, then that interval hasn't been processed yet for some reason
+                            remove_site = False
+                        
+                if remove_site:
+                    sites_added += 1
+                    os.remove(site_h5_file)  # Remove the site file if it has added all requested intervals into the weighted_h5
+                else:
+                    missing_data += 1
                 elapsed = time_elasped(time(), start, decimal=False)
-                printProgressBar(ix + 1, len(site_names), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (ix + 1):.2f}s/site)', length=50)
+                printProgressBar(ix + 1, len(site_names), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / (sites_added + 1):.2f}s/site)', length=50)
             weighted_h5.close()
-            shutil.rmtree(f"../{out_directory}/weighted_sites")
+            print(f"\nAdded {sites_added}/{len(site_names)} sites to the weighted_h5 file.\n{no_site_h5} sites did not have a site.h5 file.\n{missing_data} sites were missing data for some intervals.")
+            h5_files = glob(f"../{out_directory}/weighted_sites/*.h5")
+
+            if len(h5_files) == 0:
+                shutil.rmtree(f"../{out_directory}/weighted_sites")
+            
+            write_sites_to_geojson(weighted_h5_file, time_interval)
     
     return
 
@@ -1275,27 +1574,81 @@ def process_pair(pair_id, branch_disp_dict):
         cumulative_value += branch_disp_dict[branch]
     return pair_id, cumulative_value
 
-def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None, intervals=['100']):    
+def full_process_pair(pair_id, branch_disp_dict, thresholds, n_samples):
+    parts = pair_id.split('_-_')
+    cumulative_value = branch_disp_dict[parts[0]]
+    for branch in parts[1:]:
+        cumulative_value += branch_disp_dict[branch]
+    
+    n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = sparse_thresholds(thresholds, cumulative_value.data, cumulative_value.indptr)
+
+    return (n_exceedances_total_abs / n_samples).reshape(-1), (n_exceedances_up / n_samples).reshape(-1), (n_exceedances_down / n_samples).reshape(-1)
+
+def sparse_pair_dict(pair_id, cumulative_pair_dict, n_samples):
+    return pair_id, csr_matrix((cumulative_pair_dict[pair_id]['data'], cumulative_pair_dict[pair_id]['indices'], cumulative_pair_dict[pair_id]['indptr']), shape=(3, n_samples))
+
+def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None, intervals=['100'], fault_flag=None):    
 
         benchmarking = False
         if benchmarking:
-            print('')
+            nesiprint('')
+            nesiprint(f"{site}")
         start = time()
         lap = time()
 
+        run_numba = False  # Trys using numba dictionaries. Doesn't seem to improve anything
+        run_parallel = False # Uses numba for sparse thresholds, whilst processings branches sequentially
+        run_sequential = True # Uses number for sparse thresholds, but processes branches sequentially
         if numba_flag:
-            _ = calc_thresholds(np.arange(0,1,1), np.ones((3, 1, 100)))
+            # Initialise numba
+            prep_array = np.array([[0, 1, 1, 1, 1], [2, 2, 2, 0, 2], [3, 3, 3, 0, 0]])
             _ = sparse_thresholds(np.arange(0,1,1), np.ones(3), np.arange(0, 4, 1))
+            if run_numba:
+                branch_dict_type = types.DictType(types.unicode_type, types.Array(types.float64, 1, 'C'))
+                prep_pair_dict_numba = Dict.empty(key_type=types.unicode_type, value_type=branch_dict_type)
+                prep_disp_dict_numba = Dict.empty(key_type=types.unicode_type, value_type=branch_dict_type)
+                prep_id_list, prep_parts_list, prep_id = List(), List(), List()
+                prep_id_list.append('prep')
+                prep_id.append('prep')
+                prep_parts_list.append(prep_id)
+                prep_disp_dict_numba['prep'] = numba_csr_array(prep_array)
+                _, _, _ = numba_full_process_pair(prep_id_list, prep_parts_list, prep_disp_dict_numba, n_samples, thresholds, step=10)
+                del prep_pair_dict_numba, prep_disp_dict_numba, prep_id_list, prep_parts_list, prep_id
+            if benchmarking:
+                nesiprint(f'Numba functions initialised on {get_num_threads()} threads: {time() - lap:.2f}s')
+                lap = time()
+        else:
+            run_numba = False
 
-        site_df_abs = {}
-        site_df_up = {}
-        site_df_down = {}
+        if benchmarking:
+            if run_numba:
+                nesiprint('Using Numba processing')
+            if run_parallel:
+                nesiprint('Using Parallel processing')
+            if run_sequential:
+                nesiprint('Using Sequential processing')
+
+        # Trim pair_id_list to only unique combinations if not all branches are needed (useful to paired crustal_subduction)
+        if fault_flag is not None:
+            pair_array = np.array([[pair_id.split('_-_')[ix] for ix in range(len(fault_flag)) if fault_flag[ix]] for pair_id in pair_id_list])
+            branch_weights = [branch_weights[ix] for ix in np.unique(pair_array, axis=0, return_index=True)[1]]
+            pair_id_list = ['_-_'.join([branch for branch in pair]) for pair in np.unique(pair_array, axis=0)]
+            if benchmarking:
+                nesiprint(f'{len(pair_id_list)} pair ids created for {fault_flag}: {time() - lap:.2f}s')
+                lap = time()
 
         # For each branch, load in the displacements and put in a dictionary
         branch_list = list(set([branch for pair_id in pair_id_list for branch in pair_id.split('_-_')]))
         for interval in intervals:
+            if interval in site_h5.keys():
+                # Should only occur if site threw an error on a previous run
+                del site_h5[interval]
             interval_h5 = site_h5.create_group(interval)
-            branch_disp_dict = {}
+            if run_numba:
+                branch_disp_dict_numba = Dict.empty(key_type=types.unicode_type, value_type=branch_dict_type)
+            if run_parallel or run_sequential:
+                branch_disp_dict = {}
+
             for branch in branch_list:
                 if '_c_' in branch:
                     fault_type = 'c'
@@ -1321,55 +1674,70 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                         for ix, exceed_type in enumerate(['up', 'down', 'total_abs']):
                             if exceed_type in exceed_type_list:
                                 slip_scenarios = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['scenario_ix'][:]
-                                NSHM_displacements[ix, slip_scenarios] = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['displacements'][:]
-                        branch_disp_dict[branch] = csr_array(NSHM_displacements)   
+                                if slip_scenarios.shape[0] > 0:
+                                    max_scenario = -1 if n_samples > slip_scenarios[-1] else np.where(slip_scenarios >= n_samples)[0][0]
+                                    NSHM_displacements[ix, slip_scenarios[:max_scenario]] = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['displacements'][:max_scenario]
+                        if run_numba:
+                            branch_disp_dict_numba[branch] = numba_csr_array(NSHM_displacements)
+                        if run_parallel or run_sequential:
+                            branch_disp_dict[branch] = csr_array(NSHM_displacements)
+
             if benchmarking:
-                print(f'{len(branch_list)} branch displacements loaded: {time() - lap:.2f}s')
+                nesiprint(f'{len(branch_list)} branch displacements loaded: {time() - lap:.2f}s')
                 lap = time()
 
             # Work out the cumulative displacement for all branch pairs
-            run_parallel = True
-            if run_parallel:
-                with ThreadPoolExecutor() as executor:
-                    func = partial(process_pair, branch_disp_dict=branch_disp_dict)
-                    results = executor.map(func, pair_id_list)
-                cumulative_pair_dict = dict(results)
-            else:
-                # Don't delete this yet as not tested as a nesi task array (paralleling it might kill it)
-                cumulative_pair_dict = {}
-                for ix, pair_id in enumerate(pair_id_list):
-                    _, cumulative_pair_dict[pair_id] = process_pair(pair_id, branch_disp_dict)
-                    # cumulative_pair_dict[pair_id] = branch_disp_dict[pair_id.split('_-_')[0]]
-                    # for branch in pair_id.split('_-_')[1:]:
-                    #     cumulative_pair_dict[pair_id] += branch_disp_dict[branch]
+            site_df_dict = {"total_abs": {}, "up": {}, "down": {}}
+            if run_numba:
+                numba_id_list, numba_parts_list = List(), List()
+                for pair_id in pair_id_list:
+                    numba_id_list.append(pair_id)
+                    id_list = List()
+                    for part in pair_id.split('_-_'):
+                        id_list.append(part)
+                    numba_parts_list.append(id_list)
 
-            if benchmarking:
-                print(f'{len(pair_id_list)} cumulative disp scenarios created: {time() - lap:.2f}s')
-                lap = time()
-
-            # Work out the exceedances for each branch combination
-            for ix, pair_id in enumerate(pair_id_list):
-                n_exceedances_total_abs, n_exceedances_up, n_exceedances_down = sparse_thresholds(thresholds, cumulative_pair_dict[pair_id].data, cumulative_pair_dict[pair_id].indptr)
-                site_df_abs[pair_id] = (n_exceedances_total_abs / n_samples).reshape(-1)
-                site_df_up[pair_id] = (n_exceedances_up / n_samples).reshape(-1)
-                site_df_down[pair_id] = (n_exceedances_down / n_samples).reshape(-1)
-            if benchmarking:
-                    print(f'Exceedances thresholded: {time() - lap:.2f}s')
+                numba_df_abs, numba_df_up, numba_df_down = numba_full_process_pair(numba_id_list, numba_parts_list, branch_disp_dict_numba, n_samples, thresholds)
+                site_df_dict["total_abs"], site_df_dict["up"], site_df_dict["down"] = dict(numba_df_abs), dict(numba_df_up), dict(numba_df_down)
+                if benchmarking:
+                    nesiprint(f'{len(pair_id_list)} cumulative disp scenarios created Numba_process_pair: {time() - lap:.2f}s {(time() - lap)/len(pair_id_list):.4f} per branch')
                     lap = time()
 
+            if run_parallel:
+                with ThreadPoolExecutor() as executor:
+                    func = partial(full_process_pair, branch_disp_dict=branch_disp_dict, thresholds=thresholds, n_samples=n_samples)
+                    results = executor.map(func, pair_id_list)
+                # Convert results to a dictionary
+                for pair_id, (total_abs, up, down) in zip(pair_id_list, results):
+                    site_df_dict["total_abs"][pair_id] = total_abs
+                    site_df_dict["up"][pair_id] = up
+                    site_df_dict["down"][pair_id] = down
+                if benchmarking:
+                    nesiprint(f'{len(pair_id_list)} cumulative disp scenarios created Parallel: {time() - lap:.2f}s {(time() - lap)/len(pair_id_list):.4f} per branch')
+                    lap = time()
+            if run_sequential:
+                for ix, pair_id in enumerate(pair_id_list):
+                    site_df_dict["total_abs"][pair_id], site_df_dict["up"][pair_id], site_df_dict["down"][pair_id] = full_process_pair(pair_id, branch_disp_dict, thresholds, n_samples)
+
+                if benchmarking:
+                    nesiprint(f'{len(pair_id_list)} cumulative disp scenarios created Serial: {time() - lap:.2f}s {(time() - lap)/len(pair_id_list):.4f} per branch')
+                    lap = time()
+
+            del branch_disp_dict # Clear memory
+
             # Calculate the weighted exceedances for the site
-            site_df_dict = {"total_abs": site_df_abs, "up": site_df_up, "down": site_df_down}
             for exceed_type in exceed_type_list:
                 for dataset in ['weighted_exceedance_probs_*-*', '*-*_max_vals', '*-*_min_vals', 'branch_exceedance_probs_*-*', '*-*_weighted_percentile_error']:
                     if dataset.replace('*-*', exceed_type) in interval_h5.keys():
                         del interval_h5[dataset.replace('*-*', exceed_type)]
                 site_probabilities_df = pd.DataFrame(site_df_dict[exceed_type])
+                # Reduce dataframe to non-zero rows
+                site_probabilities_df = site_probabilities_df.loc[site_probabilities_df.sum(axis=1) > 0]
 
                 # collapse each row into a weighted mean value
-                branch_weighted_mean_probs = site_probabilities_df.apply(
-                    lambda x: np.average(x, weights=branch_weights), axis=1)
+                branch_weighted_mean_probs = site_probabilities_df.apply(lambda x: np.average(x, weights=branch_weights), axis=1)
 
-                interval_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs[branch_weighted_mean_probs > 0], compression=compression)
+                interval_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs, compression=compression)
                 try:
                     non_zero_row = np.where(site_probabilities_df.sum(axis=1))[0][-1] + 1
                 except IndexError:  # if all rows are zero
@@ -1378,16 +1746,19 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
 
                 # Calculate errors based on 1 and 2 sigma WEIGHTED percentiles of all of the branches for each threshold (better option)
                 percentiles = percentile(site_probabilities_df, sigma_lims, axis=1, weights=branch_weights)
+
                 percentiles_csc = csc_array(percentiles)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error", data=percentiles_csc.data, compression='gzip', compression_opts=6)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indices", data=percentiles_csc.indices, compression='gzip', compression_opts=6)
                 interval_h5.create_dataset(f"{exceed_type}_weighted_percentile_error_indptr", data=percentiles_csc.indptr, compression='gzip', compression_opts=6)
             interval_h5.create_dataset(f"meta", data=np.array([thresholds[0], thresholds[-1], thresholds[1] - thresholds[0], n_samples]))
+            if fault_flag is not None:
+                interval_h5.create_dataset("fault_flag", data=fault_flag, compression=None)
 
             if benchmarking:
-                    print(f'Weights made: {time() - lap:.2f}s')
+                    nesiprint(f'Weights made: {time() - lap:.2f}s')
         if benchmarking:
-            print(f'Site complete: {time() - start:.2f}s\n')
+            nesiprint(f'Site complete: {time() - start:.2f}s\n')
 
 def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type, site_list, weighted=False, err_index=None, interval='100'):
     """returns displacements at the X% probabilities of exceedance for each site
@@ -1412,24 +1783,26 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
         errs = []
 
     for site in site_list:
-        site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
-
-        if site_PPE.shape[0] > 0:
-            # get first index that is < 10% (ideally we would interpolate for exact value but don't have a function)
-            exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= round(probability,4)), -1)
-            disp = thresholds[exceedance_index]
-        else:
-            disp = 0
-        disps.append(disp)
+        try:
+            site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
+            if site_PPE.shape[0] > 0:
+                # get first index that is < 10% (ideally we would interpolate for exact value but don't have a function)
+                exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= round(probability,4)), -1)
+                disp = thresholds[exceedance_index]
+            else:
+                disp = 0
+            disps.append(disp)
+        except KeyError:
+            disps.append(np.nan)
 
         if err_index:
             if weighted:
-                data = site_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error"]
-                indices = site_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error_indices"]
-                indptr = site_PPE_dictionary[site][f"{exceed_type}_weighted_percentile_error_indptr"]
+                data = site_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error"]
+                indices = site_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indices"]
+                indptr = site_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indptr"]
                 site_err_PPE = csc_array((data, indices, indptr)).toarray()
             else:
-                site_err_PPE = site_PPE_dictionary[site][f'{exceed_type}_{prefix}percentile_error']
+                site_err_PPE = site_PPE_dictionary[site][interval][f'{exceed_type}_{prefix}percentile_error']
             site_err = []
             for err_ind in err_index:
                 exceedance_index = next((index for index, value in enumerate(site_err_PPE[err_ind, :]) if value <= round(probability,4)), -1)
@@ -1469,11 +1842,14 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
     # get list of probabilities at defined displacement threshold (one for each site)
     probs_threshold = []
     for site in site_list:
-        site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
-        if site_PPE.shape[0] > index:
-            probs_threshold.append(site_PPE[index])
-        else:
-            probs_threshold.append(0)
+        try:
+            site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
+            if site_PPE.shape[0] > index:
+                probs_threshold.append(site_PPE[index])
+            else:
+                probs_threshold.append(0)
+        except KeyError:
+            probs_threshold.append(np.nan)
 
     return probs_threshold
 
@@ -2611,7 +2987,7 @@ def save_disp_prob_tifs(extension1, slip_taper, model_version_results_directory,
 def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0,
                            probs_lims=[0.01, 0.2], probs_step=0, output_thresh=True, output_probs=True, weighted=False,
                            output_grids=True, thresholds=None, probabilities=None, sites=[], out_tag='', single_branch='',
-                           time_intervals=['100']):
+                           time_intervals=['100'], interp_sites=None, model_id=None):
     """
     Add all results to x_array datasets, and save as netcdf files
     """
@@ -2630,8 +3006,9 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
     if weighted:
         h5_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict{extension1}{taper_extension}.h5"
         outfile_directory = f"../{model_version_results_directory}/weighted_mean_xarray"
-        model_id = model_version_results_directory.split('/')[-1]
-        print("Saving data arrays for weighted mean displacements...")
+        if model_id is None:
+            model_id = model_version_results_directory.split('/')[-1]
+        print(f"Saving data arrays for weighted mean displacements {model_id}...")
     elif single_branch != '':
         branch_suffix = '_'.join(single_branch.split('_')[6:])
         h5_file = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/{single_branch}_cumu_PPE.h5"
@@ -2654,7 +3031,13 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
     for meta in metadata_keys:
         if meta in sites:
             sites.remove(meta)
-    
+
+    # check sites have been processed
+    PPEh5_sites = set(PPEh5.keys())
+    if len(sites) != len([site for site in sites if site in PPEh5_sites]):
+        print(f"Only {len([site for site in sites if site in PPEh5_sites])} of {len(sites)} requested sites have been processed")
+        sites = [site for site in sites if site in PPEh5_sites]
+
     if thresholds is None:
         if thresh_step != 0:
             thresholds = np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step)
@@ -2716,9 +3099,29 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         site_x = (np.array(site_x) - x_data[0]) / x_res
         site_y = (np.array(site_y) - y_data[0]) / y_res
 
+        if interp_sites:
+            interp_df = pd.read_csv(interp_sites[0])
+            interp_x_data = np.unique(interp_df['Lon'].values)
+            interp_y_data = np.unique(interp_df['Lat'].values)
+
+            xmin, xmax = min(interp_x_data), max(interp_x_data)
+            ymin, ymax = min(interp_y_data), max(interp_y_data)
+            x_res, y_res = min(np.diff(interp_x_data)), min(np.diff(interp_y_data))
+
+            interp_x_data = np.arange(xmin, xmax + x_res, x_res)
+            interp_y_data = np.arange(ymin, ymax + y_res, y_res)
+
+            interp_x = (interp_df['Lon'].values - interp_df['Lon'].min()) / x_res
+            interp_y = (interp_df['Lat'].values - interp_df['Lat'].min()) / y_res
+
         # Create Datasets
         da = {}
         ds = xr.Dataset()
+
+        if interp_sites:
+            da_i = {}
+            ds_i = xr.Dataset()
+
         if extension1 == "":
             out_name = ''
             branch_name = os.path.basename(model_version_results_directory)
@@ -2758,6 +3161,27 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                 da[exceed_type].attrs['crs'] = 'EPSG:2193'
 
                 ds['disp_' + exceed_type] = da[exceed_type]
+
+                if interp_sites:
+                    interp_grd = np.zeros([len(thresholds), len(time_intervals), len(interp_y_data), len(interp_x_data)]) * np.nan
+                    for thresh_ix in range(len(thresholds)):
+                        for interval_ix in range(len(time_intervals)):
+                            data = thresh_grd[thresh_ix, interval_ix, :, :]
+                            y_ix, x_ix = np.where(~np.isnan(data))
+                            interp = CloughTocher2DInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
+                            interp_vals = interp((interp_df['Lon'].values, interp_df['Lat'].values))
+                            nan_ix = np.where(np.isnan(interp_vals))[0]
+                            if len(nan_ix) > 0:
+                                interp = NearestNDInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
+                            interp_vals[nan_ix] = interp((interp_df['Lon'].values[nan_ix], interp_df['Lat'].values[nan_ix]))
+                            interp_grd[thresh_ix, interval_ix, interp_y.astype(int), interp_x.astype(int)] = interp_vals
+
+                    da_i[exceed_type] = xr.DataArray(interp_grd, dims=['threshold', 'interval', 'lat', 'lon'], coords={'threshold': thresholds, 'interval': np.array([int(i) for i in time_intervals]), 'lat': interp_y_data, 'lon': interp_x_data})
+                    da_i[exceed_type].attrs['exceed_type'] = exceed_type
+                    da_i[exceed_type].attrs['threshold'] = 'Displacement (m)'
+                    da_i[exceed_type].attrs['interval'] = 'Years'
+                    da_i[exceed_type].attrs['crs'] = 'EPSG:2193'
+                    ds_i['disp_' + exceed_type] = da_i[exceed_type]
             out_name += 'disp_'
 
         if output_probs:
@@ -2789,12 +3213,41 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                 da[exceed_type].attrs['crs'] = 'EPSG:2193'
 
                 ds['prob_' + exceed_type] = da[exceed_type]
+                if interp_sites:
+                    interp_grd = np.zeros([len(probabilities), len(time_intervals), len(interp_y_data), len(interp_x_data)]) * np.nan
+                    for prob_ix in range(len(probabilities)):
+                        for interval_ix in range(len(time_intervals)):
+                            data = thresh_grd[prob_ix, interval_ix, :, :]
+                            y_ix, x_ix = np.where(~np.isnan(data))
+                            interp = CloughTocher2DInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
+                            interp_vals = interp((interp_df['Lon'].values, interp_df['Lat'].values))
+                            nan_ix = np.where(np.isnan(interp_vals))[0]
+                            if len(nan_ix) > 0:
+                                interp = NearestNDInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
+                            interp_vals[nan_ix] = interp((interp_df['Lon'].values[nan_ix], interp_df['Lat'].values[nan_ix]))
+                            interp_grd[prob_ix, interval_ix, interp_y.astype(int), interp_x.astype(int)] = interp_vals
+
+                    da_i[exceed_type] = xr.DataArray(interp_grd, dims=['probability', 'interval', 'lat', 'lon'], coords={'probability': (probabilities * 100).astype(int), 'interval': np.array([int(i) for i in time_intervals]), 'lat': interp_y_data, 'lon': interp_x_data})
+                    da_i[exceed_type].attrs['exceed_type'] = exceed_type
+                    da_i[exceed_type].attrs['threshold'] = 'Exceedance Probability (%)'
+                    da_i[exceed_type].attrs['interval'] = 'Years'
+                    da_i[exceed_type].attrs['crs'] = 'EPSG:2193'
+                    ds_i['prob_' + exceed_type] = da_i[exceed_type]
+
             out_name += 'prob_'
 
         ds.attrs['branch'] = branch_name
         nc_name = f"{outfile_directory}/{model_id}_{out_name}{out_tag}_grids.nc".replace('__', '_')
         ds.to_netcdf(nc_name)
         print(f"\tWritten {nc_name}\n")
+
+        if interp_sites:
+            ds_i.attrs['branch'] = branch_name
+            ds_i.attrs['interp_sites'] = interp_sites[0]
+            ds_i.attrs['source_sites'] = interp_sites[1]
+            nc_name = f"{outfile_directory}/{model_id}_{out_name}{out_tag}_grids_interpolated.nc".replace('__', '_')
+            ds_i.to_netcdf(nc_name)
+            print(f"\tWritten {nc_name}\n")
 
     return ds
 

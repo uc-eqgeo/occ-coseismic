@@ -9,7 +9,7 @@ import os
 """
 This script will discretise the subduction zone into patches based on the fake quakes fault geometry.
 """
-
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 #### USER INPUT #####
 # Define whch subduction zone (hikkerm / puysegur)
 sz_zone = 'hikkerm'
@@ -308,7 +308,11 @@ for index in range(n_patches):
 
 # %%
 # Create a geodataframe and geojson file from the polygons
-gdf = gpd.GeoDataFrame({"fault_id": np.arange(n_patches), "rake": rectangle_rake, "slip": rectangle_slip, "geometry": discretised_polygons}, crs=2193)
+if sz_zone == 'hikkerm' and os.path.exists(f"../data/fq_hik_kerm_adjusted_lw2025_final_slip_rates_coarse.vtk"):
+    lw_mesh = meshio.read(f"../data/fq_hik_kerm_adjusted_lw2025_final_slip_rates_coarse.vtk")
+    gdf = gpd.GeoDataFrame({"fault_id": np.arange(n_patches), "rake": rectangle_rake, "lock_slip": rectangle_slip, "lw25_slip": lw_mesh.cell_data["slip"][0].astype(np.float64), "geometry": discretised_polygons}, crs=2193)
+else:
+    gdf = gpd.GeoDataFrame({"fault_id": np.arange(n_patches), "rake": rectangle_rake, "slip": rectangle_slip, "geometry": discretised_polygons}, crs=2193)
 gdf.to_file(f"discretised_fq_{sz_zone}/{prefix}_discretised_polygons.geojson", driver="GeoJSON")
 
 pkl.dump(discretised_dict, open(f"discretised_fq_{sz_zone}/{prefix}_discretised_dict.pkl", "wb"))

@@ -12,16 +12,16 @@ import h5py as h5
 # calculates green's functions at points specified in a list (or lists) of coordinates
 # can also define site names, otherwise they will be numbered later on. Can make more sites than you use later for
 # plotting if they are named.
-
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_EastCoastNI_10km"
+mesh_version = "_version_0-1"
 
 steeper_dip, gentler_dip = False, False
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'sites', 'EastCoastNI_10km_grid_points.csv')
+site_list_csv = os.path.join('..', 'sites', 'cube_centroids_27000_9000_buffer_0_33_points.csv')
 sites_df = pd.read_csv(site_list_csv)
 
 gf_site_names = [str(site) for site in sites_df['siteId']]

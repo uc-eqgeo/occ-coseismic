@@ -6,12 +6,13 @@ from shapely.geometry import Polygon, LineString, Point
 import pickle as pkl
 import os
 
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 #### USER INPUT #####
 #this can be any working branch, should be the same for all.
 NSHM_directory = "NZSHM22_ScaledInversionSolution-QXV0b21hdGlvblRhc2s6MTA3Njk2"
 
 # Define whch subduction zone (hikkerm / puysegur)
-sz_zone = '_hikkerm'
+sz_zone = 'puysegur'
 
 if not sz_zone in ['hikkerm', 'puysegur']:
     print("Please define a valid subduction zone (hikkerm / puysegur).")
