@@ -87,6 +87,7 @@ hires_coast = False # If True, keep splitting cells that intersect the coast
 coastal_trim = True  # If True, removes any centroids that are not overland, even if polygon crosses the coast
 
 fault_buffer = 0
+
 min_slip_rate = 1 # Minimum slip rate for a fault to be included in the grid
 
 if search_type == 'quad':
