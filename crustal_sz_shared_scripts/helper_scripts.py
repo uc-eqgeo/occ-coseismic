@@ -1,11 +1,11 @@
+import os
 try:
     import geopandas as gpd
     from shapely.geometry import Point
 except:
-    print("Running on NESI. Some functions won't work....")
+    os.system(f"echo Running on NESI. Some functions wont work....")
 finally:
     import pandas as pd
-    import os
     import h5py as h5
     from functools import reduce
     import numpy as np
@@ -724,8 +724,13 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
                                     #   "_sz_fq_FA_p70_l", "_sz_fq_FA_p70_c", "_sz_fq_FA_p70_p70"
                                     #   "_sz_fq_FA_tc_c", "_sz_fq_FA_tl_l", "_sz_fq_FA_p70_p70"
                                     #   # 7) Version 0.1 of final subduction model
-                                    "_sz_fq_lw25_b0-95", "_sz_fq_lw25_b1-10", "_sz_fq_lw25_b1-24",
-                                    "_sz_fq_lock_b0-95", "_sz_fq_lock_b1-10", "_sz_fq_lock_b1-24"]
+                                    # "_sz_fq_lw25_b0-95", "_sz_fq_lw25_b1-10", "_sz_fq_lw25_b1-24",
+                                    # "_sz_fq_lock_b0-95", "_sz_fq_lock_b1-10", "_sz_fq_lock_b1-24",
+                                    #   # 8) Corrected Sensitivity Analysis
+                                    "_sz_fq_3nub110", "_sz_fq_pnub110",
+                                    "_sz_fq_3nhb110", "_sz_fq_pnhb110",
+                                    "_sz_fq_3lhb110", "_sz_fq_plhb110",
+                                    ]
                                     
 
                 NSHM_directory_list_i = [# "sz_solutions/FakeQuakes_hk_3e10_nolocking_uniformSlip_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi10",
@@ -765,12 +770,19 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
                                         #  "sz_solutions/FrontiersAbroad_hk_plate70_v_SDcreep_locking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi2",
                                         #  "sz_solutions/FrontiersAbroad_hk_plate70_v_SDplate70_locking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi2",
                                         #  # 7) Version 0.1 of final subduction model
-                                         "sz_solutions/FQ_hk_lw2025_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b0-95_pMax6233_nIt500000_narchi10",
-                                         "sz_solutions/FQ_hk_lw2025_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10",
-                                         "sz_solutions/FQ_hk_lw2025_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-24_pMax6233_nIt500000_narchi10",
-                                         "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b0-95_pMax6233_nIt500000_narchi10",
-                                         "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10",
-                                         "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-24_pMax6233_nIt500000_narchi10"
+                                        #  "sz_solutions/FQ_hk_lw2025_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b0-95_pMax6233_nIt500000_narchi10",
+                                        #  "sz_solutions/FQ_hk_lw2025_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10",
+                                        #  "sz_solutions/FQ_hk_lw2025_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-24_pMax6233_nIt500000_narchi10",
+                                        #  "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b0-95_pMax6233_nIt500000_narchi10",
+                                        #  "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10",
+                                        #  "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-24_pMax6233_nIt500000_narchi10",
+                                        #   # 8) Corrected Sensitivity Analysis
+                                         "sz_solutions/FQ_hk_3e10_nolocking_uniformSlip_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
+                                         "sz_solutions/FQ_hk_prem_nolocking_uniformSlip_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
+                                         "sz_solutions/FQ_hk_3e10_nolocking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
+                                         "sz_solutions/FQ_hk_prem_nolocking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
+                                         "sz_solutions/FQ_hk_3e10_locking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
+                                         "sz_solutions/FQ_hk_prem_locking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
                                         ]
 
             else:
@@ -805,6 +817,30 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
         n_branches.append(fault_branches)
 
     return NSHM_directory_list, file_suffix_list, n_branches
+
+def write_sites_to_geojson(h5_file, intervals=['100']):
+    """
+    This function will read in the h5 file, and write a geojson file of all the sites that have been processed
+    to some extent
+    """
+
+    for interval in intervals:
+        with h5.File(h5_file, 'r') as f:
+            # Gets a list of sites
+            sites = np.array([site for site in f.keys() if site.split('_')[0].isdigit()])
+            # Gets a list of sites that have been processed for this interval
+            sites = [site for site in sites if interval in f[site].keys()]
+
+        points = [Point(int(s.split('_')[0]), int(s.split('_')[1])) for s in sites]
+        sites_ll = np.array([[int(s.split('_')[0]), int(s.split('_')[1])] for s in sites if s.split('_')[0].isdigit()])
+
+        data_dict = {"siteId": sites, "Lon": sites_ll[:, 0], "Lat": sites_ll[:, 1], "Height": np.zeros_like(sites_ll[:, 0])}
+        gdf = gpd.GeoDataFrame(data_dict, geometry=points, crs="EPSG:2193")
+
+        outfile = h5_file.replace('.h5', f'_all_processed_{interval}.geojson')
+        gdf.to_file(outfile, driver='GeoJSON')
+
+    return
 
 
 ## These scripts are those required by numpy v2.0.0 to run the weighted percentiles.

@@ -2,6 +2,7 @@ import geopandas as gpd
 import numpy as np
 import math
 from shapely.geometry import Polygon, Point
+import shapely
 import pandas as pd
 
 def split_cell(cell_dicts, parent_id, max_grid, min_grid, max_id, coastline, faults, fault_buffer, split_factor=2, hires_coast=False):
@@ -56,8 +57,12 @@ def split_cell(cell_dicts, parent_id, max_grid, min_grid, max_id, coastline, fau
             if not faults.intersects(poly).any():
                 # Stop if cell is acceptable resolution
                 if cell_dicts[max_id]['resolution'] <= max_grid:
-                    # If an inland cell and hires coast not needed
-                    if coastline.contains(poly).any() and hires_coast:
+                    # If it is a coastal cell and hires coasts are not needed
+                    if coastline.intersects(poly).any() and not hires_coast:
+                        cell_dicts[max_id]['split'] = False
+                        cell_dicts[max_id]['write_out'] = True
+                    # If an inland cell
+                    elif coastline.contains(poly).any():
                         cell_dicts[max_id]['split'] = False
                         cell_dicts[max_id]['write_out'] = True
 
@@ -71,18 +76,19 @@ def split_cell(cell_dicts, parent_id, max_grid, min_grid, max_id, coastline, fau
 search_type = 'cube'  # 'grid', 'cube' or 'quad'
 
 # Resolution
-max_grid = 9000  # Default resolution. Min grid will be adjusted to work with this
-min_grid = 1000  # Min grid is the highest resolution of the quad or cubetree. Must be reachable by halving or thirding max_grid 
+max_grid = 27000  # Default resolution. Min grid will be adjusted to work with this
+min_grid = 9000  # Min grid is the highest resolution of the quad or cubetree. Must be reachable by halving or thirding max_grid 
 
 grid_width = 1000e3  # Width of the grid in meters
 grid_length = 1500e3 # Length of the grid in meters
 
 # Keep as false to make sure all of coast is covered, and therefore all OCC sites can be queried in datamesh
-hires_coast = True # If True, keep splitting cells that intersect the coast
-coastal_trim = False  # If True, removes any centroids that are not overland, even if polygon crosses the coast
+hires_coast = False # If True, keep splitting cells that intersect the coast
+coastal_trim = True  # If True, removes any centroids that are not overland, even if polygon crosses the coast
 
 fault_buffer = 0
-min_slip_rate = 0 # Minimum slip rate for a fault to be included in the grid
+
+min_slip_rate = 1 # Minimum slip rate for a fault to be included in the grid
 
 if search_type == 'quad':
     split_factor = 2  # How many times to split each cell
@@ -208,7 +214,6 @@ grid_points.set_crs(epsg=2193, inplace=True)
 grid_points.to_file(f'sites\\{polyname}.geojson', driver='GeoJSON')
 print(f"Written sites\\{polyname}.geojson")
 
-
 centroid_gdf = gpd.GeoDataFrame({'id': id, 'depth': depth, 'resolution': res, 'geometry': centroids})
 centroid_gdf.set_crs(epsg=2193, inplace=True)
 centroid_gdf.to_file(f'sites\\{centroid_name}.geojson', driver='GeoJSON')
@@ -220,3 +225,46 @@ centroid_df['Y'] = centroid_gdf.geometry.y
 centroid_df['id'] = np.arange(centroid_df.shape[0])
 centroid_df.to_csv(f'sites\\{centroid_name}.csv', index=False)
 print(f"Written sites\\{centroid_name}.csv")
+
+wellington = Point([1749150, 5428092]) # Wellington coordinates in NZTM
+te_anau = Point([1186710, 4957633])  # Te Anau coordinates in NZTM
+distance = 350  # Distance South of Wellington in km to include for hikurangi
+
+# For Hikurangi, find all centroids north of 350km south of Wellington
+northern_section = centroid_gdf[(centroid_gdf.geometry.y > wellington.y) | (centroid_gdf.distance(wellington) < distance * 1e3)]
+northern_section.to_file(f'sites\\{centroid_name}N.geojson', driver='GeoJSON')
+print(f"Written sites\\{centroid_name}N.geojson")
+
+centroid_df = pd.DataFrame(columns=['X', 'Y', 'id'])
+centroid_df['X'] = northern_section.geometry.x
+centroid_df['Y'] = northern_section.geometry.y
+centroid_df['id'] = northern_section.id
+centroid_df.to_csv(f'sites\\{centroid_name}N.csv', index=False)
+print(f"Written sites\\{centroid_name}N.csv")
+
+# For Puysegur, find all centroids within 350km of Te Anau
+southern_section = centroid_gdf[(centroid_gdf.distance(te_anau) < distance * 1e3)]
+southern_section.to_file(f'sites\\{centroid_name}S.geojson', driver='GeoJSON')
+print(f"Written sites\\{centroid_name}S.geojson")
+
+centroid_df = pd.DataFrame(columns=['X', 'Y', 'id'])
+centroid_df['X'] = southern_section.geometry.x
+centroid_df['Y'] = southern_section.geometry.y
+centroid_df['id'] = southern_section.id
+centroid_df.to_csv(f'sites\\{centroid_name}S.csv', index=False)
+print(f"Written sites\\{centroid_name}S.csv")
+
+# # Find South Island Centroids
+# south_islands = coastline.geometry.apply(lambda x: shapely.centroid(x).y < 5500000)
+# south_islands_coast = coastline[south_islands]
+
+# south_islands_gdf = centroid_gdf[centroid_gdf.geometry.within(south_islands_coast.unary_union)]
+# south_islands_gdf.to_file(f'sites\\{centroid_name}SI.geojson', driver='GeoJSON')
+# print(f"Written sites\\{centroid_name}SI.geojson")
+
+# centroid_df = pd.DataFrame(columns=['X', 'Y', 'id'])
+# centroid_df['X'] = south_islands_gdf.geometry.x
+# centroid_df['Y'] = south_islands_gdf.geometry.y
+# centroid_df['id'] = south_islands_gdf.id
+# centroid_df.to_csv(f'sites\\{centroid_name}SI.csv', index=False)
+# print(f"Written sites\\{centroid_name}SI.csv")

@@ -10,10 +10,12 @@ from itertools import product
 # Do this prior to discretise_crustal, because there's no point trying to discretise patches when we don't have a mesh
 # Only have to do once no matter the NSHM branch since the faults don't change
 
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 #######INPUTS
 # find only the rupture scenarios that use faults we have meshes for
 NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"  # geologic, mid B and N, C 4.2
-model_extension = "_CFM_test"         # "_Model1" or "_Model2" or "_CFM"
+model_extension = "_CFM"         # "_Model1" or "_Model2" or "_CFM"
 
 # Define region of interest
 minLon, maxLon, minLat, maxLat = 160.5, 179.0, -48.0, -34.0

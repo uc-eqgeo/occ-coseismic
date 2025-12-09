@@ -38,3 +38,7 @@ data/branch_weight_data.xlsx
 for_ross*
 data/sz_*yr/
 south?america*
+crustal_sz_shared_scripts/site_times_0-1.txt
+crustal_sz_shared_scripts/site_times_0-2.txt
+crustal_sz_shared_scripts/site_times_0.txt
+crustal_sz_shared_scripts/check_site_pairing_time.ipynb
