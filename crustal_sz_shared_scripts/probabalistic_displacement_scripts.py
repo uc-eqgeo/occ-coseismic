@@ -321,12 +321,14 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
         print(f'\tPreparing {n_samples} Poissonian Scenarios for {n_ruptures} ruptures...')
         rng = np.random.default_rng()
         step = int(1e8 / n_samples)  # step size for poisson sampling (100,000,000 elements per run, ~9GB)
+        step = min([step, n_ruptures]) # don't want to step more than the number of ruptures
         for interval in time_interval:
             scenarios = csc_array(rng.poisson(float(interval) * rates[0:step], size=(int(n_samples), step)))
             for ii in range(step, n_ruptures, step):
                 scenarios = hstack([scenarios, csc_array(rng.poisson(float(interval) * rates[ii:ii + step], size=(int(n_samples), len(rates[ii:ii + step]))))])
-
-            with open(f"{randdir}/{interval}_yr_scenarios.pkl", "wb") as fid:
+            branch = randdir.split('/')[3].split('_')[-1]
+            scaling = randdir.split('_')[-1]
+            with open(f"{randdir}/{branch}_{scaling}_{interval}_yr_scenarios.pkl", "wb") as fid:
                 pkl.dump(scenarios, fid)
 
 
