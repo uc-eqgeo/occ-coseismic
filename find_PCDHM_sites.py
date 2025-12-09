@@ -96,7 +96,10 @@ elif search_type == 'grid':
     split_factor = 5
     fault_buffer = 0  # This is the extra fault radius around each cell used to decide if the cell is to be divided
     min_grid = max_grid
-    
+
+if min_grid > max_grid:
+    min_grid = max_grid # If min grid is larger than max grid, set min grid to max grid
+
 min_grid = int(max_grid / split_factor ** np.ceil(math.log(max_grid / min_grid, split_factor)))
 
 coastline = gpd.read_file('QGIS\\nz-coastlines-and-islands-polygons-topo-1500k.gpkg')
