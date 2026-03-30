@@ -201,9 +201,14 @@ for cell in cell_dicts.keys():
 
 print('\nSubsampling Complete')
 
+if max_grid >= 1000:
+    grid_res = f"{int(max_grid / 1000)}km"
+else:
+    grid_res = f"{int(max_grid)}m"
+
 if search_type == 'grid':
-    polyname = f"national_{int(max_grid / 1000)}km_{search_type}_poly"
-    centroid_name = f"national_{int(max_grid / 1000)}km_{search_type}"
+    polyname = f"national_{grid_res}_{search_type}_poly"
+    centroid_name = f"national_{grid_res}_{search_type}"
 else:
     outtag = f"_{str(max_grid).replace('.', '_')}_{str(min_grid).replace('.', '_')}_buffer_{str(f'{fault_buffer:.02f}').replace('.', '_')}"
     polyname = f"{search_type}_poly{outtag}"
