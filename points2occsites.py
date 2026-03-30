@@ -11,7 +11,7 @@ import geopandas as gpd
 import numpy as np
 import os
 
-searise_csv = ['.\\sites\\cube_centroids_3000_3000_buffer_0_00.csv']  # Put in multiple csv_files if you want to combine into one output file
+searise_sites = ['.\\sites\\cube_centroids_3000_3000_buffer_0_00.csv']  # Put in multiple csv or geojsons if you want to combine into one output file
 data_format = 'qgis' # 'qgis' for qgis exports, 'searise' for searise exports, 'hamling' for Hamling VLM coast sites from paper
 out_csv_file = None  # If none, automatically set to the input file name with '_points' appended
 extra_suffixes = ['N', 'S']  # Extra suffixes to append to the output file name (Works if you have subsets of 1 CSV file, e.g. northern and southern sections of a fault model, or south islands only)
@@ -24,12 +24,16 @@ elif '' not in extra_suffixes:
 
 for suffix in extra_suffixes:
     out_pd = pd.DataFrame(columns=['siteId', 'Lon', 'Lat', 'Height'])
-    for csv_file in searise_csv:
-        csv_file = csv_file.replace('.csv', suffix + '.csv')  # Append the suffix to the CSV file name if provided
-        if not os.path.exists(csv_file):
-            print(f"File {csv_file} does not exist. Skipping.")
+    for site_file in searise_sites:
+        file_type = os.path.splitext(site_file)[1]
+        site_file = site_file.replace(file_type, suffix + file_type)  # Append the suffix to the CSV file name if provided
+        if not os.path.exists(site_file):
+            print(f"File {site_file} does not exist. Skipping.")
             continue
-        data = pd.read_csv(csv_file)  # Read in the CSV file, appending the suffix if provided
+        if file_type.lower() == '.csv':
+            data = pd.read_csv(site_file)  # Read in the CSV file, appending the suffix if provided
+        elif file_type.lower() == '.geojson':
+            data = gpd.read_file(site_file)
 
         if data_format == 'searise':  # For searise point exports
             data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.lon, data.lat), crs='EPSG:4326')
@@ -48,8 +52,7 @@ for suffix in extra_suffixes:
             if data.X.max() > 180:  # If the data is in NZTM
                 data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.X, data.Y), crs='EPSG:2193')
             else:  # If the data is in Lat/Lon
-                data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.X, data.Y), crs='EPSG:4326')
-                data.geometry = data.geometry.to_crs('EPSG:2193')  # Convert to NZTM
+                data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.X, data.Y), crs='EPSG:4326').to_crs('EPSG:2193')  # Convert to NZTM
             if 'id' in data.columns:
                 data.rename(columns={'id': 'siteId'}, inplace=True)
                 coord_name = True
@@ -81,7 +84,7 @@ for suffix in extra_suffixes:
         out_pd = out_pd[['siteId', 'Lon', 'Lat', 'Height']].iloc[ix].reset_index(drop=True)
 
     if out_csv_file is None:
-        out_file = '.\\sites\\' + ''.join([csv.split('\\')[-1].replace('.csv', '_') for csv in searise_csv]).strip('_') + suffix + '_points.csv'
+        out_file = '.\\sites\\' + ''.join([file.split('\\')[-1].replace(os.path.splitext(file)[1], '_') for file in searise_sites]).strip('_') + suffix + '_points.csv'
     else:
         out_file = out_csv_file
 
