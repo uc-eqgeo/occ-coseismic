@@ -10,14 +10,20 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 import os
+from shapely.geometry import Point
 
-searise_sites = ['.\\sites\\cube_centroids_3000_3000_buffer_0_00.csv']  # Put in multiple csv or geojsons if you want to combine into one output file
+searise_sites = ['.\\sites\\national_9km_grid.geojson']  # Put in multiple csv or geojsons if you want to combine into one output file
 data_format = 'qgis' # 'qgis' for qgis exports, 'searise' for searise exports, 'hamling' for Hamling VLM coast sites from paper
 out_csv_file = None  # If none, automatically set to the input file name with '_points' appended
-extra_suffixes = ['N', 'S']  # Extra suffixes to append to the output file name (Works if you have subsets of 1 CSV file, e.g. northern and southern sections of a fault model, or south islands only)
+extra_suffixes = []  # Extra suffixes to append to the output file name (Works if you have subsets of 1 CSV file, e.g. northern and southern sections of a fault model, or south islands only)
 
-if len(searise_csv) > 1 and len(extra_suffixes) > 0:
-    print("Warning: Multiple CSV files provided, but extra suffixes will not be used. Output file will be a combination of all input files.")
+split_regionally = True  # Whether to split the outputs into North and South Island files as well
+coast_buffer = 0  # km offshore buffer
+coast_trim = True  # Whether to trim all sites to be within coast buffer
+coast_file = ".\\data\\coastline\\nz-70sqkm_island_coastlines-polygons-topo-150k.gpkg"
+
+if len(searise_sites) > 1 and len(extra_suffixes) > 0:
+    print("Warning: Multiple site files provided, but extra suffixes will not be used. Output file will be a combination of all input files.")
     extra_suffixes = ['']
 elif '' not in extra_suffixes:
     extra_suffixes = [''] + extra_suffixes  # Ensure the first suffix is empty to handle the case where no suffix is needed
@@ -34,6 +40,7 @@ for suffix in extra_suffixes:
             data = pd.read_csv(site_file)  # Read in the CSV file, appending the suffix if provided
         elif file_type.lower() == '.geojson':
             data = gpd.read_file(site_file)
+            data['geometry'] = data.geometry.centroid  # Get polygon centroids if polygon geojson used instead of point
 
         if data_format == 'searise':  # For searise point exports
             data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.lon, data.lat), crs='EPSG:4326')
@@ -49,10 +56,11 @@ for suffix in extra_suffixes:
             reset_id = True
             sort_values = False
         else:  # For QGIS point exports
-            if data.X.max() > 180:  # If the data is in NZTM
-                data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.X, data.Y), crs='EPSG:2193')
-            else:  # If the data is in Lat/Lon
-                data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.X, data.Y), crs='EPSG:4326').to_crs('EPSG:2193')  # Convert to NZTM
+            if file_type.lower() == '.csv':
+                if data.X.max() > 180:  # If the data is in NZTM
+                    data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.X, data.Y), crs='EPSG:2193')
+                else:  # If the data is in Lat/Lon
+                    data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.X, data.Y), crs='EPSG:4326').to_crs('EPSG:2193')  # Convert to NZTM
             if 'id' in data.columns:
                 data.rename(columns={'id': 'siteId'}, inplace=True)
                 coord_name = True
@@ -70,8 +78,11 @@ for suffix in extra_suffixes:
         data['Lat'] = data.geometry.y
         data['Height'] = 0
 
-        out_pd = pd.concat([out_pd, data[['siteId', 'Lon', 'Lat', 'Height']]])
+        out_pd = pd.concat([out_pd if not out_pd.empty else None, data[['siteId', 'Lon', 'Lat', 'Height']]])
 
+    if out_pd.empty:
+        print("No valid site data found in the provided files. Exiting.")
+        continue
     if sort_values:
         out_pd = out_pd.sort_values(by=['Lat', 'Lon']).reset_index(drop=True)  # Sort based on Latitude, then longitude
         if coord_name:
@@ -88,5 +99,39 @@ for suffix in extra_suffixes:
     else:
         out_file = out_csv_file
 
-    out_pd.to_csv(out_file, index=False)
-    print(f"Output file saved as: {out_file}")
+    out_gpd = gpd.GeoDataFrame(out_pd, geometry=gpd.points_from_xy(out_pd.Lon, out_pd.Lat), crs='EPSG:2193')  # Convert to GeoDataFrame for spatial operations
+
+    if coast_trim:
+        print("Trimming sites to within {} km offshore...".format(coast_buffer))
+        coast_gpd = gpd.read_file(coast_file)
+        if coast_buffer > 0:
+            coast_gpd['geometry'] = coast_gpd.geometry.buffer(coast_buffer * 1e3)  # Buffer specified distance around the coastline
+        out_gpd = gpd.sjoin(out_gpd, coast_gpd, predicate='within')
+
+    out_gpd[['siteId', 'Lon', 'Lat', 'Height']].to_csv(out_file, index=False)
+    print(f"\tOutput file saved as: {out_file}")
+    out_gpd.to_file(out_file.replace('.csv', '.geojson'), driver='GeoJSON')
+    print(f"\tOutput GeoJSON file saved as: {out_file.replace('.csv', '.geojson')}")
+
+if len(extra_suffixes) > 1:
+    split_regionally = False
+
+if split_regionally:
+    print("Splitting outputs into Hikurangi and Puysegur sections...")
+    wellington = Point([1749150, 5428092]) # Wellington coordinates in NZTM
+    te_anau = Point([1186710, 4957633])  # Te Anau coordinates in NZTM
+    distance = 350  # Distance South of Wellington in km to include for hikurangi
+
+    # For Hikurangi, find all centroids north of 350km south of Wellington
+    northern_section = out_gpd[(out_gpd.geometry.y > wellington.y) | (out_gpd.distance(wellington) < distance * 1e3)]
+    northern_section.to_file(out_file.replace('.csv', 'N.geojson'), driver='GeoJSON')
+    print(f"\tWritten {out_file.replace('.csv', 'N.geojson')}")
+    northern_section[['siteId', 'Lon', 'Lat', 'Height']].to_csv(out_file.replace('.csv', 'N.csv'), index=False)
+    print(f"\tWritten {out_file.replace('.csv', 'N.csv')}")
+
+    # For Puysegur, find all centroids within 350km of Te Anau
+    southern_section = out_gpd[(out_gpd.distance(te_anau) < distance * 1e3)]
+    southern_section.to_file(out_file.replace('.csv', 'S.geojson'), driver='GeoJSON')
+    print(f"\tWritten {out_file.replace('.csv', 'S.geojson')}")
+    southern_section[['siteId', 'Lon', 'Lat', 'Height']].to_csv(out_file.replace('.csv', 'S.csv'), index=False)
+    print(f"\tWritten {out_file.replace('.csv', 'S.csv')}")
