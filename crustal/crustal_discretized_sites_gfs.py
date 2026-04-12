@@ -86,26 +86,32 @@ else:
         rake = discretised_dict[fault_id]["rake"]
 
         # Identify, for this rupture, which sites have not been processed
-        with h5.File(gf_h5_file, "r+") as gf_h5:
-            if str(fault_id) not in gf_h5.keys():
-                gf_h5.create_group(str(fault_id))
-                gf_h5[str(fault_id)].create_dataset('ss', data=np.array([]))
-                gf_h5[str(fault_id)].create_dataset('ds', data=np.array([]))
-                gf_h5[str(fault_id)].create_dataset('rake', data=90)
-                gf_h5[str(fault_id)].create_dataset('site_name_ix', data=np.array([]))
-                gf_h5[str(fault_id)].create_dataset('non_zero_sites', data=np.array([]))
-            
-            site_name_ix = gf_h5[str(fault_id)]['site_name_ix'][:]
-            if len(site_name_ix) > 0:
-                prepared_site_names = np.array(all_site_names)[site_name_ix].tolist()
-            else:
-                prepared_site_names = []
-            non_zero_ix = gf_h5[str(fault_id)]['non_zero_sites'][:]
-            if len(non_zero_ix) > 0:
-                dipslip = np.zeros([len(prepared_site_names)])
-                dipslip[non_zero_ix] = gf_h5[str(fault_id)]['ds'][:]
-            else:
-                dipslip = gf_h5[str(fault_id)]['ds'][:]
+        try:
+            gf_h5 = h5.File(gf_h5_file, "r+")  # Not opening in context manager, as sometimes was locking due to repeated opening, closing and editing
+        except PermissionError:
+            sleep(0.5)  # Wait a bit and try again if file is locked. Horrible hack solution
+            gf_h5 = h5.File(gf_h5_file, "r+") 
+
+        if str(fault_id) not in gf_h5.keys():
+            gf_h5.create_group(str(fault_id))
+            gf_h5[str(fault_id)].create_dataset('ss', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('ds', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('rake', data=90)
+            gf_h5[str(fault_id)].create_dataset('site_name_ix', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('non_zero_sites', data=np.array([]))
+        
+        site_name_ix = gf_h5[str(fault_id)]['site_name_ix'][:]
+        if len(site_name_ix) > 0:
+            prepared_site_names = np.array(all_site_names)[site_name_ix].tolist()
+        else:
+            prepared_site_names = []
+        non_zero_ix = gf_h5[str(fault_id)]['non_zero_sites'][:]
+        if len(non_zero_ix) > 0:
+            dipslip = np.zeros([len(prepared_site_names)])
+            dipslip[non_zero_ix] = gf_h5[str(fault_id)]['ds'][:]
+        else:
+            dipslip = gf_h5[str(fault_id)]['ds'][:]
+        gf_h5.close()
 
         begin = time()
         prepare_set = set(prepared_site_names)  # Convert to set for faster lookup
@@ -155,13 +161,18 @@ else:
         disp_dict = {"ss": disps_ss, "ds": disps_ds, "rake": rake, "non_zero_sites": non_zero_ix,
                     "site_name_ix": site_name_ix}
 
-        with h5.File(gf_h5_file, "r+") as gf_h5:
-            for key in disp_dict.keys():
-                del gf_h5[str(fault_id)][key]
-                gf_h5[str(fault_id)].create_dataset(key, data=disp_dict[key])
-
+        try:
+            gf_h5 = h5.File(gf_h5_file, "r+")  # Not opening in context manager, as sometimes was locking due to repeated opening, closing and editing
+        except PermissionError:
+            sleep(0.5)  # Wait a bit and try again if file is locked. Horrible hack solution
+            gf_h5 = h5.File(gf_h5_file, "r+")
+        for key in disp_dict.keys():
+            del gf_h5[str(fault_id)][key]
+            gf_h5[str(fault_id)].create_dataset(key, data=disp_dict[key])
+        gf_h5.close()
+                
         if fault_id % 1 == 0:
-            print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)    ', end='\r')
+            print(f'discretised dict {fault_id:04d} ({fix:04d}/{len(discretised_dict.keys())}) done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
     print('')
 
 # This geojson file will be used to control the sites of the inversion

@@ -4,7 +4,7 @@ import geopandas as gpd
 import pandas as pd
 import cutde.halfspace as HS
 import os
-from time import time
+from time import time, sleep
 import h5py as h5
 
 """
@@ -175,10 +175,15 @@ else:
         disp_dict = {"ss": (disps * 0).astype(np.int8), "ds": disps, "non_zero_sites": non_zero_ix, "rake": 90,
                     "site_name_ix": site_name_ix}
         
-        with h5.File(gf_h5_file, "r+") as gf_h5:
-            for key in disp_dict.keys():
-                del gf_h5[str(fault_id)][key]
-                gf_h5[str(fault_id)].create_dataset(key, data=disp_dict[key])
+        try:
+            gf_h5 = h5.File(gf_h5_file, "r+")  # Not opening in context manager, as sometimes was locking due to repeated opening, closing and editing
+        except PermissionError:
+            sleep(0.5)  # Wait a bit and try again if file is locked. Horrible hack solution
+            gf_h5 = h5.File(gf_h5_file, "r+")
+        for key in disp_dict.keys():
+            del gf_h5[str(fault_id)][key]
+            gf_h5[str(fault_id)].create_dataset(key, data=disp_dict[key])
+        gf_h5.close()
 
         if fault_id % 1 == 0:
             print(f'discretised dict {fault_id:04d} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
