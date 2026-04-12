@@ -19,6 +19,10 @@ version_extension = "_version_0-1S"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
+# Parameters to pick cut-off for recorded deformation
+maximum_slip = 12  # Maximum amount of slip on a patch (set this to maximum slip in the input ruptures)
+minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 1 cm of displacement from 10 m of slip)
+
 # Define whch subduction zone ([_fq_]hikkerm / puysegur)
 sz_zone = '_puysegur'
 
@@ -48,7 +52,7 @@ elif gentler_dip:
     version_extension += "_gentlerdip"
     sz_zone += "_gentlerdip"
 
-if 'hikkerm' in sz_zone:
+if 'hikkerm' in sz_zone or 'hikkerk' in sz_zone:
     prefix = 'sz'
 elif 'puysegur' in sz_zone:
     prefix = 'py'
@@ -131,7 +135,7 @@ else:
         site_ix = np.array([ix for ix, site in enumerate(requested_site_names) if site not in prepare_set])
         if not site_ix.any():
             # All sites have been processed 
-            print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
+            print(f'discretised dict {fault_id:04d} of {len(discretised_dict.keys())} prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
             continue
 
         # Get DS and SS components for each triangle element, depending on the element rake
@@ -157,7 +161,7 @@ else:
             site_coords = np.vstack([prepared_site_coords, gf_site_coords[:, :2]])
         site_name_list = prepared_site_names + gf_site_name_list
 
-        zero_value = 1 / (50 * 1e3)  # Zero value is the limit to store values by requiring at least 1mm of displacement from 50m of slip
+        zero_value = minimum_recorded_slip / maximum_slip  # Zero value is the limit to store values by requiring at least x mm of displacement from y m of slip
         non_zero_ix = np.where(np.abs(disps) > zero_value)[0]
         disps = disps[non_zero_ix]
 
@@ -177,7 +181,7 @@ else:
                 gf_h5[str(fault_id)].create_dataset(key, data=disp_dict[key])
 
         if fault_id % 1 == 0:
-            print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)    ', end='\r')
+            print(f'discretised dict {fault_id:04d} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
     print('')
 
 # This geojson file will be used to control the sites of the inversion
