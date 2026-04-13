@@ -29,7 +29,7 @@ sz_zone = '_puysegur'
 # in list form for one coord or list of lists for multiple (in NZTM)
 csvfile = 'cube_centroids_27000_9000_buffer_0_33S_points.csv'
 site_list_csv = os.path.join('..', 'sites', csvfile)
-sites_df = pd.read_csv(site_list_csv)
+sites_df = pd.read_csv(site_list_csv).drop_duplicates().reset_index(drop=True)
 
 # Names of the sites we need to prepare
 gf_site_names = [str(site) for site in sites_df['siteId']]
@@ -103,39 +103,47 @@ else:
             "rb") as f:
         discretised_dict = pkl.load(f)
 
+    n_patches = len(discretised_dict)
+    sigfig = len(str(n_patches))
+
     for fault_id in discretised_dict.keys():
         # Mesh information
         triangles = discretised_dict[fault_id]["triangles"]
         rake = discretised_dict[fault_id]["rake"]
 
         # Identify, for this rupture, which sites have not been processed
-        with h5.File(gf_h5_file, "r+") as gf_h5:
-            if str(fault_id) not in gf_h5.keys():
-                gf_h5.create_group(str(fault_id))
-                gf_h5[str(fault_id)].create_dataset('ss', data=np.array([]))
-                gf_h5[str(fault_id)].create_dataset('ds', data=np.array([]))
-                gf_h5[str(fault_id)].create_dataset('rake', data=90)
-                gf_h5[str(fault_id)].create_dataset('site_name_ix', data=np.array([]))
-                gf_h5[str(fault_id)].create_dataset('non_zero_sites', data=np.array([]))
-            
-            site_name_ix = gf_h5[str(fault_id)]['site_name_ix'][:]
-            if len(site_name_ix) > 0:
-                prepared_site_names = np.array(all_site_names)[site_name_ix].tolist()
-            else:
-                prepared_site_names = []
-            non_zero_ix = gf_h5[str(fault_id)]['non_zero_sites'][:]
-            if len(non_zero_ix) > 0:
-                dipslip = np.zeros([len(prepared_site_names)])
-                dipslip[non_zero_ix] = gf_h5[str(fault_id)]['ds'][:]
-            else:
-                dipslip = gf_h5[str(fault_id)]['ds'][:]
+        try:
+            gf_h5 = h5.File(gf_h5_file, "r+")
+        except PermissionError:
+            sleep(0.5)
+            gf_h5 = h5.File(gf_h5_file, "r+")
+        if str(fault_id) not in gf_h5.keys():
+            gf_h5.create_group(str(fault_id))
+            gf_h5[str(fault_id)].create_dataset('ss', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('ds', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('rake', data=90)
+            gf_h5[str(fault_id)].create_dataset('site_name_ix', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('non_zero_sites', data=np.array([]))
+        
+        site_name_ix = gf_h5[str(fault_id)]['site_name_ix'][:]
+        if len(site_name_ix) > 0:
+            prepared_site_names = np.array(all_site_names)[site_name_ix].tolist()
+        else:
+            prepared_site_names = []
+        non_zero_ix = gf_h5[str(fault_id)]['non_zero_sites'][:]
+        if len(non_zero_ix) > 0:
+            dipslip = np.zeros([len(prepared_site_names)])
+            dipslip[non_zero_ix] = gf_h5[str(fault_id)]['ds'][:]
+        else:
+            dipslip = gf_h5[str(fault_id)]['ds'][:]
+        gf_h5.close()
 
         begin = time()
         prepare_set = set(prepared_site_names)  # Convert to set for faster lookup
         site_ix = np.array([ix for ix, site in enumerate(requested_site_names) if site not in prepare_set])
         if not site_ix.any():
             # All sites have been processed 
-            print(f'discretised dict {fault_id:04d} of {len(discretised_dict.keys())} prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
+            print(f'discretised dict {fault_id:0{sigfig}d} of {n_patches} prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
             continue
 
         # Get DS and SS components for each triangle element, depending on the element rake
@@ -186,7 +194,7 @@ else:
         gf_h5.close()
 
         if fault_id % 1 == 0:
-            print(f'discretised dict {fault_id:04d} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
+            print(f'discretised dict {fault_id:0{sigfig}d} of {n_patches} done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
     print('')
 
 # This geojson file will be used to control the sites of the inversion

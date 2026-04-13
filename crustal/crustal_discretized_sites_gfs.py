@@ -16,7 +16,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_version_0-1"
+mesh_version = "_v0-2"
 
 steeper_dip, gentler_dip = False, False
 
@@ -25,8 +25,8 @@ maximum_slip = 12  # Maximum amount of slip on a patch (set this to maximum slip
 minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 1 cm of displacement from 10 m of slip)
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'sites', 'cube_centroids_27000_9000_buffer_0_33_points.csv')
-sites_df = pd.read_csv(site_list_csv)
+site_list_csv = os.path.join('..', 'sites', 'v0-2_points.csv')
+sites_df = pd.read_csv(site_list_csv).drop_duplicates().reset_index(drop=True)
 
 gf_site_names = [str(site) for site in sites_df['siteId']]
 gf_site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
@@ -81,6 +81,9 @@ else:
     with open(f"discretised{discretise_version}/crustal_discretised_dict.pkl", "rb") as f:
         discretised_dict = pkl.load(f)
 
+    n_patches = len(discretised_dict)
+    sigfig = len(str(n_patches))
+
     for fix, fault_id in enumerate(discretised_dict.keys()):
         triangles = discretised_dict[fault_id]["triangles"]
         rake = discretised_dict[fault_id]["rake"]
@@ -118,7 +121,7 @@ else:
         site_ix = np.array([ix for ix, site in enumerate(requested_site_names) if site not in prepare_set])
         if not site_ix.any():
             # All sites have been processed 
-            print(f'discretised dict {fault_id:04d} ({fix:04d}/{len(discretised_dict.keys())}) prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
+            print(f'discretised dict {fault_id:0{sigfig}d} ({fix:0{sigfig}d}/{n_patches}) prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
             continue
 
         vertices = triangles.reshape(triangles.shape[0] * triangles.shape[1], 3)
@@ -172,7 +175,7 @@ else:
         gf_h5.close()
                 
         if fault_id % 1 == 0:
-            print(f'discretised dict {fault_id:04d} ({fix:04d}/{len(discretised_dict.keys())}) done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
+            print(f'discretised dict {fault_id:0{sigfig}d} ({fix:0{sigfig}d}/{n_patches}) done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
     print('')
 
 # This geojson file will be used to control the sites of the inversion
