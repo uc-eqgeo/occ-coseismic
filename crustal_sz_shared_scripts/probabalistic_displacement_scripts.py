@@ -441,6 +441,16 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
         n_ruptures = rates.shape[0]   
 
         print(f'\tPreparing {n_samples} Poissonian Scenarios for {n_ruptures} ruptures...')
+        process_intervals = time_interval.copy()
+        for interval in time_interval:
+            if os.path.exists(f"{randdir}/{interval}_yr_scenarios.pkl"):
+                with open(f"{randdir}/{interval}_yr_scenarios.pkl", "rb") as f:
+                    interval_scenarios = pkl.load(f)
+                samples, rupts = interval_scenarios.shape
+                if all([samples >= n_samples, rupts == n_ruptures]):
+                    process_intervals.remove(interval)
+                    print(f"\t\tUsing pre-made rates for {interval} years...")
+
         rng = np.random.default_rng()
         step = int(1e8 / n_samples)  # step size for poisson sampling (100,000,000 elements per run, ~9GB)
         step = step if step < rates.shape[0] else rates.shape[0]  # ensure step is not larger than number of ruptures
