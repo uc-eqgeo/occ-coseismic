@@ -668,10 +668,16 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 print(f"Calculated Displacements: {time() - lap:.5f} s")
             lap = time()    
 
+            ## Convert data to ints to reduce memory usage
+            min_disp = 1e-3  # Set min disp to save as (1 mm)
+            min_disp = min_disp if min_disp < thresh_step else thresh_step
+            cumulative_disp_scenarios = np.floor(cumulative_disp_scenarios / min_disp).astype(np.int32)  # Convert to np.int to save space
+            dtype = np.int32 if n_samples < np.iinfo(np.int32).max else np.int64  # Saves as int32 if less than 2,147,483,647 samples
+
             # Find indexes of scenarios where slip occurred
-            up_slip_scenarios = np.where(cumulative_disp_scenarios[0, 0, :] != 0)[0]
-            down_slip_scenarios = np.where(cumulative_disp_scenarios[1, 0, :] != 0)[0]
-            abs_slip_scenarios = np.where(cumulative_disp_scenarios[2, 0, :] != 0)[0]    
+            up_slip_scenarios = np.where(cumulative_disp_scenarios[0, 0, :] != 0)[0].astype(dtype)
+            down_slip_scenarios = np.where(cumulative_disp_scenarios[1, 0, :] != 0)[0].astype(dtype)
+            abs_slip_scenarios = np.where(cumulative_disp_scenarios[2, 0, :] != 0)[0].astype(dtype)
 
             cumulative_data = np.hstack([cumulative_up_scenarios[0, up_slip_scenarios], cumulative_down_scenarios[0, down_slip_scenarios], cumulative_abs_scenarios[0, abs_slip_scenarios]])
             if cumulative_data.shape[0] < 2e6:  # Anecdatally, with less than 2 million scenarios, the sparse method is faster
@@ -751,7 +757,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 site_PPE_dict[site_of_interest][investigation_time].update({"scenario_displacements": scenario_displacements,
                                                                             "standard_deviation": sd,
                                                                             "n_samples": n_samples,
-                                                                            "thresh_para": np.hstack([thresh_lims, thresh_step])})
+                                                                            "thresh_para": np.hstack([thresh_lims, thresh_step]),
+                                                                            "disp_scaling": min_disp})
         site_PPE_dict[site_of_interest].update({"site_coords": site_dict_i["site_coords"]})
         # Every 100th site, write the data to the h5 file
         if i % 100 == 99 or array_process:
@@ -1085,7 +1092,11 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
         elapsed, per_site = time_elasped(time(), start, 1, decimal=False)
         weighted_h5.close()  # Closing file after each site saves that site's data (in case processing is cancelled)
         for ix, site in enumerate(site_list):
-            weighted_h5 = h5.File(weighted_h5_file, "r+")
+            try:
+                weighted_h5 = h5.File(weighted_h5_file, "r+")
+            except PermissionError:
+                sleep(0.1)
+                weighted_h5 = h5.File(weighted_h5_file, "r+")
             printProgressBar(ix, len(site_list), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
             if site in weighted_h5.keys():
                 for interval in intervals_list[ix]:
