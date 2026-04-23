@@ -454,7 +454,7 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
         rng = np.random.default_rng()
         step = int(1e8 / n_samples)  # step size for poisson sampling (100,000,000 elements per run, ~9GB)
         step = step if step < rates.shape[0] else rates.shape[0]  # ensure step is not larger than number of ruptures
-        for interval in time_interval:
+        for interval in process_intervals:
             scenarios = csc_array(rng.poisson(float(interval) * rates[0:step], size=(int(n_samples), step)))
             for ii in range(step, n_ruptures, step):
                 scenarios = hstack([scenarios, csc_array(rng.poisson(float(interval) * rates[ii:ii + step], size=(int(n_samples), len(rates[ii:ii + step]))))])
@@ -623,7 +623,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 if load_random:
                     # Load in scenarios from csc array, or create empty array if no ruptures impact this site
                     if site_dict_i["disps_ix"].shape[0] > 0:
-                        scenarios = all_scenarios[investigation_time][:, site_dict_i["disps_ix"]]
+                        scenarios = all_scenarios[investigation_time][:n_samples, site_dict_i["disps_ix"]]
                     else:
                         scenarios = csc_array(np.zeros((int(n_samples), 1)))
                     if benchmarking:
@@ -1697,7 +1697,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                                 slip_scenarios = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['scenario_ix'][:]
                                 if slip_scenarios.shape[0] > 0:
                                     max_scenario = -1 if n_samples > slip_scenarios[-1] else np.where(slip_scenarios >= n_samples)[0][0]
-                                    NSHM_displacements[ix, slip_scenarios[:max_scenario]] = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['displacements'][:max_scenario]
+                                    NSHM_displacements[ix, slip_scenarios[:max_scenario]] = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['displacements'][:max_scenario] * NSHM_h5[site][interval]['disp_scaling'][()]
                         if run_numba:
                             branch_disp_dict_numba[branch] = numba_csr_array(NSHM_displacements)
                         if run_parallel or run_sequential:
