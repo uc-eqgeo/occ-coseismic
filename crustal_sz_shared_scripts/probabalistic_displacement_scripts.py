@@ -16,14 +16,14 @@ import itertools
 import numpy as np
 import pandas as pd
 import pickle as pkl
-from time import time
+from time import time, sleep
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 from scipy.sparse import csc_array, csr_array, hstack, csr_matrix
-from scipy.interpolate import NearestNDInterpolator, CloughTocher2DInterpolator
+from scipy.interpolate import NearestNDInterpolator, LinearNDInterpolator
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, combine_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission, \
                          slurm_timeleft, nesiprint
@@ -1105,7 +1105,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             try:
                 weighted_h5 = h5.File(weighted_h5_file, "r+")
             except PermissionError:
-                sleep(0.1)
+                sleep(0.5)
                 weighted_h5 = h5.File(weighted_h5_file, "r+")
             printProgressBar(ix, len(site_list), prefix=f'\tProcessing Site {site}', suffix=f'Complete {elapsed} ({per_site:.2f}s/site)', length=50)
             if site in weighted_h5.keys():
@@ -3189,7 +3189,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                         for interval_ix in range(len(time_intervals)):
                             data = thresh_grd[thresh_ix, interval_ix, :, :]
                             y_ix, x_ix = np.where(~np.isnan(data))
-                            interp = CloughTocher2DInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
+                            interp = LinearNDInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
                             interp_vals = interp((interp_df['Lon'].values, interp_df['Lat'].values))
                             nan_ix = np.where(np.isnan(interp_vals))[0]
                             if len(nan_ix) > 0:
@@ -3240,7 +3240,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                         for interval_ix in range(len(time_intervals)):
                             data = thresh_grd[prob_ix, interval_ix, :, :]
                             y_ix, x_ix = np.where(~np.isnan(data))
-                            interp = CloughTocher2DInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
+                            interp = LinearNDInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
                             interp_vals = interp((interp_df['Lon'].values, interp_df['Lat'].values))
                             nan_ix = np.where(np.isnan(interp_vals))[0]
                             if len(nan_ix) > 0:
