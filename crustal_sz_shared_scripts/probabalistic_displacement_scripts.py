@@ -830,6 +830,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
     fault_model_allbranch_PPE_dict = {}
     combine_branches = 0
     n_jobs = 0
+    inv_sites = set(inv_sites)
     for counter, branch_id in enumerate(branch_weight_dict.keys()):
         print(f"calculating {branch_id} PPE\t({counter + 1} of {len(branch_weight_dict.keys())} branches)")
         remake_branch_PPE = remake_PPE
@@ -842,8 +843,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.h5"
         if os.path.exists(branch_site_disp_dict_file):
             with h5.File(branch_site_disp_dict_file, 'r') as branch_h5:
-                site_list = [site for site in branch_h5.keys() if "rates" not in site]
-            missing_sites = [site for site in inv_sites if site not in site_list]
+                site_set = set(branch_h5.keys()) - {'rates', 'scaled_rates'}
+            missing_sites = inv_sites - site_set
             if len(missing_sites) > 0:
                 write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5file=branch_site_disp_dict_file)
                 with h5.File(branch_site_disp_dict_file, "a") as branch_site_disp_dict:
@@ -855,40 +856,38 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             with h5.File(branch_site_disp_dict_file, "a") as branch_site_disp_dict:
                 # multiply each value in the rates array by the rate scaling factor
                 branch_site_disp_dict.create_dataset("scaled_rates", data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
-                site_list = [site for site in branch_site_disp_dict.keys() if not site in ["rates", "scaled_rates"]]
+                site_set = set(branch_h5.keys()) - {'rates', 'scaled_rates'}
 
         branch_cumu_PPE_dict_file = f"../{model_version_results_directory}/{extension1}/{branch_id}_cumu_PPE.h5"
         fault_model_allbranch_PPE_dict[branch_id] = branch_cumu_PPE_dict_file
 
-        # Reduce site list to only those that have not been processed or not processed to the required number of samples
+        # Reduce site set to only those that have not been processed or not processed to the required number of samples
         thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
-        well_processed_sites = []
+        well_processed_sites = set()
         if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_branch_PPE:
             print('\tChecking for existing PPE at each site...')
             with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r") as branch_PPEh5:
                 # Checks that sites have been processed
-                inv_set = set(inv_sites)
-                existing_sites = [site for site in branch_PPEh5.keys() if site in inv_set]
+                existing_sites = site_set & inv_sites
+                n_inv, n_existing, width, n_good = len(inv_sites), len(existing_sites), len(str(len(existing_sites))), 0
+                print(f'\t\t{n_existing}/{n_inv} sites previously tested, {0:0{width}d}/{0:0{width}d} are good...', end='\r')
                 # Checks that previous processing had required sampling (i.e. wasn't a testing run)
-                for site in existing_sites:
-                        well_processed = []
-                        for interval in time_interval: # check for each time interval
-                            passed_check = False
-                            if interval in branch_PPEh5[site].keys(): # Check this interval has been processed at all
-                                if all([True if key in branch_PPEh5[site][interval].keys() else False for key in ['n_samples', 'thresh_para']]): # Check if all keys are present (only added when processing is complete)
-                                    if branch_PPEh5[site][interval]['n_samples'][()] >= n_samples: # Check required number of samples were run
-                                        passed_check = True
-                            well_processed.append(passed_check)
-
-                        if all(well_processed):
-                            well_processed_sites.append(site)
+                required_keys = frozenset(['n_samples', 'thresh_para'])
+                for ixs, site in enumerate(existing_sites, 1):
+                    site_h5 = branch_PPEh5[site]
+                    site_keys = site_h5.keys()
+                    if all(interval in site_keys and required_keys <= site_h5[interval].keys() and site_h5[interval]['n_samples'][()] >= n_samples for interval in time_interval):
+                        well_processed_sites.add(site)
+                        n_good += 1
+                    print(f'\t\t{n_existing}/{n_inv} sites exist, {n_good:0{width}d}/{ixs:0{width}d} are good...', end='\r')
+                print('')
 
         else:
             branch_PPEh5 = h5.File(fault_model_allbranch_PPE_dict[branch_id], "a")
             branch_PPEh5.close()
             remake_branch_PPE = True
 
-        prep_list = [site for site in inv_sites if site not in well_processed_sites]
+        prep_list = list(inv_sites - well_processed_sites)
         n_jobs += len(prep_list)
         
         if len(prep_list) == 0:
@@ -979,9 +978,9 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
         site_coords_dict = {}
         with h5.File(branch_site_disp_dict_file, "r") as branch_h5:
-            for site in site_list:
+            for site in site_set:
                 site_coords_dict[site] = branch_h5[site]['site_coords'][:]
-        fault_model_allbranch_PPE_dict['meta'] = {'branch_ids': branch_list, 'site_ids': site_list, 'branch_weights': branch_weight_list, 'site_coords_dict': site_coords_dict}
+        fault_model_allbranch_PPE_dict['meta'] = {'branch_ids': branch_list, 'site_ids': list(site_set), 'branch_weights': branch_weight_list, 'site_coords_dict': site_coords_dict}
 
         outfile_name = f"all_branch_PPE_dict{outfile_extension}{taper_extension}"
         print(f"\nSaving {model_version_results_directory}/{outfile_name}.pkl....")
