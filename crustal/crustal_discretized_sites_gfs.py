@@ -16,7 +16,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_v0-2"
+mesh_version = "_v0-2-coast_9km"
 
 steeper_dip, gentler_dip = False, False
 
@@ -25,7 +25,7 @@ maximum_slip = 12  # Maximum amount of slip on a patch (set this to maximum slip
 minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 1 cm of displacement from 10 m of slip)
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'sites', 'v0-2_points.csv')
+site_list_csv = os.path.join('..', 'sites', 'v0-2_coast_9km_points.csv')
 sites_df = pd.read_csv(site_list_csv).drop_duplicates().reset_index(drop=True)
 
 gf_site_names = [str(site) for site in sites_df['siteId']]
@@ -112,14 +112,17 @@ else:
         if len(non_zero_ix) > 0:
             dipslip = np.zeros([len(prepared_site_names)])
             dipslip[non_zero_ix] = gf_h5[str(fault_id)]['ds'][:]
+            strikeslip = np.zeros([len(prepared_site_names)])
+            strikeslip[non_zero_ix] = gf_h5[str(fault_id)]['ss'][:]
         else:
             dipslip = gf_h5[str(fault_id)]['ds'][:]
+            strikeslip = gf_h5[str(fault_id)]['ss'][:]
         gf_h5.close()
 
         begin = time()
         prepare_set = set(prepared_site_names)  # Convert to set for faster lookup
         site_ix = np.array([ix for ix, site in enumerate(requested_site_names) if site not in prepare_set])
-        if not site_ix.any():
+        if len(site_ix) == 0:
             # All sites have been processed 
             print(f'discretised dict {fault_id:0{sigfig}d} ({fix:0{sigfig}d}/{n_patches}) prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
             continue
@@ -141,7 +144,7 @@ else:
         disps_ss = HS.disp_free(obs_pts=gf_site_coords, tris=triangles, slips=strike_slip_array, nu=0.25)
         disps_ds = HS.disp_free(obs_pts=gf_site_coords, tris=triangles, slips=dip_slip_array, nu=0.25)
 
-        disps_ss = np.hstack([dipslip, disps_ss[:, -1]])
+        disps_ss = np.hstack([strikeslip, disps_ss[:, -1]])
         disps_ds = np.hstack([dipslip, disps_ds[:, -1]])
         if prepared_site_coords.shape[0] == 0:
             site_coords = gf_site_coords[:, :2]
