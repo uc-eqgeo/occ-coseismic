@@ -1858,20 +1858,31 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
         site_list = list(site_PPE_dictionary.keys())
 
     thresholds = [round(val, 4) for val in site_PPE_dictionary["thresholds"]]
-    # find index in thresholds where the value matches the parameter threshold
-    index = thresholds.index(round(threshold, 4))
 
     # get list of probabilities at defined displacement threshold (one for each site)
-    probs_threshold = []
-    for site in site_list:
-        try:
-            site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
-            if site_PPE.shape[0] > index:
-                probs_threshold.append(site_PPE[index])
-            else:
-                probs_threshold.append(0)
-        except KeyError:
-            probs_threshold.append(np.nan)
+    if isinstance(threshold, float):
+        # find index in thresholds where the value matches the parameter threshold
+        index = thresholds.index(round(threshold, 4))
+        probs_threshold = []
+        for site in site_list:
+            try:
+                site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
+                if site_PPE.shape[0] > index:
+                    probs_threshold.append(site_PPE[index])
+                else:
+                    probs_threshold.append(0)
+            except KeyError:
+                probs_threshold.append(np.nan)
+    else:
+        probs_threshold = np.zeros((len(site_list), len(threshold)))
+        index = np.array([thresholds.index(round(thresh, 4)) for thresh in threshold])
+        for ix, site in enumerate(site_list):
+            try:
+                site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
+                if sum(site_PPE.shape[0] > index) > 0:
+                    probs_threshold[ix, :sum(site_PPE.shape[0] > index)] = site_PPE[index[:sum(site_PPE.shape[0] > index)]]
+            except KeyError:
+                probs_threshold.append(np.nan)            
 
     return probs_threshold
 
