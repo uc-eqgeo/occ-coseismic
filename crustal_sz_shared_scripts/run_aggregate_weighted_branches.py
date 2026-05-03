@@ -180,6 +180,8 @@ def make_branch_weight_dict(branch_weight_file_path, sheet_name):
         branch_weight_dict[unique_id] = {"N": N_val, "b": b_val, "C": C_val, "S": S_val, "def_model": def_model,
                                     "time_dependence": time_dependence, "file_suffix": file_suffix, "total_weight_RN":
                                                total_weight_RN}
+        if "dip_model" in branch_weights.keys():
+            branch_weight_dict[unique_id]['dip_model'] = branch_weights["dip_model"][row]
 
     return branch_weight_dict
 ###############################
@@ -288,7 +290,7 @@ if not paired_crustal_sz:
             sites = f.readlines()
             inv_sites = [site.split('"')[9] for site in sites if 'siteId' in site]
     else:
-        site_gdf = gpd.read_file(site_geojson)
+        site_gdf = gpd.read_file(site_geojson).drop_duplicates().reset_index(drop=True)
         inv_sites = site_gdf['siteId'].values.tolist()
 
     for ix, extension1 in enumerate(extension1_list):
@@ -415,13 +417,14 @@ if save_arrays:
         branch_key = ['']
     if not paired_crustal_sz:
         model_id = None
+    if interp_sites:
+        interp_sites = [interp_sites, site_geojson]
     for key in branch_key:
-        if interp_sites:
-            interp_sites = [interp_sites, site_geojson]
         ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                            thresh_lims=[0, 3], thresh_step=1.00, output_thresh=True, probs_lims = [0.01, 0.10], probs_step=0.01,
+                            thresh_lims=[0, 1], thresh_step=0.25, output_thresh=True, probs_lims = [0.01, 0.10], probs_step=0.01,
                             output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key,
-                            time_intervals=time_interval, interp_sites=interp_sites, model_id=model_id)
+                            time_intervals=time_interval, interp_sites=interp_sites, model_id=model_id,
+                            rate_scaling=fault_model_branch_weight_dict[key]["S"] if single_branch else None)
 
 if paired_crustal_sz:
     site_names_title = f"paired crustal{crustal_site_names} and "
