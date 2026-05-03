@@ -430,7 +430,9 @@ else:
         return n_exceedances_total_abs, n_exceedances_up, n_exceedances_down
 
 
-def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples):
+def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples, rate_scaling_factor=1.0):
+        rate_scaling_factor = str(float(rate_scaling_factor)).replace('.', '')
+        
         os.makedirs(randdir, exist_ok=True)
         with h5.File(branch_site_disp_dict_file, "r") as branch_site_disp_dict:
             if "scaled_rates" not in branch_site_disp_dict.keys():
@@ -443,15 +445,15 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
         print(f'\tPreparing {n_samples} Poissonian Scenarios for {n_ruptures} ruptures...')
         process_intervals = time_interval.copy()
         for interval in time_interval:
-            if os.path.exists(f"{randdir}/{interval}_yr_scenarios.pkl"):
-                with open(f"{randdir}/{interval}_yr_scenarios.pkl", "rb") as f:
+            if os.path.exists(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios.pkl"):
+                with open(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios.pkl", "rb") as f:
                     interval_scenarios = pkl.load(f)
                 samples, rupts = interval_scenarios.shape
                 if all([samples >= n_samples, rupts == n_ruptures]):
                     process_intervals.remove(interval)
                     print(f"\t\tUsing pre-made rates for {interval} years...")
 
-        rng = np.random.default_rng()
+        rng = np.random.default_rng(seed=0)  # Ensure seed is always the same for same scenarios each time
         step = int(1e8 / n_samples)  # step size for poisson sampling (100,000,000 elements per run, ~9GB)
         step = step if step < rates.shape[0] else rates.shape[0]  # ensure step is not larger than number of ruptures
         for interval in process_intervals:
@@ -459,7 +461,7 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
             for ii in range(step, n_ruptures, step):
                 scenarios = hstack([scenarios, csc_array(rng.poisson(float(interval) * rates[ii:ii + step], size=(int(n_samples), len(rates[ii:ii + step]))))])
 
-            with open(f"{randdir}/{interval}_yr_scenarios.pkl", "wb") as fid:
+            with open(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios.pkl", "wb") as fid:
                 pkl.dump(scenarios, fid)
 
 
@@ -488,7 +490,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         _ = sparse_thresholds(np.arange(0, 1, 0.1), np.ones(100), np.array([0, 100]))
 
     # use random number generator to initialise monte carlo sampling
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(seed=0)  # Ensure seed is always the same. When used with load_random, ensures same result every time
 
     # Load the displacement/rate data for all sites
     if slip_taper is True:
