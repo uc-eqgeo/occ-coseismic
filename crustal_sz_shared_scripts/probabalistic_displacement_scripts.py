@@ -1794,6 +1794,7 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
         prefix = ''
 
     thresholds = np.array([round(val, 4) for val in site_PPE_dictionary["thresholds"]])
+    probability = round(probability,4)
 
     # displacement thresholds are negative for "down" exceedances
     if exceed_type == "down":
@@ -1809,11 +1810,11 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
             site_PPE = site_PPE_dictionary[site][interval][f"{prefix}exceedance_probs_{exceed_type}"]
             if site_PPE.shape[0] > 0:
                 # get first index that is < 10% (ideally we would interpolate for exact value but don't have a function)
-                exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= round(probability,4)), -1)
-                disp = thresholds[exceedance_index]
+                # exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= round(probability,4)), -1)
+                exceedance_index = site_PPE.shape[0] - np.searchsorted(site_PPE[:], probability, side='right', sorter=np.arange(site_PPE.shape[0])[::-1])
+                disps.append(thresholds[exceedance_index] if exceedance_index < site_PPE.shape[0] else thresholds[-1])
             else:
-                disp = 0
-            disps.append(disp)
+                disps.append(0)
         except KeyError:
             disps.append(np.nan)
 
