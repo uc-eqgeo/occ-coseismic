@@ -3030,7 +3030,7 @@ def save_disp_prob_tifs(extension1, slip_taper, model_version_results_directory,
 def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0,
                            probs_lims=[0.01, 0.2], probs_step=0, output_thresh=True, output_probs=True, weighted=False,
                            output_grids=True, thresholds=None, probabilities=None, sites=[], out_tag='', single_branch='',
-                           time_intervals=['100'], interp_sites=None, model_id=None):
+                           time_intervals=['100'], interp_sites=None, model_id=None, rate_scaling=None):
     """
     Add all results to x_array datasets, and save as netcdf files
     """
@@ -3056,8 +3056,8 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         branch_suffix = '_'.join(single_branch.split('_')[6:])
         h5_file = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/{single_branch}_cumu_PPE.h5"
         outfile_directory = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/probability_grids"
-        model_id = branch_suffix
-        print(f"Saving data arrays for sites_{branch_suffix}...")
+        model_id = branch_suffix + f"_S{str(rate_scaling).replace('.','')}"
+        print(f"Saving data arrays for sites_{model_id}...")
     else:
         h5_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob{extension1}{taper_extension}.h5"
         outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
@@ -3071,15 +3071,14 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
     if sites == []:
         sites = [*PPEh5.keys()]
 
-    for meta in metadata_keys:
-        if meta in sites:
-            sites.remove(meta)
+    sites = set(sites)
+    sites = sites - set(metadata_keys)
 
     # check sites have been processed
-    PPEh5_sites = set(PPEh5.keys())
-    if len(sites) != len([site for site in sites if site in PPEh5_sites]):
-        print(f"Only {len([site for site in sites if site in PPEh5_sites])} of {len(sites)} requested sites have been processed")
-        sites = [site for site in sites if site in PPEh5_sites]
+    sitesinPPE = sites & PPEh5.keys()
+    if len(sites) != len(sitesinPPE):
+        print(f"Only {len(sitesinPPE)} of {len(sites)} requested sites have been processed")
+        sites = sitesinPPE
 
     if thresholds is None:
         if thresh_step != 0:
@@ -3087,8 +3086,10 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         else:
             thresholds = PPEh5["thresholds"]
     
+    check_thresholds = False
+    check_thresholds = check_thresholds if 'thresholds' in PPEh5.keys() else True
     for interval in time_intervals:
-        if single_branch != '':
+        if single_branch != '' and check_thresholds:
             # check processing thresholds for all are the same
             proc_thresh = np.zeros((len(sites),3))
             for ix, site in enumerate(sites):
@@ -3110,7 +3111,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             with h5.File(h5_file, 'a') as PPEh5:
                 if 'thresholds' in PPEh5.keys():
                     del PPEh5['thresholds']
-                PPEh5.create_dataset('thresholds', data=np.arange(PPEh5[sites[0]][interval]['thresh_para'][0], PPEh5[sites[0]][interval]['thresh_para'][1] + PPEh5[sites[0]][interval]['thresh_para'][2], PPEh5[sites[0]][interval]['thresh_para'][2]))
+                PPEh5.create_dataset('thresholds', data=np.arange(PPEh5[site][interval]['thresh_para'][0], PPEh5[site][interval]['thresh_para'][1] + PPEh5[site][interval]['thresh_para'][2], PPEh5[site][interval]['thresh_para'][2]))
             PPEh5 = h5.File(h5_file, 'r')
 
 
@@ -3190,10 +3191,13 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                 probs = np.zeros([len(sites), len(time_intervals), len(thresholds)])
                 printProgressBar(0, len(thresholds), prefix=f'\tProcessing 0.00 m', suffix=f'{exceed_type}', length=50)
                 for ti, interval in enumerate(time_intervals):
-                    for ii, threshold in enumerate(thresholds):
-                        probs[:, ti, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
-                                                                          threshold=threshold, site_list=sites, weighted=weighted, interval=interval)
-                    printProgressBar(ii + 1, len(thresholds), prefix=f'\tProcessing {threshold:.2f} m', suffix=f'{exceed_type} {interval} yrs', length=50)
+                    # for ii, threshold in enumerate(thresholds):
+                    #     probs[:, ti, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
+                    #                                                       threshold=threshold, site_list=sites, weighted=weighted, interval=interval)
+                        # printProgressBar(ii + 1, len(thresholds), prefix=f'\tProcessing {threshold:.2f} m', suffix=f'{exceed_type} {interval} yrs', length=50)
+                    probs[:, ti, :] = get_probability_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
+                                                                        threshold=thresholds, site_list=sites, weighted=weighted, interval=interval)
+                    printProgressBar(ti + 1, len(time_intervals), prefix=f'\tProcessing {interval} yrs', suffix=f'{exceed_type} {interval} yrs', length=50)
                 for jj in range(len(sites)):
                     thresh_grd[:, :, int(site_y[jj]), int(site_x[jj])] = probs[jj, :, :].T
 
