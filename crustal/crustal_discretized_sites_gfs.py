@@ -5,7 +5,7 @@ from shapely.geometry import MultiPoint
 import geopandas as gpd
 import os
 import pandas as pd
-from time import time
+from time import time, sleep
 import h5py as h5
 
 
@@ -16,13 +16,17 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_version_0-1"
+mesh_version = "_v0-2-coast_9km"
 
 steeper_dip, gentler_dip = False, False
 
+# Parameters to pick cut-off for recorded deformation
+maximum_slip = 12  # Maximum amount of slip on a patch (set this to maximum slip in the input ruptures)
+minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 1 cm of displacement from 10 m of slip)
+
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'sites', 'cube_centroids_27000_9000_buffer_0_33_points.csv')
-sites_df = pd.read_csv(site_list_csv)
+site_list_csv = os.path.join('..', 'sites', 'v0-2_coast_9km_points.csv')
+sites_df = pd.read_csv(site_list_csv).drop_duplicates().reset_index(drop=True)
 
 gf_site_names = [str(site) for site in sites_df['siteId']]
 gf_site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
@@ -77,38 +81,50 @@ else:
     with open(f"discretised{discretise_version}/crustal_discretised_dict.pkl", "rb") as f:
         discretised_dict = pkl.load(f)
 
-    for fault_id in discretised_dict.keys():
+    n_patches = len(discretised_dict)
+    sigfig = len(str(n_patches))
+
+    for fix, fault_id in enumerate(discretised_dict.keys()):
         triangles = discretised_dict[fault_id]["triangles"]
         rake = discretised_dict[fault_id]["rake"]
 
         # Identify, for this rupture, which sites have not been processed
-        with h5.File(gf_h5_file, "r+") as gf_h5:
-            if str(fault_id) not in gf_h5.keys():
-                gf_h5.create_group(str(fault_id))
-                gf_h5[str(fault_id)].create_dataset('ss', data=np.array([]))
-                gf_h5[str(fault_id)].create_dataset('ds', data=np.array([]))
-                gf_h5[str(fault_id)].create_dataset('rake', data=90)
-                gf_h5[str(fault_id)].create_dataset('site_name_ix', data=np.array([]))
-                gf_h5[str(fault_id)].create_dataset('non_zero_sites', data=np.array([]))
-            
-            site_name_ix = gf_h5[str(fault_id)]['site_name_ix'][:]
-            if len(site_name_ix) > 0:
-                prepared_site_names = np.array(all_site_names)[site_name_ix].tolist()
-            else:
-                prepared_site_names = []
-            non_zero_ix = gf_h5[str(fault_id)]['non_zero_sites'][:]
-            if len(non_zero_ix) > 0:
-                dipslip = np.zeros([len(prepared_site_names)])
-                dipslip[non_zero_ix] = gf_h5[str(fault_id)]['ds'][:]
-            else:
-                dipslip = gf_h5[str(fault_id)]['ds'][:]
+        try:
+            gf_h5 = h5.File(gf_h5_file, "r+")  # Not opening in context manager, as sometimes was locking due to repeated opening, closing and editing
+        except PermissionError:
+            sleep(0.5)  # Wait a bit and try again if file is locked. Horrible hack solution
+            gf_h5 = h5.File(gf_h5_file, "r+") 
+
+        if str(fault_id) not in gf_h5.keys():
+            gf_h5.create_group(str(fault_id))
+            gf_h5[str(fault_id)].create_dataset('ss', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('ds', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('rake', data=90)
+            gf_h5[str(fault_id)].create_dataset('site_name_ix', data=np.array([]))
+            gf_h5[str(fault_id)].create_dataset('non_zero_sites', data=np.array([]))
+        
+        site_name_ix = gf_h5[str(fault_id)]['site_name_ix'][:]
+        if len(site_name_ix) > 0:
+            prepared_site_names = np.array(all_site_names)[site_name_ix].tolist()
+        else:
+            prepared_site_names = []
+        non_zero_ix = gf_h5[str(fault_id)]['non_zero_sites'][:]
+        if len(non_zero_ix) > 0:
+            dipslip = np.zeros([len(prepared_site_names)])
+            dipslip[non_zero_ix] = gf_h5[str(fault_id)]['ds'][:]
+            strikeslip = np.zeros([len(prepared_site_names)])
+            strikeslip[non_zero_ix] = gf_h5[str(fault_id)]['ss'][:]
+        else:
+            dipslip = gf_h5[str(fault_id)]['ds'][:]
+            strikeslip = gf_h5[str(fault_id)]['ss'][:]
+        gf_h5.close()
 
         begin = time()
         prepare_set = set(prepared_site_names)  # Convert to set for faster lookup
         site_ix = np.array([ix for ix, site in enumerate(requested_site_names) if site not in prepare_set])
-        if not site_ix.any():
+        if len(site_ix) == 0:
             # All sites have been processed 
-            print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
+            print(f'discretised dict {fault_id:0{sigfig}d} ({fix:0{sigfig}d}/{n_patches}) prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
             continue
 
         vertices = triangles.reshape(triangles.shape[0] * triangles.shape[1], 3)
@@ -128,7 +144,7 @@ else:
         disps_ss = HS.disp_free(obs_pts=gf_site_coords, tris=triangles, slips=strike_slip_array, nu=0.25)
         disps_ds = HS.disp_free(obs_pts=gf_site_coords, tris=triangles, slips=dip_slip_array, nu=0.25)
 
-        disps_ss = np.hstack([dipslip, disps_ss[:, -1]])
+        disps_ss = np.hstack([strikeslip, disps_ss[:, -1]])
         disps_ds = np.hstack([dipslip, disps_ds[:, -1]])
         if prepared_site_coords.shape[0] == 0:
             site_coords = gf_site_coords[:, :2]
@@ -136,7 +152,7 @@ else:
             site_coords = np.vstack([prepared_site_coords, gf_site_coords[:, :2]])
         site_name_list = prepared_site_names + gf_site_name_list
 
-        zero_value = 1 / (50 * 1e3)  # Zero value is the limit to store values by requiring at least 1mm of displacement from 50m of slip
+        zero_value = minimum_recorded_slip / maximum_slip  # Zero value is the limit to store values by requiring at least x mm of displacement from y m of slip
         non_zero_ix = np.where((np.abs(disps_ss) + np.abs(disps_ds)) > zero_value)[0]
         disps_ss = disps_ss[non_zero_ix]
         disps_ds = disps_ds[non_zero_ix]
@@ -151,13 +167,18 @@ else:
         disp_dict = {"ss": disps_ss, "ds": disps_ds, "rake": rake, "non_zero_sites": non_zero_ix,
                     "site_name_ix": site_name_ix}
 
-        with h5.File(gf_h5_file, "r+") as gf_h5:
-            for key in disp_dict.keys():
-                del gf_h5[str(fault_id)][key]
-                gf_h5[str(fault_id)].create_dataset(key, data=disp_dict[key])
-
+        try:
+            gf_h5 = h5.File(gf_h5_file, "r+")  # Not opening in context manager, as sometimes was locking due to repeated opening, closing and editing
+        except PermissionError:
+            sleep(0.5)  # Wait a bit and try again if file is locked. Horrible hack solution
+            gf_h5 = h5.File(gf_h5_file, "r+")
+        for key in disp_dict.keys():
+            del gf_h5[str(fault_id)][key]
+            gf_h5[str(fault_id)].create_dataset(key, data=disp_dict[key])
+        gf_h5.close()
+                
         if fault_id % 1 == 0:
-            print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)    ', end='\r')
+            print(f'discretised dict {fault_id:0{sigfig}d} ({fix:0{sigfig}d}/{n_patches}) done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
     print('')
 
 # This geojson file will be used to control the sites of the inversion

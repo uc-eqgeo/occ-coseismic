@@ -662,7 +662,7 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
     for fault_type in fault_type_list:
         fault_branches = 0
         if fault_type == "crustal":
-            if time_independent and not single_branch:
+            if time_independent:
                 if "geologic" in deformation_model:
                     file_suffix_list_i = ["_c_MDA2", "_c_MDEz", "_c_MDE1"]
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDA2",
@@ -680,7 +680,7 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
                     fault_branches += len(file_suffix_list_i)
                     file_suffix_list.extend(file_suffix_list_i)
                     NSHM_directory_list.extend(NSHM_directory_list_i)
-            if time_dependent and not single_branch:
+            if time_dependent:
                 if "geologic" in deformation_model:
                     file_suffix_list_i = ["_c_NjE5", "_c_NjI2", "_c_NjI3"]
                     NSHM_directory_list_i = ["crustal_solutions/NZSHM22_TimeDependentInversionSolution-QXV0b21hdGlvblRhc2s6MTExNjE5",
@@ -698,11 +698,14 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
                     file_suffix_list.extend(file_suffix_list_i)
                     NSHM_directory_list.extend(NSHM_directory_list_i)
             if single_branch:
-                print("\n\n********\nCAUTION: SINGLE BRANCH HARD CODED FOR CRUSTAL FAULTS. MANUALLY CHANGE IN HELPER SCRIPTS UNTIL I GET ROUND TO FIXING\n********\n\n")
-                file_suffix_list_i = ["_c_MDEw"]
-                NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEw"]
-                file_suffix_list = file_suffix_list_i
-                NSHM_directory_list = NSHM_directory_list_i
+                branch_index = [file_suffix_list.index(branch) for branch in single_branch]
+                file_suffix_list = [file_suffix_list[index] for index in branch_index]
+                NSHM_directory_list = [NSHM_directory_list[index] for index in branch_index]
+                # print("\n\n********\nCAUTION: SINGLE BRANCH HARD CODED FOR CRUSTAL FAULTS. MANUALLY CHANGE IN HELPER SCRIPTS UNTIL I GET ROUND TO FIXING\n********\n\n")
+                # file_suffix_list_i = ["_c_MDEw"]
+                # NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEw"]
+                # file_suffix_list = file_suffix_list_i
+                # NSHM_directory_list = NSHM_directory_list_i
 
         elif fault_type == "sz":
             if fakequakes:
@@ -723,13 +726,30 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
                                     #   "_sz_fq_FA_tl_l", "_sz_fq_FA_tl_c", "_sz_fq_FA_tl_p70",
                                     #   "_sz_fq_FA_p70_l", "_sz_fq_FA_p70_c", "_sz_fq_FA_p70_p70"
                                     #   "_sz_fq_FA_tc_c", "_sz_fq_FA_tl_l", "_sz_fq_FA_p70_p70"
-                                    #   # 7) Version 0.1 of final subduction model
+                                    #   # 7) Version 0.1 of final subduction model USE THIS
                                     # "_sz_fq_lw25_b0-95", "_sz_fq_lw25_b1-10", "_sz_fq_lw25_b1-24",
                                     # "_sz_fq_lock_b0-95", "_sz_fq_lock_b1-10", "_sz_fq_lock_b1-24",
-                                    #   # 8) Corrected Sensitivity Analysis
-                                    "_sz_fq_3nub110", "_sz_fq_pnub110",
-                                    "_sz_fq_3nhb110", "_sz_fq_pnhb110",
-                                    "_sz_fq_3lhb110", "_sz_fq_plhb110",
+                                    #   # 8) Corrected Sensitivity Analysis (trimmed + tapered)
+                                    "_sz_fq_3nub110", "_sz_fq_pnub110",  
+                                    "_sz_fq_3nhb110", "_sz_fq_pnhb110",  
+                                    "_sz_fq_3lhb110", "_sz_fq_plhb110", 
+                                    "_sz_fq_anub110", "_sz_fq_anhb110", "_sz_fq_alhb110", 
+                                    # #   # 9) Corrected Sensitivity Analysis 2
+                                    # "_sz_fq_3nub110_full", "_sz_fq_pnub110_full",
+                                    # "_sz_fq_3nhb110_full", "_sz_fq_pnhb110_full",
+                                    # "_sz_fq_3lhb110_full", "_sz_fq_plhb110_full",
+                                    # #  # 10) Single Island Senstivity Tests
+                                    # "_sz_fq_3lhb110_full_n0", "_sz_fq_3lhb110_full_n1",
+                                    # "_sz_fq_3lhb110_full_n2", "_sz_fq_3lhb110_full_n3",
+                                    # "_sz_fq_3lhb110_full_n4", "_sz_fq_3lhb110_full_n5",
+                                    # "_sz_fq_3lhb110_full_n6", "_sz_fq_3lhb110_full_n7",
+                                    # "_sz_fq_3lhb110_full_n8", "_sz_fq_3lhb110_full_n9",
+                                    # #  # 11) Single Island Senstivity Tests with trimmed + tapered
+                                    # "_sz_fq_3lhb110_n0", "_sz_fq_3lhb110_n1",
+                                    # "_sz_fq_3lhb110_n2", "_sz_fq_3lhb110_n3",
+                                    # "_sz_fq_3lhb110_n4", "_sz_fq_3lhb110_n5",
+                                    # "_sz_fq_3lhb110_n6", "_sz_fq_3lhb110_n7",
+                                    # "_sz_fq_3lhb110_n8", "_sz_fq_3lhb110_n9",
                                     ]
                                     
 
@@ -769,20 +789,52 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
                                         #  "sz_solutions/FrontiersAbroad_hk_plate70_v_SDlock_locking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi2",
                                         #  "sz_solutions/FrontiersAbroad_hk_plate70_v_SDcreep_locking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi2",
                                         #  "sz_solutions/FrontiersAbroad_hk_plate70_v_SDplate70_locking_n5000_S10_N1_GR500_b1-1_N21-5_nIt500000_narchi2",
-                                        #  # 7) Version 0.1 of final subduction model
+                                        #  # 7) Version 0.1 of final subduction model  USE THIS
                                         #  "sz_solutions/FQ_hk_lw2025_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b0-95_pMax6233_nIt500000_narchi10",
                                         #  "sz_solutions/FQ_hk_lw2025_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10",
                                         #  "sz_solutions/FQ_hk_lw2025_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-24_pMax6233_nIt500000_narchi10",
                                         #  "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b0-95_pMax6233_nIt500000_narchi10",
                                         #  "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10",
                                         #  "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-24_pMax6233_nIt500000_narchi10",
-                                        #   # 8) Corrected Sensitivity Analysis
+                                        #   # 8) Corrected Sensitivity Analysis (trimmed + tapered)
                                          "sz_solutions/FQ_hk_3e10_nolocking_uniformSlip_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
                                          "sz_solutions/FQ_hk_prem_nolocking_uniformSlip_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
                                          "sz_solutions/FQ_hk_3e10_nolocking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
                                          "sz_solutions/FQ_hk_prem_nolocking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
                                          "sz_solutions/FQ_hk_3e10_locking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
                                          "sz_solutions/FQ_hk_prem_locking_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_sense",
+                                         "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10_uniformSlip",
+                                         "sz_solutions/FQ_hk_noMeanSlip_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10",
+                                         "sz_solutions/FQ_hk_lock_wuatom_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_narchi10",
+                                        # #   # 9) Corrected Sensitivity Analysis 2 (Inverted with no taper (despite the name) and for the entire kermadec trench)
+                                        #  "sz_solutions/FQ_hk_nolock_3e10_uniformSlip_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_narchi10_sense",
+                                        #  "sz_solutions/FQ_hk_nolock_prem_uniformSlip_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_narchi10_sense",
+                                        #  "sz_solutions/FQ_hk_nolock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_narchi10_sense",
+                                        #  "sz_solutions/FQ_hk_nolock_prem_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_narchi10_sense",
+                                        #  "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_narchi10_sense",
+                                        #  "sz_solutions/FQ_hk_prem_lock_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_narchi10_sense",
+                                        # #  # 10) Single Island Senstivity Tests
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_archi0",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_archi1",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_archi2",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_archi3",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_archi4",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_archi5",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_archi6",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_archi7",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_archi8",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_nIt500000_archi9",
+                                        # #  # 11) Single Island Senstivity Tests with trimmed + tapered
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_archi0",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_archi1",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_archi2",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_archi3",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_archi4",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_archi5",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_archi6",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_archi7",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_archi8",
+                                        # "sz_solutions/FQ_hk_lock_3e10_n5000_S10_N1_GR500_nr1-7_taper9-5Mw_alphas1-0_b1-1_pMax6233_nIt500000_archi9",
                                         ]
 
             else:

@@ -4,7 +4,7 @@ import geopandas as gpd
 import pandas as pd
 import cutde.halfspace as HS
 import os
-from time import time
+from time import time, sleep
 import h5py as h5
 
 """
@@ -19,13 +19,17 @@ version_extension = "_version_0-1S"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
+# Parameters to pick cut-off for recorded deformation
+maximum_slip = 12  # Maximum amount of slip on a patch (set this to maximum slip in the input ruptures)
+minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 1 cm of displacement from 10 m of slip)
+
 # Define whch subduction zone ([_fq_]hikkerm / puysegur)
 sz_zone = '_puysegur'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
 csvfile = 'cube_centroids_27000_9000_buffer_0_33S_points.csv'
 site_list_csv = os.path.join('..', 'sites', csvfile)
-sites_df = pd.read_csv(site_list_csv)
+sites_df = pd.read_csv(site_list_csv).drop_duplicates().reset_index(drop=True)
 
 # Names of the sites we need to prepare
 gf_site_names = [str(site) for site in sites_df['siteId']]
@@ -48,7 +52,7 @@ elif gentler_dip:
     version_extension += "_gentlerdip"
     sz_zone += "_gentlerdip"
 
-if 'hikkerm' in sz_zone:
+if 'hikkerm' in sz_zone or 'hikkerk' in sz_zone:
     prefix = 'sz'
 elif 'puysegur' in sz_zone:
     prefix = 'py'
@@ -99,13 +103,28 @@ else:
             "rb") as f:
         discretised_dict = pkl.load(f)
 
-    for fault_id in discretised_dict.keys():
-        # Mesh information
-        triangles = discretised_dict[fault_id]["triangles"]
-        rake = discretised_dict[fault_id]["rake"]
+    n_patches = len(discretised_dict)
+    sigfig = len(str(n_patches))
 
-        # Identify, for this rupture, which sites have not been processed
-        with h5.File(gf_h5_file, "r+") as gf_h5:
+    fault_ids = discretised_dict.keys()
+    retry_ids = []
+
+    while len(fault_ids) > 0:
+        for fault_id in fault_ids:
+            # Mesh information
+            triangles = discretised_dict[fault_id]["triangles"]
+            rake = discretised_dict[fault_id]["rake"]
+
+            # Identify, for this rupture, which sites have not been processed
+            try:
+                gf_h5 = h5.File(gf_h5_file, "r+")
+            except PermissionError:
+                sleep(0.5)  # Wait a bit and try again if file is locked. Horrible hack solution
+                try:
+                    gf_h5 = h5.File(gf_h5_file, "r+")
+                except:
+                    retry_ids.append(fault_id)
+                    continue
             if str(fault_id) not in gf_h5.keys():
                 gf_h5.create_group(str(fault_id))
                 gf_h5[str(fault_id)].create_dataset('ss', data=np.array([]))
@@ -125,60 +144,72 @@ else:
                 dipslip[non_zero_ix] = gf_h5[str(fault_id)]['ds'][:]
             else:
                 dipslip = gf_h5[str(fault_id)]['ds'][:]
+            gf_h5.close()
 
-        begin = time()
-        prepare_set = set(prepared_site_names)  # Convert to set for faster lookup
-        site_ix = np.array([ix for ix, site in enumerate(requested_site_names) if site not in prepare_set])
-        if not site_ix.any():
-            # All sites have been processed 
-            print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
-            continue
+            begin = time()
+            prepare_set = set(prepared_site_names)  # Convert to set for faster lookup
+            site_ix = np.array([ix for ix, site in enumerate(requested_site_names) if site not in prepare_set])
+            if not site_ix.any():
+                # All sites have been processed 
+                print(f'discretised dict {fault_id:0{sigfig}d} of {n_patches} prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
+                continue
 
-        # Get DS and SS components for each triangle element, depending on the element rake
-        ss_comp = np.cos(np.radians(rake))
-        ds_comp = np.sin(np.radians(rake))
-        total_slip_array = np.ascontiguousarray(np.zeros([triangles.shape[0], 3]))
+            # Get DS and SS components for each triangle element, depending on the element rake
+            ss_comp = np.cos(np.radians(rake))
+            ds_comp = np.sin(np.radians(rake))
+            total_slip_array = np.ascontiguousarray(np.zeros([triangles.shape[0], 3]))
 
-        # Index 
-        gf_site_name_list = requested_site_names[site_ix].tolist()
-        gf_site_coords = requested_site_coords[site_ix, :]
+            # Index 
+            gf_site_name_list = requested_site_names[site_ix].tolist()
+            gf_site_coords = requested_site_coords[site_ix, :]
 
-        # Calculate the slip components for each triangle element
-        for tri in range(triangles.shape[0]):
-            ss, ds = np.linalg.lstsq(np.array([ss_comp[tri], ds_comp[tri]]).reshape([1, 2]), np.array([1]).reshape([1, 1]), rcond=None)[0]
-            total_slip_array[tri, :2] = np.array([ss[0], ds[0]])
+            # Calculate the slip components for each triangle element
+            for tri in range(triangles.shape[0]):
+                ss, ds = np.linalg.lstsq(np.array([ss_comp[tri], ds_comp[tri]]).reshape([1, 2]), np.array([1]).reshape([1, 1]), rcond=None)[0]
+                total_slip_array[tri, :2] = np.array([ss[0], ds[0]])
 
-        disps = HS.disp_free(obs_pts=gf_site_coords, tris=triangles, slips=total_slip_array, nu=0.25)
+            disps = HS.disp_free(obs_pts=gf_site_coords, tris=triangles, slips=total_slip_array, nu=0.25)
 
-        disps = np.hstack([dipslip, disps[:, -1]])
-        if prepared_site_coords.shape[0] == 0:
-            site_coords = gf_site_coords[:, :2]
-        else:
-            site_coords = np.vstack([prepared_site_coords, gf_site_coords[:, :2]])
-        site_name_list = prepared_site_names + gf_site_name_list
+            disps = np.hstack([dipslip, disps[:, -1]])
+            if prepared_site_coords.shape[0] == 0:
+                site_coords = gf_site_coords[:, :2]
+            else:
+                site_coords = np.vstack([prepared_site_coords, gf_site_coords[:, :2]])
+            site_name_list = prepared_site_names + gf_site_name_list
 
-        zero_value = 1 / (50 * 1e3)  # Zero value is the limit to store values by requiring at least 1mm of displacement from 50m of slip
-        non_zero_ix = np.where(np.abs(disps) > zero_value)[0]
-        disps = disps[non_zero_ix]
+            zero_value = minimum_recorded_slip / maximum_slip  # Zero value is the limit to store values by requiring at least x mm of displacement from y m of slip
+            non_zero_ix = np.where(np.abs(disps) > zero_value)[0]
+            disps = disps[non_zero_ix]
 
-        if all_site_names == site_name_list:
-            site_name_ix = np.arange(len(site_name_list))
-        else:
-            index_map = {value: idx for idx, value in enumerate(all_site_names)}  #  Create a dictionary to map the indices of all_site_names
-            site_name_ix = np.array([index_map[value] for value in site_name_list if value in index_map])  # Use list comprehension to find indices
+            if all_site_names == site_name_list:
+                site_name_ix = np.arange(len(site_name_list))
+            else:
+                index_map = {value: idx for idx, value in enumerate(all_site_names)}  #  Create a dictionary to map the indices of all_site_names
+                site_name_ix = np.array([index_map[value] for value in site_name_list if value in index_map])  # Use list comprehension to find indices
 
-        # Set rake to 90 so that in future functions total displacement is just equal to DS
-        disp_dict = {"ss": (disps * 0).astype(np.int8), "ds": disps, "non_zero_sites": non_zero_ix, "rake": 90,
-                    "site_name_ix": site_name_ix}
-        
-        with h5.File(gf_h5_file, "r+") as gf_h5:
+            # Set rake to 90 so that in future functions total displacement is just equal to DS
+            disp_dict = {"ss": (disps * 0).astype(np.int8), "ds": disps, "non_zero_sites": non_zero_ix, "rake": 90,
+                        "site_name_ix": site_name_ix}
+            
+            try:
+                gf_h5 = h5.File(gf_h5_file, "r+")  # Not opening in context manager, as sometimes was locking due to repeated opening, closing and editing
+            except PermissionError:
+                sleep(0.5)  # Wait a bit and try again if file is locked. Horrible hack solution
+                try:
+                    gf_h5 = h5.File(gf_h5_file, "r+")
+                except:
+                    retry_ids.append(fault_id)
+                    continue
             for key in disp_dict.keys():
                 del gf_h5[str(fault_id)][key]
                 gf_h5[str(fault_id)].create_dataset(key, data=disp_dict[key])
+            gf_h5.close()
 
-        if fault_id % 1 == 0:
-            print(f'discretised dict {fault_id} of {len(discretised_dict.keys())} done in {time() - begin:.2f} seconds ({triangles.shape[0]} triangles per patch)    ', end='\r')
-    print('')
+            if fault_id % 1 == 0:
+                print(f'discretised dict {fault_id:0{sigfig}d} of {n_patches} done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
+        print('')
+        fault_ids = retry_ids
+        retry_ids = []
 
 # This geojson file will be used to control the sites of the inversion
 gdf = gpd.GeoDataFrame(sites_df, geometry=gpd.points_from_xy(sites_df.Lon, sites_df.Lat), crs='EPSG:2193')
