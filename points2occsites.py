@@ -12,14 +12,14 @@ import numpy as np
 import os
 from shapely.geometry import Point
 
-searise_sites = ['.\\sites\\national_9km_grid.geojson']  # Put in multiple csv or geojsons if you want to combine into one output file
+searise_sites = ['.\\sites\\national_500m_gridS.geojson']  # Put in multiple csv or geojsons if you want to combine into one output file
 data_format = 'qgis' # 'qgis' for qgis exports, 'searise' for searise exports, 'hamling' for Hamling VLM coast sites from paper
 out_csv_file = None  # If none, automatically set to the input file name with '_points' appended
 extra_suffixes = []  # Extra suffixes to append to the output file name (Works if you have subsets of 1 CSV file, e.g. northern and southern sections of a fault model, or south islands only)
 
-split_regionally = True  # Whether to split the outputs into North and South Island files as well
+split_regionally = False  # Whether to split the outputs into North and South Island files as well
 coast_buffer = 0  # km offshore buffer
-coast_trim = True  # Whether to trim all sites to be within coast buffer
+coast_trim = False  # Whether to trim all sites to be within coast buffer
 coast_file = ".\\data\\coastline\\nz-70sqkm_island_coastlines-polygons-topo-150k.gpkg"
 
 if len(searise_sites) > 1 and len(extra_suffixes) > 0:
@@ -41,6 +41,8 @@ for suffix in extra_suffixes:
         elif file_type.lower() == '.geojson':
             data = gpd.read_file(site_file)
             data['geometry'] = data.geometry.centroid  # Get polygon centroids if polygon geojson used instead of point
+            if data.crs == 4326:
+                data = data.to_crs(2193)
 
         if data_format == 'searise':  # For searise point exports
             data = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data.lon, data.lat), crs='EPSG:4326')
@@ -68,14 +70,18 @@ for suffix in extra_suffixes:
                 sort_values = True
             else:
                 site_col = [col for col in data.columns if 'site' in col.lower()]
-                data.rename(columns={site_col[0]: 'siteId'}, inplace=True)
+                if len(site_col) == 0:
+                    data['siteId'] = ''
+                    coord_name = True
+                else:
+                    data.rename(columns={site_col[0]: 'siteId'}, inplace=True)
+                    coord_name = False
                 sort_values = True
-                coord_name = False
                 reset_id = False
 
 
-        data['Lon'] = data.geometry.x
-        data['Lat'] = data.geometry.y
+        data['Lon'] = np.round(data.geometry.x, 1)
+        data['Lat'] = np.round(data.geometry.y, 1)
         data['Height'] = 0
 
         out_pd = pd.concat([out_pd if not out_pd.empty else None, data[['siteId', 'Lon', 'Lat', 'Height']]])

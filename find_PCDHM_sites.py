@@ -73,10 +73,10 @@ def split_cell(cell_dicts, parent_id, max_grid, min_grid, max_id, coastline, fau
 
     return cell_dicts, max_id
 
-search_type = 'cube'  # 'grid', 'cube' or 'quad'
+search_type = 'grid'  # 'grid', 'cube' or 'quad'
 
 # Resolution
-max_grid = 27000  # Default resolution. Min grid will be adjusted to work with this
+max_grid = 9000  # Default resolution. Min grid will be adjusted to work with this
 min_grid = 9000  # Min grid is the highest resolution of the quad or cubetree. Must be reachable by halving or thirding max_grid 
 
 grid_width = 1000e3  # Width of the grid in meters
@@ -84,7 +84,7 @@ grid_length = 1500e3 # Length of the grid in meters
 
 # Keep as false to make sure all of coast is covered, and therefore all OCC sites can be queried in datamesh
 hires_coast = False # If True, keep splitting cells that intersect the coast
-coastal_trim = True  # If True, removes any centroids that are not overland, even if polygon crosses the coast
+coastal_trim = False  # If True, removes any centroids that are not overland, even if polygon crosses the coast
 
 fault_buffer = 0
 
@@ -108,7 +108,7 @@ if min_grid > max_grid:
 
 min_grid = int(max_grid / split_factor ** np.ceil(math.log(max_grid / min_grid, split_factor)))
 
-coastline = gpd.read_file('QGIS\\nz-coastlines-and-islands-polygons-topo-1500k.gpkg')
+coastline = gpd.read_file('QGIS\\nz-coastlines-and-islands-polygons-topo-150k.gpkg')
 faults = gpd.read_file('C:\\Users\\jmc753\\Work\\NZ_CFM_v1_0\\Shapefiles\\NZ_CFM_v1_0.shp')
 
 # Remove faults with too low a slip rate
