@@ -3136,8 +3136,10 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
 
         if not all(np.isin(site_x, x_data)) or not all(np.isin(site_y, y_data)):
             print("Site coordinates can't all be aligned to grid. Check sites are evenly spaced. Saving as site geojson instead...")
-            save_disp_prob_geojson(extension1, slip_taper, model_version_results_directory, thresh_lims=thresh_lims, thresh_step=thresh_step, thresholds=thresholds,
-                                    probs_lims=probs_lims, probs_step=probs_step, probabilities=probabilities, weighted=weighted)
+            save_disp_prob_geojson(extension1, slip_taper, model_version_results_directory, h5_file,
+                                   thresh_lims=thresh_lims, thresh_step=thresh_step, thresholds=thresholds,
+                                   probs_lims=probs_lims, probs_step=probs_step, probabilities=probabilities, weighted=weighted,
+                                   model_id=model_id, out_name="" if extension1 == "" else f"{extension1}_", out_tag=out_tag)
             return
 
         site_x = (np.array(site_x) - x_data[0]) / x_res
@@ -3299,8 +3301,9 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
     return ds
 
 
-def save_disp_prob_geojson(extension1, slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0.1, thresholds=None,
-                           probs_lims=[0.01, 0.2], probs_step=0.01, probabilities=None, weighted=False, epsg=2193):
+def save_disp_prob_geojson(extension1, slip_taper, model_version_results_directory, h5_file, thresh_lims=[0, 3], thresh_step=0.1, thresholds=None,
+                           probs_lims=[0.01, 0.2], probs_step=0.01, probabilities=None, weighted=False, epsg=2193,
+                           model_id=None, out_name=None, out_tag=None):
     """
     Write site data out as geojson
     """
@@ -3313,11 +3316,11 @@ def save_disp_prob_geojson(extension1, slip_taper, model_version_results_directo
         taper_extension = "_uniform"
 
     if weighted:
-        h5_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict{extension1}{taper_extension}.h5"
+        # h5_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict{extension1}{taper_extension}.h5"
         outfile_directory = f"../{model_version_results_directory}/weighted_mean_xarray"
         
     else:
-        h5_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob{extension1}{taper_extension}.h5"
+        # h5_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob{extension1}{taper_extension}.h5"
         outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
 
     PPEh5 = h5.File(h5_file)
@@ -3382,7 +3385,8 @@ def save_disp_prob_geojson(extension1, slip_taper, model_version_results_directo
     geojson_str = json.dumps(geojson, indent=2)
     
     # Write the GeoJSON string to a file
-    with open(f"{outfile_directory}/displacements.geojson", 'w') as f:
+    geojson_name = f"{outfile_directory}/{model_id}_{out_name}{out_tag}".replace('__', '_')
+    with open(f"{geojson_name}_disps.geojson", 'w') as f:
         f.write(geojson_str)
     
     disps = np.zeros([len(sites), len(probabilities), 3])
@@ -3422,5 +3426,5 @@ def save_disp_prob_geojson(extension1, slip_taper, model_version_results_directo
     geojson_str = json.dumps(geojson, indent=2)
     
     # Write the GeoJSON string to a file
-    with open(f"{outfile_directory}/probabilities.geojson", 'w') as f:
+    with open(f"{geojson_name}_probs.geojson", 'w') as f:
         f.write(geojson_str)
