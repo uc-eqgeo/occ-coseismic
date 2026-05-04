@@ -2094,14 +2094,17 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
     plt.close("all")
 
     n_interval = len(intervals)
-    n_plots = int(np.ceil(len(plot_order) / 12))
+    sites_per_plot = 12
+    n_plots = int(np.ceil(len(plot_order) / sites_per_plot))
     plot_total = n_plots * n_interval
     printProgressBar(0, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
 
     for ix, interval in enumerate(intervals):
         for plot_n in range(n_plots):
-            sites = plot_order[plot_n*12:(plot_n+1)*12]
-            if len(sites) >= 5 or len(sites) == 3:
+            sites = plot_order[plot_n*sites_per_plot:(plot_n+1)*sites_per_plot]
+            if n_plots == len(sites):
+                n_rows, n_cols = 1, 1
+            elif len(sites) >= 5 or len(sites) == 3:
                 n_cols = 3
                 n_rows = int(np.ceil(len(sites) / 3))
             elif len(sites) == 4 or len(sites) == 2:
@@ -2128,7 +2131,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                     #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
                     # Shade based on weighted 2 sigma percentiles
                     weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
-                    ax.fill_between(thresholds, weighted_percentile_error[sigma_ix[0], 1:], weighted_percentile_error[sigma_ix[1], 1:], color='0.8')
+                    ax.fill_between(thresholds[1:weighted_percentile_error.shape[1]], weighted_percentile_error[sigma_ix[0], 1:], weighted_percentile_error[sigma_ix[1], 1:], color='0.8')
 
                 # plot all the branches as light grey lines
                 # for each branch, plot the exceedance probabilities for each site
@@ -2167,10 +2170,10 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                     # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w15_865_vals"], color=line_color, linewidth=0.75, linestyle=':')
                     # Weighted 2 sigma lines
                     weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
-                    ax.plot(thresholds, weighted_percentile_error[sigma_ix[0], 1:], color='black', linewidth=0.75, linestyle='-.')
-                    ax.plot(thresholds, weighted_percentile_error[sigma_ix[1], 1:], color='black', linewidth=0.75, linestyle='-.', label=sig_lab.replace("sig", " sigma").replace('minmax', 'min-max'))
+                    ax.plot(thresholds[1:weighted_percentile_error.shape[1]], weighted_percentile_error[sigma_ix[0], 1:], color='black', linewidth=0.75, linestyle='-.')
+                    ax.plot(thresholds[1:weighted_percentile_error.shape[1]], weighted_percentile_error[sigma_ix[1], 1:], color='black', linewidth=0.75, linestyle='-.', label=sig_lab.replace("sig", " sigma").replace('minmax', 'min-max'))
 
-                    ax.plot(thresholds, weighted_percentile_error[mid_ix, 1:], color=line_color, linewidth=1.5, linestyle=':', label='50th percentile')
+                    ax.plot(thresholds[1:weighted_percentile_error.shape[1]], weighted_percentile_error[mid_ix, 1:], color=line_color, linewidth=1.5, linestyle=':', label='50th percentile')
                     ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=1.5, label='weighted mean')
 
                     # Uncertainty weighted mean
@@ -2196,7 +2199,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
 
                 fig.text(0.5, 0, 'Vertical displacement threshold (m)', ha='center')
                 fig.text(0, 0.5, 'Probability of exceedance in 100 years', va='center', rotation='vertical')
-                fig.suptitle(f"weighted mean hazard curves\n{model_version_title} {taper_extension}\n{exceed_type} {interval} yrs")
+                fig.suptitle(f"weighted mean hazard curves\n{model_version_title} {taper_extension}\n{exceed_type.replace('_', ' ')} {interval} yrs")
                 plt.tight_layout()
 
                 if not os.path.exists(f"../{out_directory}"):
@@ -2223,7 +2226,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                         #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
                         # Shade based on 2 sigma percentiles
                         weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
-                        ax.fill_between(thresholds, weighted_percentile_error[sigma_ix[0], 1:], weighted_percentile_error[sigma_ix[1], 1:], color='0.8')
+                        ax.fill_between(thresholds[1:weighted_percentile_error.shape[1]], weighted_percentile_error[sigma_ix[0], 1:], weighted_percentile_error[sigma_ix[1], 1:], color='0.8')
 
                     # plot solid lines on top of the shaded regions
                     for exceed_type in exceed_type_list:
