@@ -525,20 +525,24 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 print(f"Could not find *cumu_PPE.h5 for {branch}...")
             else:
                 NSHM_PPEh5_list.append(branch_PPE_h5)
+    else:
+        branch_scaling = branch_key.split('_')[3]
 
     scenario_dir = f"{procdir}/{model_version_results_directory}/{extension1}" if scenario_dir == '' else scenario_dir
     if array_process:
         scenario_dir = os.path.join(scenario_dir, f"site_cumu_exceed{scaling}")
-    for interval in time_interval:
-        if not os.path.exists(f"{scenario_dir}/{interval}_yr_scenarios.pkl"):
-            load_random = False
+    # for interval in time_interval:
+    #     if not os.path.exists(f"{scenario_dir}/{branch_scaling}_{interval}_yr_scenarios.pkl"):
+    #         load_random = False
 
-    if load_random:
-        # Load array of random samples rather than regenerating them
-        all_scenarios = {}
-        for interval in time_interval:
-            with open(f"{scenario_dir}/{interval}_yr_scenarios.pkl", "rb") as f:
+    all_scenarios = {}
+    # Load array of random samples rather than regenerating them
+    for interval in time_interval:
+        if load_random and os.path.exists(f"{scenario_dir}/{branch_scaling}_{interval}_yr_scenarios.pkl"):
+            with open(f"{scenario_dir}/{branch_scaling}_{interval}_yr_scenarios.pkl", "rb") as f:
                 all_scenarios[interval] = pkl.load(f)
+        else:
+            all_scenarios[interval] = None
 
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
@@ -549,7 +553,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     benchmarking = False
     start = time()
     if not benchmarking:
-        printProgressBar(0, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix='Complete 00:00:00 (00:00s/site)', length=50)
+        printProgressBar(0, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix='Processed   00:00:00 (00:00s/site)', length=50)
 
     if array_process:
         os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}", exist_ok=True)
@@ -592,7 +596,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 cumulative_disp_scenarios = np.zeros(n_samples)
                 for NSHM_PPE in NSHM_PPEh5_list[1:]:
                     with h5.File(NSHM_PPE, "r") as PPEh5:
-                        NSHM_displacements = PPEh5[site_of_interest]["scenario_displacements"][:]
+                        NSHM_displacements = PPEh5[site_of_interest][investigation_time]["scenario_displacements"][:] * PPEh5[site_of_interest][investigation_time]["disp_scaling"]
                         slip_scenarios = PPEh5[site_of_interest]["slip_scenarios_ix"][:]
 
                     cumulative_disp_scenarios[slip_scenarios] += NSHM_displacements.reshape(-1)
@@ -622,7 +626,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                     if site_dict_i["disps_ix"] > 0:
                         disps[site_dict_i["disps_ix"]] = site_dict_i['disps']
 
-                if load_random:
+                if all_scenarios[investigation_time] is not None:
                     # Load in scenarios from csc array, or create empty array if no ruptures impact this site
                     if site_dict_i["disps_ix"].shape[0] > 0:
                         scenarios = all_scenarios[investigation_time][:n_samples, site_dict_i["disps_ix"]]
@@ -775,17 +779,19 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         # Every 100th site, write the data to the h5 file
         if i % 100 == 99 or array_process:
             lap = time()
+            if not benchmarking:
+                printProgressBar(i + 1, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix=f'Write Chunk {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length=50)
             with h5.File(cumu_PPEh5_file, "a") as PPEh5:
                 dict_to_hdf5(PPEh5, site_PPE_dict, replace_groups=True)
             site_PPE_dict = {}
             if benchmarking:
-                print(f"Site written to h5 : {time() - lap:.5f} s")
+                print(f"Sites written to h5 : {time() - lap:.5f} s")
 
         elapsed = time_elasped(time(), start)
         if benchmarking:
             print(f"Site Complete: {time() - begin:.5f} s\n")
         else:
-            printProgressBar(i + 1, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix=f'Complete {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length=50)
+            printProgressBar(i + 1, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix=f'Processed   {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length=50)
 
     if len(site_PPE_dict) > 0:
         with h5.File(cumu_PPEh5_file, "a") as PPEh5:
@@ -904,7 +910,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             if nesi_step == 'prep':
                 if load_random:
                     scenario_dir = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}"
-                    prepare_scenario_arrays(branch_site_disp_dict_file, scenario_dir, time_interval, n_samples)
+                    prepare_scenario_arrays(branch_site_disp_dict_file, scenario_dir, time_interval, n_samples, rate_scaling_factor)
 
                 print(f"\tPrepping for NESI....")
                 prep_nesi_site_list(model_version_results_directory, prep_list, extension1, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
@@ -927,7 +933,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             else:
                 if load_random:
                     scenario_dir = os.path.dirname(branch_site_disp_dict_file)
-                    prepare_scenario_arrays(branch_site_disp_dict_file, scenario_dir, time_interval, n_samples)
+                    prepare_scenario_arrays(branch_site_disp_dict_file, scenario_dir, time_interval, n_samples, rate_scaling_factor)
 
                 get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict_file,
                              site_ids=prep_list, slip_taper=slip_taper, load_random=load_random,
@@ -1620,7 +1626,8 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
 
         run_numba = False  # Trys using numba dictionaries. Doesn't seem to improve anything
         run_parallel = False # Uses numba for sparse thresholds, whilst processings branches sequentially
-        run_sequential = True # Uses number for sparse thresholds, but processes branches sequentially
+        run_sequential = True # Uses numba for sparse thresholds, but processes branches sequentially
+        assert any([run_numba, run_parallel, run_sequential]), "Need at least one of run_numba, run_parallel, run_sequential to be True"
         if numba_flag:
             # Initialise numba
             prep_array = np.array([[0, 1, 1, 1, 1], [2, 2, 2, 0, 2], [3, 3, 3, 0, 0]])
@@ -1678,7 +1685,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 else:
                     if '_sz_' in branch:
                         fault_type = 'sz'
-                        sz_name = 'hikkerm'
+                        sz_name = 'hikkerm' if any(['hikkerm' in sz_dir for sz_dir in sz_directory_list]) else 'hikkerk'
                     elif '_py_' in branch:
                         fault_type = 'py'
                         sz_name = 'puysegur'
@@ -2271,7 +2278,7 @@ def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_versio
     PPE_dictionary = h5.File(PPE_dictionary, 'r')
 
     t_min, t_max, t_step = PPE_dictionary[plot_order[0]][interval]['thresh_para'][:]
-    thresholds = np.round(np.arange(t_min, t_max, t_step), 4)[1:]
+    thresholds = np.round(np.arange(t_min, t_max, t_step), 4)
 
     plot_errors = True
     if 'sigma_lims' in PPE_dictionary[plot_order[0]][interval].keys():
