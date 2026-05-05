@@ -20,16 +20,18 @@ version_extension = "_version_0-1S"
 steeper_dip, gentler_dip = False, False
 
 # Parameters to pick cut-off for recorded deformation
-maximum_slip = 12  # Maximum amount of slip on a patch (set this to maximum slip in the input ruptures)
+maximum_slip = 50  # Maximum amount of slip on a patch (set this to maximum slip in the input ruptures) 12: py, 25: sz_NSHM, 50: sz_fq
 minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 1 cm of displacement from 10 m of slip)
 
 # Define whch subduction zone ([_fq_]hikkerm / puysegur)
 sz_zone = '_puysegur'
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-csvfile = 'cube_centroids_27000_9000_buffer_0_33S_points.csv'
-site_list_csv = os.path.join('..', 'sites', csvfile)
-sites_df = pd.read_csv(site_list_csv).drop_duplicates().reset_index(drop=True)
+site_list_file = os.path.join('..', 'sites', 'validation_sites_cusp_1m.geojson')
+if site_list_file.endswith('.csv'):
+    sites_df = pd.read_csv(site_list_file).drop_duplicates().reset_index(drop=True)
+else:
+    sites_df = gpd.read_file(site_list_file).drop_duplicates().reset_index(drop=True)
 
 # Names of the sites we need to prepare
 gf_site_names = [str(site) for site in sites_df['siteId']]

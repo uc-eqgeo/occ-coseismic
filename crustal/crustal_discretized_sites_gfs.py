@@ -25,8 +25,11 @@ maximum_slip = 12  # Maximum amount of slip on a patch (set this to maximum slip
 minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 1 cm of displacement from 10 m of slip)
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_csv = os.path.join('..', 'sites', 'v0-2_coast_9km_points.csv')
-sites_df = pd.read_csv(site_list_csv).drop_duplicates().reset_index(drop=True)
+site_list_file = os.path.join('..', 'sites', 'validation_sites_cusp_1m.geojson')
+if site_list_file.endswith('.csv'):
+    sites_df = pd.read_csv(site_list_file).drop_duplicates().reset_index(drop=True)
+else:
+    sites_df = gpd.read_file(site_list_file).drop_duplicates().reset_index(drop=True)
 
 gf_site_names = [str(site) for site in sites_df['siteId']]
 gf_site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
