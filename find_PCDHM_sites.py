@@ -188,7 +188,7 @@ for cell in cell_dicts.keys():
             continue
         id.append(ix)
         depth.append(cell_dicts[cell]['depth'])
-        res = cell_dicts[cell]['resolution']
+        res.append(cell_dicts[cell]['resolution'])
         cell_poly.append(Polygon([(cell_dicts[cell]['lon0'], cell_dicts[cell]['lat0']), 
                                   (cell_dicts[cell]['lon1'], cell_dicts[cell]['lat0']), 
                                   (cell_dicts[cell]['lon1'], cell_dicts[cell]['lat1']), 
@@ -214,22 +214,16 @@ else:
     polyname = f"{search_type}_poly{outtag}"
     centroid_name = f"{search_type}_centroids{outtag}"
 
-grid_points = gpd.GeoDataFrame({'id': id, 'depth': depth, 'resolution': res, 'geometry': cell_poly})
-grid_points.set_crs(epsg=2193, inplace=True)
-grid_points.to_file(f'sites\\{polyname}.geojson', driver='GeoJSON')
+centroid_data = [[f"{geom.x:.0f}_{geom.y:.0f}", geom.x, geom.y, 0, res, depth, geom] for (geom, depth, res) in zip(centroids, depth, res)]
+centroid_gdf = gpd.GeoDataFrame(centroid_data, columns=['siteId', 'Lon', 'Lat', 'Height', 'res', 'depth', 'geometry'], geometry='geometry', crs='EPSG:2193')
+
+poly_grid = centroid_gdf.copy()
+poly_grid['geometry'] = cell_poly
+poly_grid.to_file(f'sites\\{polyname}.geojson', driver='GeoJSON')
 print(f"Written sites\\{polyname}.geojson")
 
-centroid_gdf = gpd.GeoDataFrame({'id': id, 'depth': depth, 'resolution': res, 'geometry': centroids})
-centroid_gdf.set_crs(epsg=2193, inplace=True)
 centroid_gdf.to_file(f'sites\\{centroid_name}.geojson', driver='GeoJSON')
 print(f"Written sites\\{centroid_name}.geojson")
-
-centroid_df = pd.DataFrame(columns=['X', 'Y', 'id'])
-centroid_df['X'] = centroid_gdf.geometry.x
-centroid_df['Y'] = centroid_gdf.geometry.y
-centroid_df['id'] = np.arange(centroid_df.shape[0])
-centroid_df.to_csv(f'sites\\{centroid_name}.csv', index=False)
-print(f"Written sites\\{centroid_name}.csv")
 
 wellington = Point([1749150, 5428092]) # Wellington coordinates in NZTM
 te_anau = Point([1186710, 4957633])  # Te Anau coordinates in NZTM
@@ -240,36 +234,7 @@ northern_section = centroid_gdf[(centroid_gdf.geometry.y > wellington.y) | (cent
 northern_section.to_file(f'sites\\{centroid_name}N.geojson', driver='GeoJSON')
 print(f"Written sites\\{centroid_name}N.geojson")
 
-centroid_df = pd.DataFrame(columns=['X', 'Y', 'id'])
-centroid_df['X'] = northern_section.geometry.x
-centroid_df['Y'] = northern_section.geometry.y
-centroid_df['id'] = northern_section.id
-centroid_df.to_csv(f'sites\\{centroid_name}N.csv', index=False)
-print(f"Written sites\\{centroid_name}N.csv")
-
 # For Puysegur, find all centroids within 350km of Te Anau
 southern_section = centroid_gdf[(centroid_gdf.distance(te_anau) < distance * 1e3)]
 southern_section.to_file(f'sites\\{centroid_name}S.geojson', driver='GeoJSON')
 print(f"Written sites\\{centroid_name}S.geojson")
-
-centroid_df = pd.DataFrame(columns=['X', 'Y', 'id'])
-centroid_df['X'] = southern_section.geometry.x
-centroid_df['Y'] = southern_section.geometry.y
-centroid_df['id'] = southern_section.id
-centroid_df.to_csv(f'sites\\{centroid_name}S.csv', index=False)
-print(f"Written sites\\{centroid_name}S.csv")
-
-# # Find South Island Centroids
-# south_islands = coastline.geometry.apply(lambda x: shapely.centroid(x).y < 5500000)
-# south_islands_coast = coastline[south_islands]
-
-# south_islands_gdf = centroid_gdf[centroid_gdf.geometry.within(south_islands_coast.unary_union)]
-# south_islands_gdf.to_file(f'sites\\{centroid_name}SI.geojson', driver='GeoJSON')
-# print(f"Written sites\\{centroid_name}SI.geojson")
-
-# centroid_df = pd.DataFrame(columns=['X', 'Y', 'id'])
-# centroid_df['X'] = south_islands_gdf.geometry.x
-# centroid_df['Y'] = south_islands_gdf.geometry.y
-# centroid_df['id'] = south_islands_gdf.id
-# centroid_df.to_csv(f'sites\\{centroid_name}SI.csv', index=False)
-# print(f"Written sites\\{centroid_name}SI.csv")
