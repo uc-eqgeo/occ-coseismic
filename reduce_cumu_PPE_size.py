@@ -13,20 +13,20 @@ Sites to be kept are listed in the keep geojson file, which should have a 'siteI
 Useful if you are trying to reduce the number of pairs when running paired crustal-subduction
 """
 
-results_dir = 'fq_hikkerm_v02-4'
-fault_type = 'subduction'
-keep_geojson = 'sz_site_locations_fq_EastCoastNI_3km.geojson'
+results_dir = 'CFM'
+fault_type = 'crustal'
+keep_geojson = 'v0-0-1_geoval'
 h5_search_term = f'*_cumu_PPE.h5'
-max_workers   = 1   # tune to your I/O bandwidth
+max_workers = 12   # tune to your I/O bandwidth
 force_repack = False
 
-keep_geojson = os.path.join('.', fault_type, f'discretised_{results_dir}', keep_geojson)
+keep_geojson = os.path.join('.', fault_type, f'discretised_{results_dir}', f'{fault_type}_site_locations_{keep_geojson}.geojson')
 results_dir = os.path.join('.', 'results', results_dir)
 
 sites = set(gpd.read_file(keep_geojson)['siteId'])
 print(f"{len(sites)} to keep in {keep_geojson}...\n")
 
-h5_search_files = os.path.join(results_dir, 'sites*p*b110', h5_search_term)
+h5_search_files = os.path.join(results_dir, 'sites*', h5_search_term)
 cumu_h5_list = glob(h5_search_files)
 
 print(f"{len(cumu_h5_list)} cumulative PPE files to process from {h5_search_files}...\n")
@@ -77,25 +77,26 @@ def process_file(cumu_h5: str, sites: set, force_repack: bool) -> str:
  
  
 # ── Parallel dispatch ─────────────────────────────────────────────────────────
-max_workers   = min(max_workers, os.cpu_count(), len(cumu_h5_list)) 
-if max_workers > 1:
-    print(f"Processing with {max_workers} parallel workers...\n")
-    with ProcessPoolExecutor(max_workers=max_workers) as pool:
-        futures = {
-            pool.submit(process_file, path, sites, force_repack): path
-            for path in cumu_h5_list
-        }
-        for future in as_completed(futures):
-            path = futures[future]
+if __name__ == '__main__':
+    max_workers   = min(max_workers, os.cpu_count(), len(cumu_h5_list)) 
+    if max_workers > 1:
+        print(f"Processing with {max_workers} parallel workers...\n")
+        with ProcessPoolExecutor(max_workers=max_workers) as pool:
+            futures = {
+                pool.submit(process_file, path, sites, force_repack): path
+                for path in cumu_h5_list
+            }
+            for future in as_completed(futures):
+                path = futures[future]
+                try:
+                    print(future.result())
+                except Exception as exc:
+                    print(f"[ERROR] {os.path.basename(path)}: {exc}")
+    else:
+        for path in cumu_h5_list:
             try:
-                print(future.result())
+                print(process_file(path, sites, force_repack))
             except Exception as exc:
                 print(f"[ERROR] {os.path.basename(path)}: {exc}")
-else:
-    for path in cumu_h5_list:
-        try:
-            print(process_file(path, sites, force_repack))
-        except Exception as exc:
-            print(f"[ERROR] {os.path.basename(path)}: {exc}")
- 
-print("\nAll done.")
+    
+    print("\nAll done.")

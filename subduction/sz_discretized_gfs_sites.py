@@ -15,19 +15,19 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_version_0-1S"
+version_extension = "_v0-0-1S_geoval"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
+# Define whch subduction zone ([_fq_]hikkerm / puysegur)
+sz_zone = 'puysegur'
+
 # Parameters to pick cut-off for recorded deformation
-maximum_slip = 50  # Maximum amount of slip on a patch (set this to maximum slip in the input ruptures) 12: py, 25: sz_NSHM, 50: sz_fq
+maximum_slip = 12 if sz_zone == 'puysegur' else 50 if 'fq_' in sz_zone else 25  # Maximum amount of slip on a patch (set this to maximum slip in the input ruptures) 12: py, 25: sz_NSHM, 50: sz_fq
 minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 1 cm of displacement from 10 m of slip)
 
-# Define whch subduction zone ([_fq_]hikkerm / puysegur)
-sz_zone = '_puysegur'
-
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_file = os.path.join('..', 'sites', 'validation_sites_cusp_1m.geojson')
+site_list_file = os.path.join('..', 'sites', 'CUSP_v0-0-1_geovalS.geojson')
 if site_list_file.endswith('.csv'):
     sites_df = pd.read_csv(site_list_file).drop_duplicates().reset_index(drop=True)
 else:
