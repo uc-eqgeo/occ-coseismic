@@ -2066,7 +2066,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
 
     unique_id_list = weighted_mean_PPE_dictionary['branch_ids'].asstr()
     weights = weighted_mean_PPE_dictionary['branch_weights'][:]
-    thresholds = weighted_mean_PPE_dictionary["thresholds"][1:]
+    thresholds = weighted_mean_PPE_dictionary["thresholds"][:]
     weight_order = np.argsort(weights)
     weight_colouring = True
 
@@ -2131,7 +2131,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                     #                weighted_mean_PPE_dictionary[site][f"weighted_exceedance_probs_{exceed_type}"][1:] - weighted_mean_PPE_dictionary[site][f"{exceed_type}_error"][1:], color='0.9')
                     # Shade based on weighted 2 sigma percentiles
                     weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
-                    ax.fill_between(thresholds[1:weighted_percentile_error.shape[1]], weighted_percentile_error[sigma_ix[0], 1:], weighted_percentile_error[sigma_ix[1], 1:], color='0.8')
+                    ax.fill_between(thresholds[:weighted_percentile_error.shape[1]], weighted_percentile_error[sigma_ix[0], :], weighted_percentile_error[sigma_ix[1], :], color='0.8')  #CATCH
 
                 # plot all the branches as light grey lines
                 # for each branch, plot the exceedance probabilities for each site
@@ -2170,10 +2170,10 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                     # ax.plot(thresholds, weighted_mean_PPE_dictionary[site][f"{exceed_type}_w15_865_vals"], color=line_color, linewidth=0.75, linestyle=':')
                     # Weighted 2 sigma lines
                     weighted_percentile_error = csc_array((weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indices"], weighted_mean_PPE_dictionary[site][interval][f"{exceed_type}_weighted_percentile_error_indptr"])).toarray()
-                    ax.plot(thresholds[1:weighted_percentile_error.shape[1]], weighted_percentile_error[sigma_ix[0], 1:], color='black', linewidth=0.75, linestyle='-.')
-                    ax.plot(thresholds[1:weighted_percentile_error.shape[1]], weighted_percentile_error[sigma_ix[1], 1:], color='black', linewidth=0.75, linestyle='-.', label=sig_lab.replace("sig", " sigma").replace('minmax', 'min-max'))
+                    ax.plot(thresholds[:weighted_percentile_error.shape[1]], weighted_percentile_error[sigma_ix[0], :], color='black', linewidth=0.75, linestyle='-.')
+                    ax.plot(thresholds[:weighted_percentile_error.shape[1]], weighted_percentile_error[sigma_ix[1], :], color='black', linewidth=0.75, linestyle='-.', label=sig_lab.replace("sig", " sigma").replace('minmax', 'min-max'))
 
-                    ax.plot(thresholds[1:weighted_percentile_error.shape[1]], weighted_percentile_error[mid_ix, 1:], color=line_color, linewidth=1.5, linestyle=':', label='50th percentile')
+                    ax.plot(thresholds[:weighted_percentile_error.shape[1]], weighted_percentile_error[mid_ix, :], color=line_color, linewidth=1.5, linestyle=':', label='50th percentile')
                     ax.plot(thresholds, weighted_mean_exceedance_zeros, color=line_color, linewidth=1.5, label='weighted mean')
 
                     # Uncertainty weighted mean
@@ -2182,8 +2182,6 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                     ax.axhline(y=0.02, color="g", linestyle='dashed')
                     ax.axhline(y=0.1, color="g", linestyle='dotted')
 
-                    xmin, xmax = 0.01, 30
-                    ymin, ymax = 0.000001, 1
                     xmin, xmax = 0.01, 30
                     ymin, ymax = 0.000001, 1
                     ax.set_title(site)
@@ -3146,7 +3144,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         site_y = (np.array(site_y) - y_data[0]) / y_res
 
         if interp_sites:
-            interp_df = pd.read_csv(interp_sites[0])
+            interp_df = pd.read_csv(interp_sites[0]) if interp_sites[0].endswith('.csv') else gpd.read_file(interp_sites[0])
             interp_x_data = np.unique(interp_df['Lon'].values)
             interp_y_data = np.unique(interp_df['Lat'].values)
 
