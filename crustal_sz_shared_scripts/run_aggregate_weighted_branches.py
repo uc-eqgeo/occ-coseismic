@@ -13,40 +13,54 @@ except ImportError:
 os.chdir(os.path.dirname(__file__))
 #### USER INPUTS #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "all"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "sz"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
-crustal_site_names = "_national_27km"   # Name of the sites geojson
-sz_site_names = ["_north_27km", "_south_27km"]       # Name of the sites geojson
-sz_list_order = ["sz", "py"]         # Order of the subduction zones
-sz_names = ["hikkerm", "puysegur"]   # Name of the subduction zone
+crustal_site_names = "_v0-2-coast_9km"   # Name of the sites geojson
+sz_site_names = ["_v0-2-5S", "_EastCoastNI_3km"]       # Name of the sites geojson
+sz_list_order = ["py", "sz"]         # Order of the subduction zones
+sz_names = ["puysegur", "hikkerm_v02-4"]   # Name of the subduction zone - HIKKERK FOR SENSITIVITY TESTING, HIKKERM FOR FINAL (?)
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
 testing = False   # Impacts number of samples runs, job time etc
 fakequakes = True  # Use fakequakes for the subduction zone (applied only to hikkerm)
 
 # Processing Flags (True/False)
-single_branch = None # Allows you to specifically select which branches to calculate PPEs for. If None, all branches will be calculated
-rate_scaling = True           # Do you want to calculate PPEs for a single branch with different rate scalings?
-paired_crustal_sz = True      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+single_branch = ["_sz_fq_3nub110_full", "_sz_fq_pnub110_full", "_sz_fq_3nhb110_full", "_sz_fq_pnhb110_full", "_sz_fq_3lhb110_full", "_sz_fq_plhb110_full"] # Allows you to specifically select which branches to calculate PPEs for. If None, all branches will be calculated
+single_branch = ["_sz_fq_3lhb110_full_n0", "_sz_fq_3lhb110_full_n1", "_sz_fq_3lhb110_full_n2", "_sz_fq_3lhb110_full_n3", "_sz_fq_3lhb110_full_n4",
+                 "_sz_fq_3lhb110_full_n5", "_sz_fq_3lhb110_full_n6", "_sz_fq_3lhb110_full_n7", "_sz_fq_3lhb110_full_n8", "_sz_fq_3lhb110_full_n9"]
+single_branch = ["_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nhb110", "_sz_fq_pnhb110", "_sz_fq_3lhb110", "_sz_fq_plhb110"] # Allows you to specifically select which branches to calculate PPEs for. If None, all branches will be calculated
+single_branch = ["_c_MDE5", "_c_MDI0", "_c_MDE2", "_c_NjMy", "_c_NjM3", "_c_NjI5", "_c_MDE1", "_c_MDEz", "_c_MDA2", "_c_NjI3", "_c_NjI2", "_c_NjE5"]  # Order they are auto loaded from NSHM
+# single_branch = ["_c_MDE5"] # "_c_MDI0"] # "_c_MDE2"] # "_c_NjMy"] # "_c_NjM3"] # "_c_NjI5"] # "_c_MDE1"] # "_c_MDEz"] # "_c_MDA2"] # "_c_NjI3"] # "_c_NjI2"] # "_c_NjE5"]  # Order they are auto loaded from NSHM
+# single_branch = ["_c_MDA2"] # "_c_MDE2"] #"_c_NjE5"] # "_c_NjI5"] # "_c_MDEz"] #"_c_MDI0"] #"_c_NjI2"] # "_c_NjM3"] # "_c_MDE5"] # "_c_MDE1"] # "_c_NjMy"] # "_c_NjI3"] # Memory order (low -> high)
+single_branch = ["_sz_NzEx"] 
+single_branch = ["_sz_fq_3nub110", "_sz_fq_3nhb110", "_sz_fq_3lhb110"]  # 3e10 sensitivity
+single_branch = ["_sz_fq_anub110", "_sz_fq_anhb110", "_sz_fq_alhb110"]  # ATOM senstivity
+single_branch = ["_sz_fq_pnub110", "_sz_fq_pnhb110", "_sz_fq_plhb110"]  # PREM senstivity
+single_branch = ["_sz_fq_plhb110"]
+# single_branch = None
+rate_scaling = False           # Do you want to calculate PPEs for a single branch with different rate scalings?
+paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = True             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = False            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
 remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 save_arrays = True         # Do you want to save the displacement and probability arrays?
-interp_sites = '../sites/cube_centroids_3000_3000_buffer_0_00_points.csv'  # csv file with the sites to interpolate the displacements to for xarray output. None for default (i.e. use the sites in the PPE dictionary)
+interp_sites = '../sites/national_1km_grid_points.csv'  # csv file with the sites to interpolate the displacements to for xarray output. None for default (i.e. use the sites in the PPE dictionary)
+interp_sites = None
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
-plot_order_csv = "../sites/EastCoastNI_5km_transect_points.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
+plot_order_csv = "../sites/gf_test_sites.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
 branch_weight_csv = "branch_weight_data_v0-1"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
+branch_weight_csv = "branch_weight_data_sensitivity"
 
 # Processing Parameters
 time_interval = [5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150]     # Time span of hazard forecast (yrs)
 time_interval = [100]
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 1
-thresh_lims = [0, 30]
+thresh_lims = [0, 10]
 thresh_step = 0.01
 
 # Nesi Parameters
@@ -63,7 +77,7 @@ crustal_directory = "crustal"
 sz_directory = "subduction"
 results_directory = "results"
 figure_file_type_list = ["png", "pdf"]             # file types for figures
-figure_file_type_list = ["png"]
+# figure_file_type_list = ["png"]
 
 ## Set parameters based on user inputs
 if testing:
@@ -180,6 +194,8 @@ def make_branch_weight_dict(branch_weight_file_path, sheet_name):
         branch_weight_dict[unique_id] = {"N": N_val, "b": b_val, "C": C_val, "S": S_val, "def_model": def_model,
                                     "time_dependence": time_dependence, "file_suffix": file_suffix, "total_weight_RN":
                                                total_weight_RN}
+        if "dip_model" in branch_weights.keys():
+            branch_weight_dict[unique_id]['dip_model'] = branch_weights["dip_model"][row]
 
     return branch_weight_dict
 ###############################
@@ -288,7 +304,7 @@ if not paired_crustal_sz:
             sites = f.readlines()
             inv_sites = [site.split('"')[9] for site in sites if 'siteId' in site]
     else:
-        site_gdf = gpd.read_file(site_geojson)
+        site_gdf = gpd.read_file(site_geojson).drop_duplicates().reset_index(drop=True)
         inv_sites = site_gdf['siteId'].values.tolist()
 
     for ix, extension1 in enumerate(extension1_list):
@@ -415,13 +431,14 @@ if save_arrays:
         branch_key = ['']
     if not paired_crustal_sz:
         model_id = None
+    if interp_sites:
+        interp_sites = [interp_sites, site_geojson]
     for key in branch_key:
-        if interp_sites:
-            interp_sites = [interp_sites, site_geojson]
         ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                            thresh_lims=[0, 3], thresh_step=1.00, output_thresh=True, probs_lims = [0.01, 0.10], probs_step=0.01,
+                            thresh_lims=[0, 1], thresh_step=0.25, output_thresh=True, probs_lims = [0.01, 0.10], probs_step=0.01,
                             output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key,
-                            time_intervals=time_interval, interp_sites=interp_sites, model_id=model_id)
+                            time_intervals=time_interval, interp_sites=interp_sites, model_id=model_id,
+                            rate_scaling=fault_model_branch_weight_dict[key]["S"] if single_branch else None)
 
 if paired_crustal_sz:
     site_names_title = f"paired crustal{crustal_site_names} and "
