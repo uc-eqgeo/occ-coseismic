@@ -23,10 +23,11 @@ from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 from scipy.sparse import csc_array, csr_array, hstack, csr_matrix
-from scipy.interpolate import NearestNDInterpolator, LinearNDInterpolator
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, combine_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission, \
                          slurm_timeleft, nesiprint
+from plotting_scripts import constrained_triangulation_grid, save_triangulation
+import matplotlib.tri as mtri
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
@@ -3036,6 +3037,8 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
     interval_vals = [int(i) for i in time_intervals]
     interval_vals.sort()
 
+    interp_flag = True if interp_sites else False
+
     # Define File Paths
     exceed_type_list = ["total_abs", "up", "down"]
 
@@ -3119,8 +3122,9 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         os.mkdir(f"{outfile_directory}")
 
     if output_grids:
-        site_x = [PPEh5[site]['site_coords'][:][0] for site in sites]
-        site_y = [PPEh5[site]['site_coords'][:][1] for site in sites]
+        print("\tIdentifying processed points...")
+        site_xy = np.array([PPEh5[site]['site_coords'][:] for site in sites])
+        site_x, site_y = site_xy[:, 0], site_xy[:, 1]
 
         x_data = np.unique(site_x)
         y_data = np.unique(site_y)
@@ -3144,6 +3148,8 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         site_y = (np.array(site_y) - y_data[0]) / y_res
 
         if interp_sites:
+            print("\tBuilding Interpolation Grid...")
+            # Build interp grid
             interp_df = pd.read_csv(interp_sites[0]) if interp_sites[0].endswith('.csv') else gpd.read_file(interp_sites[0])
             interp_x_data = np.unique(interp_df['Lon'].values)
             interp_y_data = np.unique(interp_df['Lat'].values)
@@ -3157,6 +3163,13 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
 
             interp_x = (interp_df['Lon'].values - interp_df['Lon'].min()) / x_res
             interp_y = (interp_df['Lat'].values - interp_df['Lat'].min()) / y_res
+
+            # Load in Fault Traces
+            print("\tTriangulating Faults and Processed Sites...")
+            traces = gpd.read_file("../crustal/discretised_CFM/name_filtered_fault_sections.geojson")
+            fault_lines = [np.c_[[trace.xy[0], trace.xy[1]]].T for trace in traces.geometry]
+
+            triang, nearest_dict = constrained_triangulation_grid(site_xy, fault_lines, bounds=(xmin, ymin, xmax, ymax), epsilon=1)
 
         # Create Datasets
         da = {}
@@ -3189,15 +3202,11 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             for exceed_type in exceed_type_list:
                 thresh_grd = np.zeros([len(thresholds), len(time_intervals), len(y_data), len(x_data)]) * np.nan
                 probs = np.zeros([len(sites), len(time_intervals), len(thresholds)])
-                printProgressBar(0, len(thresholds), prefix=f'\tProcessing 0.00 m', suffix=f'{exceed_type}', length=50)
+                printProgressBar(0, len(thresholds), prefix=f'\t\tProcessing {time_intervals[0]} yrs', suffix=f'{exceed_type}', length=50)
                 for ti, interval in enumerate(time_intervals):
-                    # for ii, threshold in enumerate(thresholds):
-                    #     probs[:, ti, ii] = get_probability_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
-                    #                                                       threshold=threshold, site_list=sites, weighted=weighted, interval=interval)
-                        # printProgressBar(ii + 1, len(thresholds), prefix=f'\tProcessing {threshold:.2f} m', suffix=f'{exceed_type} {interval} yrs', length=50)
                     probs[:, ti, :] = get_probability_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
                                                                         threshold=thresholds, site_list=sites, weighted=weighted, interval=interval)
-                    printProgressBar(ti + 1, len(time_intervals), prefix=f'\tProcessing {interval} yrs', suffix=f'{exceed_type} {interval} yrs', length=50)
+                    printProgressBar(ti + 1, len(time_intervals) + len(time_intervals) * interp_flag, prefix=f'\t\tProcessing {interval} yrs', suffix=f'{exceed_type} {interval} yrs', length=50)
                 for jj in range(len(sites)):
                     thresh_grd[:, :, int(site_y[jj]), int(site_x[jj])] = probs[jj, :, :].T
 
@@ -3211,18 +3220,19 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
 
                 if interp_sites:
                     interp_grd = np.zeros([len(thresholds), len(time_intervals), len(interp_y_data), len(interp_x_data)]) * np.nan
-                    for thresh_ix in range(len(thresholds)):
-                        for interval_ix in range(len(time_intervals)):
-                            data = thresh_grd[thresh_ix, interval_ix, :, :]
-                            y_ix, x_ix = np.where(~np.isnan(data))
-                            interp = LinearNDInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
-                            interp_vals = interp((interp_df['Lon'].values, interp_df['Lat'].values))
-                            nan_ix = np.where(np.isnan(interp_vals))[0]
-                            if len(nan_ix) > 0:
-                                interp = NearestNDInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
-                            interp_vals[nan_ix] = interp((interp_df['Lon'].values[nan_ix], interp_df['Lat'].values[nan_ix]))
+                    layer, n_layers = 1, len(thresholds) * len(time_intervals)
+                    printProgressBar(1, 2, prefix=f'\t\tProcessing {interval} yrs', suffix=f'{exceed_type} {thresholds[0]:.01f} m interpolation', length=50)
+                    for thresh_ix, thresh in enumerate(thresholds):
+                        for interval_ix, interval in enumerate(time_intervals):
+                            data = np.full(triang.x.shape[0], np.nan)
+                            data[:site_xy.shape[0]] = probs[:, interval_ix, thresh_ix]
+                            for k, v in nearest_dict.items():
+                                data[k] = np.ma.average(np.ma.masked_array(data[v['sites']], np.isnan(data[v['sites']])), weights=v['weights'])
+                            interp = mtri.LinearTriInterpolator(triang, data)
+                            interp_vals = interp(interp_df['Lon'].values, interp_df['Lat'].values)
                             interp_grd[thresh_ix, interval_ix, interp_y.astype(int), interp_x.astype(int)] = interp_vals
-
+                            printProgressBar(1 + layer / n_layers, 2, prefix=f'\t\tProcessing {interval} yrs', suffix=f'{exceed_type} {thresh:.01f} m interpolation', length=50)
+                            layer += 1
                     da_i[exceed_type] = xr.DataArray(interp_grd, dims=['threshold', 'interval', 'lat', 'lon'], coords={'threshold': thresholds, 'interval': np.array([int(i) for i in time_intervals]), 'lat': interp_y_data, 'lon': interp_x_data})
                     da_i[exceed_type].attrs['exceed_type'] = exceed_type
                     da_i[exceed_type].attrs['threshold'] = 'Displacement (m)'
@@ -3242,12 +3252,12 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             for exceed_type in exceed_type_list:
                 thresh_grd = np.zeros([len(probabilities), len(time_intervals), len(y_data), len(x_data)]) * np.nan
                 disps = np.zeros([len(sites), len(time_intervals), len(probabilities)])
-                printProgressBar(0, len(probabilities), prefix=f'\tProcessing 00 %', suffix=f'{exceed_type}', length=50)
+                printProgressBar(0, len(probabilities), prefix=f'\t\tProcessing {probabilities[0]} %', suffix=f'{exceed_type}', length=50)
                 for ti, interval in enumerate(time_intervals):
                     for ii, probability in enumerate(probabilities):
                         disps[:, ti, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
                                                                          site_list=sites, probability=probability, weighted=weighted, interval=interval)
-                        printProgressBar(ii + 1, len(probabilities), prefix=f'\tProcessing {int(100 * probability):0>2} %', suffix=f'{exceed_type} {interval} yrs', length=50)
+                        printProgressBar(ii + 1, len(probabilities), prefix=f'\t\tProcessing {int(100 * probability):0>2} %', suffix=f'{exceed_type} {interval} yrs', length=50)
                         if exceed_type == 'down':
                             disps[:, ti, ii] = -1 * disps[:, ti, ii]
                 for jj in range(len(sites)):
@@ -3262,17 +3272,19 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                 ds['prob_' + exceed_type] = da[exceed_type]
                 if interp_sites:
                     interp_grd = np.zeros([len(probabilities), len(time_intervals), len(interp_y_data), len(interp_x_data)]) * np.nan
-                    for prob_ix in range(len(probabilities)):
+                    layer, n_layers = 1, len(probabilities) * len(time_intervals)
+                    printProgressBar(1, 2, prefix=f'\t\tProcessing {int(100 * probabilities[0]):0>2} %', suffix=f'{exceed_type} interpolation', length=50)
+                    for prob_ix, probability in range(len(probabilities)):
                         for interval_ix in range(len(time_intervals)):
-                            data = thresh_grd[prob_ix, interval_ix, :, :]
-                            y_ix, x_ix = np.where(~np.isnan(data))
-                            interp = LinearNDInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
-                            interp_vals = interp((interp_df['Lon'].values, interp_df['Lat'].values))
-                            nan_ix = np.where(np.isnan(interp_vals))[0]
-                            if len(nan_ix) > 0:
-                                interp = NearestNDInterpolator((x_data[x_ix], y_data[y_ix]), data[np.where(~np.isnan(data))])
-                            interp_vals[nan_ix] = interp((interp_df['Lon'].values[nan_ix], interp_df['Lat'].values[nan_ix]))
+                            data = np.full(triang.x.shape[0], np.nan)
+                            data[:site_xy.shape[0]] = disps[:, interval_ix, prob_ix]
+                            for k, v in nearest_dict.items():
+                                data[k] = np.ma.average(np.ma.masked_array(data[v['sites']], np.isnan(data[v['sites']])), weights=v['weights'])
+                            interp = mtri.LinearTriInterpolator(triang, data)
+                            interp_vals = interp(interp_df['Lon'].values, interp_df['Lat'].values)
                             interp_grd[prob_ix, interval_ix, interp_y.astype(int), interp_x.astype(int)] = interp_vals
+                            printProgressBar(1, 2, prefix=f'\t\tProcessing {int(100 * probability):0>2} %', suffix=f'{exceed_type} interpolation', length=50)
+                            layer += 1
 
                     da_i[exceed_type] = xr.DataArray(interp_grd, dims=['probability', 'interval', 'lat', 'lon'], coords={'probability': (probabilities * 100).astype(int), 'interval': np.array([int(i) for i in time_intervals]), 'lat': interp_y_data, 'lon': interp_x_data})
                     da_i[exceed_type].attrs['exceed_type'] = exceed_type
@@ -3295,6 +3307,8 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             nc_name = f"{outfile_directory}/{model_id}_{out_name}{out_tag}_grids_interpolated.nc".replace('__', '_')
             ds_i.to_netcdf(nc_name)
             print(f"\tWritten {nc_name}\n")
+            save_triangulation(triang, f"{outfile_directory}/triangulation.shp", crs="EPSG:2193")
+            print(f"\tWritten {outfile_directory}/triangulation.shp\n")
 
     return ds
 
