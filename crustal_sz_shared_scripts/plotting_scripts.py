@@ -291,7 +291,7 @@ def triangulation_to_gdf(triang, z=None, crs=None):
         if z is not None:
             mean_zs.append(float(np.mean([z[v] for v in tri])))
  
-    data = {"triangle_id": tri_ids}
+    data = {"triangleId": tri_ids}
     if z is not None:
         data["mean_z"] = mean_zs
  
