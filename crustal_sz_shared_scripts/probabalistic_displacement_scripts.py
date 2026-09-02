@@ -3252,12 +3252,12 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             for exceed_type in exceed_type_list:
                 thresh_grd = np.zeros([len(probabilities), len(time_intervals), len(y_data), len(x_data)]) * np.nan
                 disps = np.zeros([len(sites), len(time_intervals), len(probabilities)])
-                printProgressBar(0, len(probabilities), prefix=f'\t\tProcessing {probabilities[0]} %', suffix=f'{exceed_type}', length=50)
+                printProgressBar(0, len(probabilities) + len(probabilities) * interp_flag, prefix=f'\t\tProcessing {int(100 * probabilities[0]):0>2} %', suffix=f'{exceed_type}', length=50)
                 for ti, interval in enumerate(time_intervals):
                     for ii, probability in enumerate(probabilities):
                         disps[:, ti, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
                                                                          site_list=sites, probability=probability, weighted=weighted, interval=interval)
-                        printProgressBar(ii + 1, len(probabilities), prefix=f'\t\tProcessing {int(100 * probability):0>2} %', suffix=f'{exceed_type} {interval} yrs', length=50)
+                        printProgressBar(ii + 1, len(probabilities) + len(probabilities) * interp_flag, prefix=f'\t\tProcessing {int(100 * probability):0>2} %', suffix=f'{exceed_type} {interval} yrs', length=50)
                         if exceed_type == 'down':
                             disps[:, ti, ii] = -1 * disps[:, ti, ii]
                 for jj in range(len(sites)):
@@ -3274,7 +3274,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                     interp_grd = np.zeros([len(probabilities), len(time_intervals), len(interp_y_data), len(interp_x_data)]) * np.nan
                     layer, n_layers = 1, len(probabilities) * len(time_intervals)
                     printProgressBar(1, 2, prefix=f'\t\tProcessing {int(100 * probabilities[0]):0>2} %', suffix=f'{exceed_type} interpolation', length=50)
-                    for prob_ix, probability in range(len(probabilities)):
+                    for prob_ix, probability in enumerate(probabilities):
                         for interval_ix in range(len(time_intervals)):
                             data = np.full(triang.x.shape[0], np.nan)
                             data[:site_xy.shape[0]] = disps[:, interval_ix, prob_ix]
@@ -3283,7 +3283,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                             interp = mtri.LinearTriInterpolator(triang, data)
                             interp_vals = interp(interp_df['Lon'].values, interp_df['Lat'].values)
                             interp_grd[prob_ix, interval_ix, interp_y.astype(int), interp_x.astype(int)] = interp_vals
-                            printProgressBar(1, 2, prefix=f'\t\tProcessing {int(100 * probability):0>2} %', suffix=f'{exceed_type} interpolation', length=50)
+                            printProgressBar(1 + layer / n_layers, 2, prefix=f'\t\tProcessing {int(100 * probability):0>2} %', suffix=f'{exceed_type} interpolation', length=50)
                             layer += 1
 
                     da_i[exceed_type] = xr.DataArray(interp_grd, dims=['probability', 'interval', 'lat', 'lon'], coords={'probability': (probabilities * 100).astype(int), 'interval': np.array([int(i) for i in time_intervals]), 'lat': interp_y_data, 'lon': interp_x_data})
@@ -3298,7 +3298,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         ds.attrs['branch'] = branch_name
         nc_name = f"{outfile_directory}/{model_id}_{out_name}{out_tag}_grids.nc".replace('__', '_')
         ds.to_netcdf(nc_name)
-        print(f"\tWritten {nc_name}\n")
+        print(f"\tWritten {nc_name}")
 
         if interp_sites:
             ds_i.attrs['branch'] = branch_name
@@ -3306,9 +3306,11 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             ds_i.attrs['source_sites'] = interp_sites[1]
             nc_name = f"{outfile_directory}/{model_id}_{out_name}{out_tag}_grids_interpolated.nc".replace('__', '_')
             ds_i.to_netcdf(nc_name)
-            print(f"\tWritten {nc_name}\n")
-            save_triangulation(triang, f"{outfile_directory}/triangulation.shp", crs="EPSG:2193")
-            print(f"\tWritten {outfile_directory}/triangulation.shp\n")
+            print(f"\tWritten {nc_name}")
+            triangulation_name = f"{outfile_directory}/{model_id}{out_tag}_triangulation.shp"
+            save_triangulation(triang, triangulation_name, crs="EPSG:2193")
+            print(f"\tWritten {triangulation_name}")
+        print('')
 
     return ds
 
