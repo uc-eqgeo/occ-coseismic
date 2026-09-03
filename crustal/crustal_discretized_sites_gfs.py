@@ -16,7 +16,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_v0-0-1_geoval"
+mesh_version = "_v0-0-1"
 
 steeper_dip, gentler_dip = False, False
 
@@ -25,7 +25,7 @@ maximum_slip = 12  # Maximum amount of slip on a patch (set this to maximum slip
 minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 1 cm of displacement from 10 m of slip)
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_file = os.path.join('..', 'sites', 'CUSP_v0-0-1_geoval.geojson')
+site_list_file = os.path.join('..', 'sites', 'CUSP_v0-0-1.geojson')
 if site_list_file.endswith('.csv'):
     sites_df = pd.read_csv(site_list_file).drop_duplicates().reset_index(drop=True)
 else:

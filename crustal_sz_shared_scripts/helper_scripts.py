@@ -370,65 +370,76 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
             disps_scenario = None
 
     elif slip_taper is True:
-        # get centroid coords of faults discretised polygons with a mesh
-        ruptured_polygon_centroid_points = ruptured_discretised_polygons_gdf.centroid
-        ruptured_polygon_centroids_x = [point.x for point in ruptured_polygon_centroid_points]
-        ruptured_polygon_centroids_y = [point.y for point in ruptured_polygon_centroid_points]
-        ruptured_polygon_centroid_coords = np.array([ruptured_polygon_centroids_x, ruptured_polygon_centroids_y]).T
+        # Taper each fault seperately. Possibility may be better to run tapering first to assign a new averageSlip to each fault, and fault accordingly
+        ruptured_discretised_polygons_gdf['polygon_slips'], n_segments = 0., ruptured_discretised_polygons_gdf.shape[0]
+        for _, ruptured_discretised_fault_polygons_gdf in ruptured_discretised_polygons_gdf.groupby("fault_name"): 
+            # get centroid coords of faults discretised polygons with a mesh
+            ruptured_polygon_centroid_points = ruptured_discretised_fault_polygons_gdf.centroid
+            ruptured_polygon_centroids_x = [point.x for point in ruptured_polygon_centroid_points]
+            ruptured_polygon_centroids_y = [point.y for point in ruptured_polygon_centroid_points]
+            ruptured_polygon_centroid_coords = np.array([ruptured_polygon_centroids_x, ruptured_polygon_centroids_y]).T
 
-        # get bounds of fault patches, makes np array with 4 coords (minx, miny, maxx, maxy)
-        rupture_bounds = ruptured_rectangle_outlines_gdf.total_bounds
+            # get bounds of fault patches, makes np array with 4 coords (minx, miny, maxx, maxy)
+            rupture_bounds = ruptured_rectangle_outlines_gdf[ruptured_rectangle_outlines_gdf.fault_id.isin(ruptured_discretised_fault_polygons_gdf['fault_id'])].total_bounds
 
-        # makes 1000 points along a line between endpoints (bounds of fault rectangles).
-        along_rupture_line_x = np.linspace(rupture_bounds[0], rupture_bounds[2], 1000)
-        along_rupture_line_y = np.linspace(rupture_bounds[1], rupture_bounds[3], 1000)
-        # stack into one column of xy pairs
-        along_rupture_line_xy = np.column_stack((along_rupture_line_x, along_rupture_line_y))
+            # makes 1000 points along a line between endpoints (bounds of fault rectangles).
+            along_rupture_line_x = np.linspace(rupture_bounds[0], rupture_bounds[2], 1000)
+            along_rupture_line_y = np.linspace(rupture_bounds[1], rupture_bounds[3], 1000)
+            # stack into one column of xy pairs
+            along_rupture_line_xy = np.column_stack((along_rupture_line_x, along_rupture_line_y))
 
-        # calculate distance along line for each xy point
-        start_point = Point(along_rupture_line_xy[0])
-        line_distances = []
-        for coord in along_rupture_line_xy:
-            next_point = Point(coord)
-            distance = start_point.distance(next_point)
-            line_distances.append(distance)
-        line_length = np.max(line_distances)
+            # calculate distance along line for each xy point
+            start_point = Point(along_rupture_line_xy[0])
+            line_distances = []
+            for coord in along_rupture_line_xy:
+                next_point = Point(coord)
+                distance = start_point.distance(next_point)
+                line_distances.append(distance)
+            line_length = np.max(line_distances)
 
-        # calculate slip at each interpolated point based on distance
-        # this constant is based on the integral of the sin function from 0 to 1 (see NSHM taper)
-        max_slip = rupture_slip_dict[rupture_id] / 0.76276
-        # apply slip taper function to max slip. slip = sqrt(sin(pi * distance/line_length))
-        # making a multiplier list is verbose but helps me keep track of things
-        tapered_slip_multipliers = []
-        tapered_slip_values = []
-        for distance in line_distances:
-            if np.sin(np.pi * distance / line_length) < 5.e-5:      # this is to fix error below of sqrt(0)
-                tapered_slip_multiplier = 0.
-            else:
-                tapered_slip_multiplier = np.sqrt(np.sin(np.pi * distance / line_length))
-            tapered_slip_multipliers.append(tapered_slip_multiplier)
-            tapered_slip_values.append(max_slip * tapered_slip_multiplier)
+            # calculate slip at each interpolated point based on distance
+            # this constant is based on the integral of the sin function from 0 to 1 (see NSHM taper)
+            max_slip = rupture_slip_dict[rupture_id] / 0.76276
+            # apply slip taper function to max slip. slip = sqrt(sin(pi * distance/line_length))
+            # making a multiplier list is verbose but helps me keep track of things
+            tapered_slip_multipliers = []
+            tapered_slip_values = []
+            for distance in line_distances:
+                if np.sin(np.pi * distance / line_length) < 5.e-5:      # this is to fix error below of sqrt(0)
+                    tapered_slip_multiplier = 0.
+                else:
+                    tapered_slip_multiplier = np.sqrt(np.sin(np.pi * distance / line_length))
+                tapered_slip_multipliers.append(tapered_slip_multiplier)
+                tapered_slip_values.append(max_slip * tapered_slip_multiplier)
 
-        # interpolate slip at each discretised polygon (i.e., patch) centroid and corresponding displacement
-        polygon_slips = griddata(along_rupture_line_xy, tapered_slip_values, ruptured_polygon_centroid_coords,
-                               method="nearest")
+            # interpolate slip at each discretised polygon (i.e., patch) centroid and corresponding displacement
+            polygon_slips = griddata(along_rupture_line_xy, tapered_slip_values, ruptured_polygon_centroid_coords,
+                                method="nearest")
+
+            ruptured_discretised_polygons_gdf.loc[ruptured_discretised_fault_polygons_gdf.index, 'polygon_slips'] = polygon_slips
+
+        # Adjust polygon slips so that they match the average slip (use of max slip for faults ith few segments can result
+        # in some ruptures where all segements are slipping higher than av slip)
+        ruptured_discretised_polygons_gdf['polygon_slips'] /= ruptured_discretised_polygons_gdf['polygon_slips'].mean() / rupture_slip_dict[rupture_id]
 
         # calculate displacements by multiplying the polygon green's function by slip on each fault
         # this will be a list of lists
         disps_i_list = []
         for i, fault_id in enumerate(ruptured_discretised_polygons_gdf.fault_id):
             # This section has never been tested following change from gf_total_slip_dict to gf_arrays
-            fault_ix = rupture_order.index(fault_id)
+            fault_ix = rupture_order.index(str(fault_id))
             combined_gf = gf_total_slip_array[fault_ix, :].toarray()
-            disp_i = combined_gf * polygon_slips[i]
+            disp_i = combined_gf * ruptured_discretised_polygons_gdf['polygon_slips'].iloc[i]
             # disp_i = gf_total_slip_dict[fault_id]["combined_gf"] * polygon_slips[i]
             disps_i_list.append(disp_i)
         #sum displacements from each patch
-        disps_scenario = np.sum(disps_i_list, axis=0)
+        disps_scenario = np.sum(disps_i_list, axis=0).reshape(-1)
         if len(ruptured_fault_ids_with_mesh) != 0:
             disps_scenario[np.abs(disps_scenario) < 5.e-3] = 0.
         elif len(ruptured_fault_ids_with_mesh) == 0:
             disps_scenario = None
+
+        # ruptured_discretised_polygons_gdf.to_file(f"./rupture{rupture_id}_{rupture_slip_dict[rupture_id]:.02f}_tapered.geojson", driver="GeoJSON")
 
     # Abandon ruptures that don't cause any displacement
     if disps_scenario is not None and sum(np.abs(disps_scenario)) == 0:

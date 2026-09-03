@@ -239,7 +239,7 @@ else:
 if slip_taper:
     taper_extension = "_tapered"
 else:
-    taper_extension = "_uniform"
+    taper_extension = ""
 
 # these directories should already be made from calculating displacements in a previous script
 version_discretise_directory = []
@@ -281,7 +281,7 @@ if not paired_crustal_sz:
     NSHM_directory_list, file_suffix_list, n_branches = get_NSHM_directories(fault_type, deformation_model='geologic and geodetic', time_independent=True,
                             time_dependent=True, single_branch=single_branch, fakequakes=fakequakes)
     
-    if single_branch:
+    if single_branch or not rate_scaling:
         branch_keys = list(fault_model_branch_weight_dict.keys())
         if rate_scaling:
             branch_key = [key for key in branch_keys if any([suffix in key[-len(suffix):] for suffix in file_suffix_list])]
@@ -337,7 +337,7 @@ if not paired_crustal_sz:
 if not paired_crustal_sz:
     fault_type = fault_type[0]
     out_version_results_directory = version_discretise_directory[ftype[0]]
-    PPE_filepath = f"../{out_version_results_directory}/all_branch_PPE_dict{outfile_extension}{taper_extension}.pkl"
+    PPE_filepath = f"../{out_version_results_directory}/all_branch_PPE_dict{outfile_extension}.pkl"
     # If only creating xarrays from final datasets, don't need to calculate PPEs
     if any([calculate_fault_model_PPE, calculate_weighted_mean_PPE]):
         if not os.path.exists(PPE_filepath):
@@ -436,7 +436,7 @@ if save_arrays:
         interp_sites = [interp_sites, site_geojson]
     for key in branch_key:
         ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                            thresh_lims=[0, 1], thresh_step=0.25, output_thresh=True, probs_lims = [0.01, 0.10], probs_step=0.01,
+                            thresh_lims=[0.2, 3], thresh_step=0.2, output_thresh=True, probs_lims = [0.01, 0.10], probs_step=0.01,
                             output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key,
                             time_intervals=time_interval, interp_sites=interp_sites, model_id=model_id,
                             rate_scaling=fault_model_branch_weight_dict[key]["S"] if single_branch else None)

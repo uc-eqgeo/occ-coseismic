@@ -43,7 +43,7 @@ if numba_flag:
 
 matplotlib.rcParams['pdf.fonttype'] = 42
 
-def write_site_disp_dict(extension1, slip_taper, model_version_results_directory, site_disp_h5file):
+def write_site_disp_dict(extension1, slip_taper, model_version_results_directory, site_disp_h5_file):
     """
         inputs: uses extension naming scheme to load displacement dictionary created with the
         get_rupture_disp_dict function. State slip taper (True or False).
@@ -57,11 +57,11 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
         CAVEATS/choices:
         - a little clunky because most of the dictionary columns are repeated across all keys.
         """
-    print('Making', os.path.basename(site_disp_h5file))
+    print('Making', os.path.basename(site_disp_h5_file))
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     # load saved displacement data
     # disp dictionary has keys for each rupture id and displacement data for each site ( disp length = # of sites)
@@ -109,12 +109,12 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
         # annual_rates_by_location.append(annual_rates_by_scenario)
     print('')
     # make dictionary of displacements and other data. key is the site name.
-    if os.path.exists(site_disp_h5file):
-        os.remove(site_disp_h5file)
-    with h5.File(site_disp_h5file, "w") as site_disp_PPEh5:
+    if os.path.exists(site_disp_h5_file):
+        os.remove(site_disp_h5_file)
+    with h5.File(site_disp_h5_file, "w") as site_disp_PPEh5:
         site_disp_PPEh5.create_dataset("rates", data=annual_rates_by_scenario)
         for i, site in enumerate(site_names):
-            print(f"\tWriting sites to {site_disp_h5file}... {i}\{len(site_names)}", end='\r')
+            print(f"\tWriting sites to {site_disp_h5_file}... {i}\{len(site_names)}", end='\r')
             site_group = site_disp_PPEh5.create_group(site)
             site_group.create_dataset("disps", data=disps_by_location[i])
             site_group.create_dataset("disps_ix", data=scenarios_with_disps[i])
@@ -166,23 +166,26 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
     Combine all site_disp_dicts for a each branch of a fault model into a single dictionary
     """
     all_branches_site_disp_dict = {}
+    if slip_taper is True:
+        taper_extension = "_tapered"
+    else:
+        taper_extension = ""
     for branch_id in branch_weight_dict.keys():
         extension1 = gf_name + branch_weight_dict[branch_id]["file_suffix"]
         # get site displacement dictionary
         # this extracts the rates from the solution directory, but it is not scaled by the rate scaling factor
         # multiply the rates by the rate scaling factor
         rate_scaling_factor = branch_weight_dict[branch_id]["S"]
-
-        branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.h5"
+        branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}{taper_extension}.h5"
         branch_cumu_file = f"../{model_version_results_directory}/{extension1}/{branch_id}_cumu_PPE.h5"
         if os.path.exists(branch_site_disp_dict_file):
             try:  # check in case h5 is corrupted
                 branch_h5 = h5.File(branch_site_disp_dict_file, "a")
                 branch_h5.close()
             except:
-                write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5file=branch_site_disp_dict_file)
+                write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5_file=branch_site_disp_dict_file)
         else:
-            write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5file=branch_site_disp_dict_file)
+            write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5_file=branch_site_disp_dict_file)
 
         with h5.File(branch_site_disp_dict_file, "a") as branch_h5:
             if "scaled_rates" not in branch_h5.keys():
@@ -497,7 +500,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     n_chunks = int(n_samples / error_chunking)
     if n_chunks < 100:
@@ -821,7 +824,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
     if slip_taper:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     if nesi:
         if nesi_step == 'prep' and os.path.exists(f"../{model_version_results_directory}/site_name_list.txt"):
@@ -848,25 +851,25 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         branch_weight_list.append(branch_weight)
         rate_scaling_factor = branch_weight_dict[branch_id]["S"]
 
-        branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}.h5"
+        branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}{taper_extension}.h5"
         if os.path.exists(branch_site_disp_dict_file):
             with h5.File(branch_site_disp_dict_file, 'r') as branch_h5:
                 site_set = set(branch_h5.keys()) - {'rates', 'scaled_rates'}
             missing_sites = inv_sites - site_set
             if len(missing_sites) > 0:
-                write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5file=branch_site_disp_dict_file)
+                write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5_file=branch_site_disp_dict_file)
                 with h5.File(branch_site_disp_dict_file, "a") as branch_site_disp_dict:
                     branch_site_disp_dict.create_dataset("scaled_rates", data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
 
         else:
             # Extract rates from the NSHM solution directory, but it is not scaled by the rate scaling factor
-            write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5file=branch_site_disp_dict_file)
+            write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5_file=branch_site_disp_dict_file)
             with h5.File(branch_site_disp_dict_file, "a") as branch_site_disp_dict:
                 # multiply each value in the rates array by the rate scaling factor
                 branch_site_disp_dict.create_dataset("scaled_rates", data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
                 site_set = set(branch_site_disp_dict.keys()) - {'rates', 'scaled_rates'}
 
-        branch_cumu_PPE_dict_file = f"../{model_version_results_directory}/{extension1}/{branch_id}_cumu_PPE.h5"
+        branch_cumu_PPE_dict_file = f"../{model_version_results_directory}/{extension1}/{branch_id}{taper_extension}_cumu_PPE.h5"
         fault_model_allbranch_PPE_dict[branch_id] = branch_cumu_PPE_dict_file
 
         # Reduce site set to only those that have not been processed or not processed to the required number of samples
@@ -1048,7 +1051,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     if slip_taper:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     unique_id_list = fault_model_PPE_dict['meta']['branch_ids']
     # site_list = fault_model_PPE_dict['meta']['site_ids']
@@ -1270,7 +1273,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     if slip_taper:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     if nesi:
         if nesi_step == 'prep' and os.path.exists(f"../{out_directory}/site_name_list.txt"):
@@ -1904,7 +1907,7 @@ def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_direc
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
               f"{taper_extension}.pkl",
@@ -1986,7 +1989,7 @@ def plot_many_hazard_curves(file_suffix_list, slip_taper, gf_name, fault_type, m
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     plt.close("all")
     fig, axs = plt.subplots(figsize=(8, 10))
@@ -2061,7 +2064,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     weighted_mean_PPE_dictionary = h5.File(weighted_mean_PPE_dictionary, 'r')
 
@@ -2274,7 +2277,7 @@ def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_versio
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     PPE_dictionary = h5.File(PPE_dictionary, 'r')
 
@@ -2424,7 +2427,7 @@ def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dic
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     unique_id_list = list(PPE_dictionary.keys())
 
@@ -2572,7 +2575,7 @@ def make_10_2_disp_plot(extension1, slip_taper, model_version_results_directory,
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
 
     with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
@@ -2687,7 +2690,7 @@ def save_10_2_disp(extension1, slip_taper, model_version_results_directory):
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
 
     with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
@@ -2758,7 +2761,7 @@ def make_prob_bar_chart(extension1,  slip_taper, model_version, model_version_re
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
               f"{taper_extension}.pkl",
@@ -2824,7 +2827,7 @@ def make_branch_prob_plot(extension1,  slip_taper, model_version, model_version_
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     with open(f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}"
               f"{taper_extension}.pkl",
@@ -2912,7 +2915,7 @@ def save_disp_prob_tifs(extension1, slip_taper, model_version_results_directory,
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     if weighted:
         dict_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict_{extension1}{taper_extension}.pkl"
@@ -3045,7 +3048,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     if weighted:
         h5_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict{extension1}{taper_extension}.h5"
@@ -3055,7 +3058,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         print(f"Saving data arrays for weighted mean displacements {model_id}...")
     elif single_branch != '':
         branch_suffix = '_'.join(single_branch.split('_')[6:])
-        h5_file = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/{single_branch}_cumu_PPE.h5"
+        h5_file = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/{single_branch}{taper_extension}_cumu_PPE.h5"
         outfile_directory = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/probability_grids"
         model_id = branch_suffix + f"_S{str(rate_scaling).replace('.','')}"
         print(f"Saving data arrays for sites_{model_id}...")
@@ -3296,7 +3299,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             out_name += 'prob_'
 
         ds.attrs['branch'] = branch_name
-        nc_name = f"{outfile_directory}/{model_id}_{out_name}{out_tag}_grids.nc".replace('__', '_')
+        nc_name = f"{outfile_directory}/{model_id}{taper_extension}_{out_name}{out_tag}_grids.nc".replace('__', '_')
         ds.to_netcdf(nc_name)
         print(f"\tWritten {nc_name}")
 
@@ -3304,7 +3307,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             ds_i.attrs['branch'] = branch_name
             ds_i.attrs['interp_sites'] = interp_sites[0]
             ds_i.attrs['source_sites'] = interp_sites[1]
-            nc_name = f"{outfile_directory}/{model_id}_{out_name}{out_tag}_grids_interpolated.nc".replace('__', '_')
+            nc_name = nc_name.replace(".nc", f"_{os.path.basename(interp_sites[0]).split('.')[0]}_interp.nc")
             ds_i.to_netcdf(nc_name)
             print(f"\tWritten {nc_name}")
             triangulation_name = f"{outfile_directory}/{model_id}{out_tag}_triangulation.shp"
@@ -3327,7 +3330,7 @@ def save_disp_prob_geojson(extension1, slip_taper, model_version_results_directo
     if slip_taper is True:
         taper_extension = "_tapered"
     else:
-        taper_extension = "_uniform"
+        taper_extension = ""
 
     if weighted:
         # h5_file = f"../{model_version_results_directory}/weighted_mean_PPE_dict{extension1}{taper_extension}.h5"
