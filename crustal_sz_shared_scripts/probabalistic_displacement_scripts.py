@@ -1614,7 +1614,6 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
             if benchmarking:
                 nesiprint(f'{len(pair_id_list)} pair ids created for {fault_flag}: {time() - lap:.2f}s')
                 lap = time()
-
         # For each branch, load in the displacements and put in a dictionary
         branch_list = list(set([branch for pair_id in pair_id_list for branch in pair_id.split('_-_')]))
         for interval in intervals:
@@ -1622,11 +1621,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 # Should only occur if site threw an error on a previous run
                 del site_h5[interval]
             interval_h5 = site_h5.create_group(interval)
-            if run_numba:
-                branch_disp_dict_numba = Dict.empty(key_type=types.unicode_type, value_type=branch_dict_type)
-            if run_parallel or run_sequential:
-                branch_disp_dict = {}
-
+            branch_disp_dict = {}
             for branch in branch_list:
                 if '_c_' in branch:
                     fault_type = 'c'
@@ -1646,16 +1641,31 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
 
                 branch_tag = branch.split(f'_{fault_type}_')[-1]
                 NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
+
+                # Biggest issue here is that the first time data is accessed it is slow, and incredibly quick the second time
+                # Future improvement is to find a way to access and cache the displacement data first, so that the next access
+                # can be done quickly. Just loading to _ only works whilst the file is open
                 with h5.File(NSHM_file, 'r') as NSHM_h5:
-                    if site in NSHM_h5.keys():
-                        NSHM_displacements = np.zeros((3, n_samples))
-                        for ix, exceed_type in enumerate(['up', 'down']):
+                    if site in NSHM_h5:
+                        interval_grp = NSHM_h5[site][interval]
+                        disp_scaling = interval_grp['disp_scaling'][()]
+
+                        row_cols = [np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)]
+                        row_vals = [np.empty(0, dtype=np.float64), np.empty(0, dtype=np.float64)]
+
+                        for ix, exceed_type in enumerate(exceed_type_list):
+                            exceed_grp = interval_grp['scenario_displacements'][exceed_type]
                             if exceed_type in exceed_type_list:
-                                slip_scenarios = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['scenario_ix'][:]
+                                slip_scenarios = exceed_grp['scenario_ix'][:]
                                 if slip_scenarios.shape[0] > 0:
-                                    max_scenario = -1 if n_samples > slip_scenarios[-1] else np.where(slip_scenarios >= n_samples)[0][0]
-                                    NSHM_displacements[ix, slip_scenarios[:max_scenario]] = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['displacements'][:max_scenario] * NSHM_h5[site][interval]['disp_scaling'][()]
-                        branch_disp_dict[branch] = csr_array(NSHM_displacements)
+                                    max_scenario = -1 if n_samples > slip_scenarios[-1] else np.searchsorted(slip_scenarios, n_samples)
+                                    row_cols[ix] = slip_scenarios[:max_scenario]
+                                    row_vals[ix] = exceed_grp['displacements'][:max_scenario]  # scale after concatenation, once
+
+                        indices = np.concatenate((row_cols[0], row_cols[1]))
+                        data = np.concatenate((row_vals[0], row_vals[1])) * disp_scaling  # single multiply over combined array
+                        indptr = np.array([0, len(row_cols[0]), len(row_cols[0]) + len(row_cols[1]), len(indices)])
+                        branch_disp_dict[branch] = csr_array((data, indices, indptr), shape=(3, n_samples))
 
             if benchmarking:
                 nesiprint(f'{len(branch_list)} branch displacements loaded: {time() - lap:.2f}s')
@@ -1686,15 +1696,12 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
 
             # Calculate the weighted exceedances for the site
             for exceed_type in exceed_type_list:
-                for dataset in ['weighted_exceedance_probs_*-*', '*-*_max_vals', '*-*_min_vals', 'branch_exceedance_probs_*-*', '*-*_weighted_percentile_error']:
-                    if dataset.replace('*-*', exceed_type) in interval_h5.keys():
-                        del interval_h5[dataset.replace('*-*', exceed_type)]
                 site_probabilities_df = pd.DataFrame(site_df_dict[exceed_type])
                 # Reduce dataframe to non-zero rows
                 site_probabilities_df = site_probabilities_df.loc[site_probabilities_df.sum(axis=1) > 0]
 
                 # collapse each row into a weighted mean value
-                branch_weighted_mean_probs = site_probabilities_df.apply(lambda x: np.average(x, weights=branch_weights), axis=1)
+                branch_weighted_mean_probs = np.average(site_probabilities_df.to_numpy(), axis=1, weights=branch_weights)
 
                 interval_h5.create_dataset(f"weighted_exceedance_probs_{exceed_type}", data=branch_weighted_mean_probs, compression=compression)
                 try:
