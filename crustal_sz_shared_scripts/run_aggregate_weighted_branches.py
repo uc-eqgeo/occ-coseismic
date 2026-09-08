@@ -31,23 +31,23 @@ single_branch = ["_sz_fq_3lhb110_full_n0", "_sz_fq_3lhb110_full_n1", "_sz_fq_3lh
 single_branch = ["_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nhb110", "_sz_fq_pnhb110", "_sz_fq_3lhb110", "_sz_fq_plhb110"] # Allows you to specifically select which branches to calculate PPEs for. If None, all branches will be calculated
 single_branch = ["_c_MDE5", "_c_MDI0", "_c_MDE2", "_c_NjMy", "_c_NjM3", "_c_NjI5", "_c_MDE1", "_c_MDEz", "_c_MDA2", "_c_NjI3", "_c_NjI2", "_c_NjE5"]  # Order they are auto loaded from NSHM
 # single_branch = ["_c_MDE5"] # "_c_MDI0"] # "_c_MDE2"] # "_c_NjMy"] # "_c_NjM3"] # "_c_NjI5"] # "_c_MDE1"] # "_c_MDEz"] # "_c_MDA2"] # "_c_NjI3"] # "_c_NjI2"] # "_c_NjE5"]  # Order they are auto loaded from NSHM
-single_branch = ["_c_MDA2", "_c_MDE2", "_c_NjE5", "_c_NjI5", "_c_MDEz", "_c_MDI0", "_c_NjI2", "_c_NjM3", "_c_MDE5", "_c_MDE1", "_c_NjMy", "_c_NjI3"] # Memory order (low -> high)
-single_branch = ["_c_NjI5"] 
+# single_branch = ["_c_MDA2"] # "_c_MDE2"] #"_c_NjE5"] # "_c_NjI5"] # "_c_MDEz"] #"_c_MDI0"] #"_c_NjI2"] # "_c_NjM3"] # "_c_MDE5"] # "_c_MDE1"] # "_c_NjMy"] # "_c_NjI3"] # Memory order (low -> high)
+# single_branch = ["_sz_NzEx"] 
 # single_branch = ["_sz_fq_3nub110", "_sz_fq_3nhb110", "_sz_fq_3lhb110"]  # 3e10 sensitivity
 # single_branch = ["_sz_fq_anub110", "_sz_fq_anhb110", "_sz_fq_alhb110"]  # ATOM senstivity
 # single_branch = ["_sz_fq_pnub110", "_sz_fq_pnhb110", "_sz_fq_plhb110"]  # PREM senstivity
 # single_branch = ["_sz_fq_plhb110"]
-# single_branch = ["_sz_fq_lock_b1-10"]
-# single_branch = None
-rate_scaling = False           # Do you want to calculate PPEs for a single branch with different rate scalings?
+single_branch = ["_c_NjE5"] 
+single_branch = None
+rate_scaling = True           # Do you want to calculate PPEs for a single branch with different rate scalings?
 paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = True             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
-calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
-remake_PPE = True            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
-calculate_weighted_mean_PPE = False  # Do you want to weighted mean calculate PPEs?
+calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
+remake_PPE = False            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
+calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
 remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 save_arrays = True         # Do you want to save the displacement and probability arrays?
-interp_sites = '../sites/national_2km.geojson'  # csv file with the sites to interpolate the displacements to for xarray output. None for default (i.e. use the sites in the PPE dictionary)
+interp_sites = '../sites/national_1km.geojson'  # csv file with the sites to interpolate the displacements to for xarray output. None for default (i.e. use the sites in the PPE dictionary)
 # interp_sites = None
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
@@ -436,8 +436,8 @@ if save_arrays:
         interp_sites = [interp_sites, site_geojson]
     for key in branch_key:
         ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                            thresh_lims=[0.2, 3], thresh_step=0.2, output_thresh=True, probs_lims = [0.01, 0.10], probs_step=0.01,
-                            output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key,
+                            thresh_lims=[0.2, 3], thresh_step=0.2, output_thresh=False, probs_lims = [0.01, 0.10], probs_step=0.01,
+                            output_probs=False, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key,
                             time_intervals=time_interval, interp_sites=interp_sites, model_id=model_id,
                             rate_scaling=fault_model_branch_weight_dict[key]["S"] if single_branch else None)
 
