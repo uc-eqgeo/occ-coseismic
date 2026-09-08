@@ -16,7 +16,7 @@ slip_taper = False                           # True or False, only matters if cr
 fault_type = "crustal"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
 crustal_site_names = "_v0-0-1"   # Name of the sites geojson
-sz_site_names = ["_v0-0-1S_geoval", "_EastCoastNI_2km"]       # Name of the sites geojson
+sz_site_names = ["_v0-2-5S", "_EastCoastNI_3km"]       # Name of the sites geojson
 sz_list_order = ["py", "sz"]         # Order of the subduction zones
 sz_names = ["puysegur", "hikkerm"]   # Name of the subduction zone - HIKKERK FOR SENSITIVITY TESTING, HIKKERM FOR FINAL (?)
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
@@ -475,7 +475,7 @@ if make_hazcurves:
                 print('Plotting hazard curves for', branch, 'at', interval, 'years')
                 plot_single_branch_haz_curves(
                     PPE_dictionary=PPE_filepath, model_version_title=site_names_title,
-                    exceed_type_list=["up", "down", "total_abs"], out_directory=figure_directory,
+                    exceed_type_list=["up", "down"], out_directory=figure_directory,
                     file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order, interval=interval)   
     else:
         ######
@@ -489,7 +489,7 @@ if make_hazcurves:
         for interval in time_interval:
             plot_weighted_mean_haz_curves(
                 weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
-                model_version_title=site_names_title, exceed_type_list=["up", "down", "total_abs"],
+                model_version_title=site_names_title, exceed_type_list=["up", "down"],
                 out_directory=figure_directory, file_type_list=figure_file_type_list, slip_taper=slip_taper, plot_order=plot_order,
                 sigma=2, intervals=[interval])
     
