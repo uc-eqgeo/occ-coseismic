@@ -1855,7 +1855,7 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
                 if sum(site_PPE.shape[0] > index) > 0:
                     probs_threshold[ix, :sum(site_PPE.shape[0] > index)] = site_PPE[index[:sum(site_PPE.shape[0] > index)]]
             except KeyError:
-                probs_threshold.append(np.nan)            
+                probs_threshold[ix, :] = np.nan       
 
     return probs_threshold
 
