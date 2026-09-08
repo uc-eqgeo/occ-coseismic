@@ -1590,34 +1590,17 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
         start = time()
         lap = time()
 
-        run_numba = False  # Trys using numba dictionaries. Doesn't seem to improve anything
         run_parallel = False # Uses numba for sparse thresholds, whilst processings branches sequentially
         run_sequential = True # Uses numba for sparse thresholds, but processes branches sequentially
-        assert any([run_numba, run_parallel, run_sequential]), "Need at least one of run_numba, run_parallel, run_sequential to be True"
+        assert any([run_parallel, run_sequential]), "Need at least one of run_parallel or run_sequential to be True"
         if numba_flag:
-            # Initialise numba
-            prep_array = np.array([[0, 1, 1, 1, 1], [2, 2, 2, 0, 2], [3, 3, 3, 0, 0]])
+            # Initialise numba for sparse thresholding
             _ = sparse_thresholds(np.arange(0,1,1), np.ones(3), np.arange(0, 4, 1))
-            if run_numba:
-                branch_dict_type = types.DictType(types.unicode_type, types.Array(types.float64, 1, 'C'))
-                prep_pair_dict_numba = Dict.empty(key_type=types.unicode_type, value_type=branch_dict_type)
-                prep_disp_dict_numba = Dict.empty(key_type=types.unicode_type, value_type=branch_dict_type)
-                prep_id_list, prep_parts_list, prep_id = List(), List(), List()
-                prep_id_list.append('prep')
-                prep_id.append('prep')
-                prep_parts_list.append(prep_id)
-                prep_disp_dict_numba['prep'] = numba_csr_array(prep_array)
-                _, _ = numba_full_process_pair(prep_id_list, prep_parts_list, prep_disp_dict_numba, n_samples, thresholds, step=10)
-                del prep_pair_dict_numba, prep_disp_dict_numba, prep_id_list, prep_parts_list, prep_id
             if benchmarking:
                 nesiprint(f'Numba functions initialised on {get_num_threads()} threads: {time() - lap:.2f}s')
                 lap = time()
-        else:
-            run_numba = False
 
         if benchmarking:
-            if run_numba:
-                nesiprint('Using Numba processing')
             if run_parallel:
                 nesiprint('Using Parallel processing')
             if run_sequential:
@@ -1672,10 +1655,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                                 if slip_scenarios.shape[0] > 0:
                                     max_scenario = -1 if n_samples > slip_scenarios[-1] else np.where(slip_scenarios >= n_samples)[0][0]
                                     NSHM_displacements[ix, slip_scenarios[:max_scenario]] = NSHM_h5[site][interval]['scenario_displacements'][exceed_type]['displacements'][:max_scenario] * NSHM_h5[site][interval]['disp_scaling'][()]
-                        if run_numba:
-                            branch_disp_dict_numba[branch] = numba_csr_array(NSHM_displacements)
-                        if run_parallel or run_sequential:
-                            branch_disp_dict[branch] = csr_array(NSHM_displacements)
+                        branch_disp_dict[branch] = csr_array(NSHM_displacements)
 
             if benchmarking:
                 nesiprint(f'{len(branch_list)} branch displacements loaded: {time() - lap:.2f}s')
@@ -1683,21 +1663,6 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
 
             # Work out the cumulative displacement for all branch pairs
             site_df_dict = {"up": {}, "down": {}}
-            if run_numba:
-                numba_id_list, numba_parts_list = List(), List()
-                for pair_id in pair_id_list:
-                    numba_id_list.append(pair_id)
-                    id_list = List()
-                    for part in pair_id.split('_-_'):
-                        id_list.append(part)
-                    numba_parts_list.append(id_list)
-
-                numba_df_up, numba_df_down = numba_full_process_pair(numba_id_list, numba_parts_list, branch_disp_dict_numba, n_samples, thresholds)
-                site_df_dict["up"], site_df_dict["down"] = dict(numba_df_up), dict(numba_df_down)
-                if benchmarking:
-                    nesiprint(f'{len(pair_id_list)} cumulative disp scenarios created Numba_process_pair: {time() - lap:.2f}s {(time() - lap)/len(pair_id_list):.4f} per branch')
-                    lap = time()
-
             if run_parallel:
                 with ThreadPoolExecutor() as executor:
                     func = partial(full_process_pair, branch_disp_dict=branch_disp_dict, thresholds=thresholds, n_samples=n_samples)
