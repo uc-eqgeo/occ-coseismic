@@ -545,7 +545,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     if slip_taper is True:
         extension3 = "_tapered"
     else:
-        extension3 = "_uniform"
+        extension3 = ""
 
     # save displacements
     os.makedirs(f"{procdir}/results/{disc_version}/{extension1}", exist_ok=True)

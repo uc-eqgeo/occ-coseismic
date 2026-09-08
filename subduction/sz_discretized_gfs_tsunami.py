@@ -32,7 +32,7 @@ version_extension = "_version_0-1S"
 steeper_dip, gentler_dip = False, False
 
 # Define whch subduction zone ([_fq_]hikkerm / puysegur)
-sz_zone = '_hikkerk'
+sz_zone = '_fq_hikkerm'
 
 rake90 = False  # if True, all rakes will be set to 90 degrees (NSHM default, but not our mesh default)
 
@@ -122,7 +122,7 @@ for poly in discretised_dict.keys():
 
         disps = HS.disp_free(obs_pts=obs_points, tris=triangles, slips=slip_array, nu=0.25)
         vert = disps[:, 2].reshape([fault_lats.shape[0], fault_lons.shape[0]])
-        vert = np.where(np.abs(vert) < 1e-3, 0, vert)  # Zero out very small values (less than 1mm)
+        # vert = np.where(np.abs(vert) < 1e-3, 0, vert)  # Zero out very small values (less than 1mm)
         grid_sparse = csr_array(vert)
         vert_sparse[ymin:ymax + 1, xmin:xmax + 1] = vert
         plt.imshow(vert_sparse.toarray(), extent=(lons[0], lons[-1], lats[0], lats[-1]), vmin=-0.01, vmax=0.01, cmap='RdBu')
