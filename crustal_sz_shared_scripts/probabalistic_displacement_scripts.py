@@ -834,18 +834,29 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r") as branch_PPEh5:
                 # Checks that sites have been processed
                 existing_sites = branch_PPEh5.keys() & inv_sites
-                n_inv, n_existing, width, n_good = len(inv_sites), len(existing_sites), len(str(len(existing_sites))), 0
-                print(f'\t\t{n_existing}/{n_inv} sites previously tested, {0:0{width}d}/{0:0{width}d} sampled enough...', end='\r')
+                n_inv, n_existing, width, n_good = len(inv_sites), max(1, len(existing_sites)), len(str(len(existing_sites))), 0
                 # Checks that previous processing had required sampling (i.e. wasn't a testing run)
                 required_keys = frozenset(['n_samples', 'thresh_para'])
-                for ixs, site in enumerate(existing_sites, 1):
-                    site_h5 = branch_PPEh5[site]
-                    site_keys = site_h5.keys()
-                    if all(interval in site_keys and required_keys <= site_h5[interval].keys() and site_h5[interval]['n_samples'][()] >= n_samples for interval in time_interval):
-                        well_processed_sites.add(site)
-                        n_good += 1
-                    print(f'\t\t{n_existing}/{n_inv} sites previously tested, {n_good:0{width}d}/{ixs:0{width}d} sampled enough...', end='\r')
-                print('')
+                check_samples = False
+                t1 = time()
+                if check_samples:
+                    print(f'\t\t{n_existing}/{n_inv} sites previously tested, {0:0{width}d}/{0:0{width}d} sampled enough...', end='\r')
+                    print_every = max(1, n_existing // 100)  # throttle progress output to ~100 updates
+                    for ixs, site in enumerate(existing_sites, 1):
+                        site_h5 = branch_PPEh5[site]
+                        site_intervals = site_h5.keys()
+                        if all(interval in site_intervals 
+                               and required_keys <= (interval_h5 := site_h5[interval]).keys() 
+                               and interval_h5['n_samples'][()] >= n_samples 
+                               for interval in time_interval):
+                            well_processed_sites.add(site)
+                            n_good += 1
+                        if ixs % print_every == 0 or ixs == n_existing:
+                            print(f'\t\t{n_existing}/{n_inv} sites previously tested, {n_good:0{width}d}/{ixs:0{width}d} sampled enough... {(time() - t1) / ixs:.05f}s/site', end='\r')
+                    print('')
+                else:      
+                    print(f'\t\t{n_existing}/{n_inv} sites previously tested, skipping sampled enough check...')              
+                    well_processed_sites = existing_sites
 
         else:
             branch_PPEh5 = h5.File(fault_model_allbranch_PPE_dict[branch_id], "a")
