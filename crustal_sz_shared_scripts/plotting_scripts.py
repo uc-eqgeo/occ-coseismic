@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import geopandas as gpd
 from collections import deque
@@ -159,7 +160,7 @@ def constrained_triangulation_grid(
         mesh_vertices[:, 0], mesh_vertices[:, 1], mesh_triangles
     )
 
-    return triang, nearest
+    return triang, nearest, vertex_steps
 
 
 def build_fault_slot_regions(fault_lines, epsilon):
@@ -296,9 +297,37 @@ def triangulation_to_gdf(triang, z=None, crs=None):
         data["mean_z"] = mean_zs
  
     return gpd.GeoDataFrame(data, geometry=polys, crs=crs)
+
+def triangulation_points_to_gdf(triang, z=None, n_samples=None, crs=None):
+    """
+    Convert a matplotlib.tri.Triangulation's vertices into a point
+    GeoDataFrame, one row per vertex.
  
+    z         : optional (N,) array of per-vertex values -- stored as 'z'.
+    n_samples : optional int; if given, vertices with index < n_samples are
+                flagged is_sample=True (real data) vs False (a synthetic
+                boundary/anchor vertex created for fault-slot or domain
+                bounds -- see constrained_triangulation_grid).
+    crs       : optional CRS to assign to the output.
+    """
+    x = triang.x
+    y = triang.y
+    n_vertices = len(x)
  
-def save_triangulation(triang, path, z=None, crs=None, driver=None):
+    data = {
+        "vertex_id": np.arange(n_vertices),
+        "n_vertices": n_vertices,
+    }
+    if z is not None:
+        data["z"] = np.asarray(z, dtype=float)
+    if n_samples is not None:
+        data["is_sample"] = np.arange(n_vertices) < n_samples
+ 
+    points = [Point(xi, yi) for xi, yi in zip(x, y)]
+    return gpd.GeoDataFrame(data, geometry=points, crs=crs)
+
+ 
+def save_triangulation(triang, path, z=None, n_samples=None, points_path=None, crs=None, driver=None):
     """
     Write a triangulation to disk as GeoJSON or Shapefile.
  
@@ -311,14 +340,23 @@ def save_triangulation(triang, path, z=None, crs=None, driver=None):
  
     Returns the GeoDataFrame that was written (handy for further use/QC).
     """
-    gdf = triangulation_to_gdf(triang, z=z, crs=crs)
- 
     if driver is None:
         suffix = str(path).lower()
         if suffix.endswith(".geojson") or suffix.endswith(".json"):
             driver = "GeoJSON"
         elif suffix.endswith(".shp"):
             driver = "ESRI Shapefile"
- 
+
+    if points_path is None:
+        root, ext = os.path.splitext(str(path))
+        points_path = f"{root}_points{ext}"
+
+    gdf = triangulation_to_gdf(triang, z=z, crs=crs)
     gdf.to_file(path, driver=driver)
+
+    pts_gdf = triangulation_points_to_gdf(triang, z=z, n_samples=n_samples, crs=crs)
+    pts_gdf.to_file(points_path, driver=driver)
+
+
+
     return gdf

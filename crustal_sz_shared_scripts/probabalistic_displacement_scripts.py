@@ -3100,7 +3100,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             traces = gpd.read_file("../crustal/discretised_CFM/name_filtered_fault_sections.geojson")
             fault_lines = [np.c_[[trace.xy[0], trace.xy[1]]].T for trace in traces.geometry]
 
-            triang, nearest_dict = constrained_triangulation_grid(site_xy, fault_lines, bounds=(xmin, ymin, xmax, ymax), epsilon=1)
+            triang, nearest_dict, vertex_steps = constrained_triangulation_grid(site_xy, fault_lines, bounds=(xmin, ymin, xmax, ymax), epsilon=1)
 
         # Create Datasets
         da = {}
@@ -3239,7 +3239,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             ds_i.to_netcdf(nc_name)
             print(f"\tWritten {nc_name}")
             triangulation_name = f"{outfile_directory}/{model_id}{out_tag}_triangulation.shp"
-            save_triangulation(triang, triangulation_name, crs="EPSG:2193")
+            save_triangulation(triang, triangulation_name, z=vertex_steps, n_samples=site_xy.shape[0], crs="EPSG:2193")
             print(f"\tWritten {triangulation_name}")
         print('')
 
