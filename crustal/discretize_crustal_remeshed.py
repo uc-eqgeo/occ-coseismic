@@ -6,7 +6,7 @@ import meshio
 from shapely.geometry import Polygon, LineString, Point
 import pickle as pkl
 from crustal_helper_scripts import read_rake_csv, rake_from_traces, read_combination_csv
-import glob
+from pathlib import Path
 import os
 
 # This script discretises the fault meshes into patches based on the "sheet in the wind" NSHM faults.
@@ -25,9 +25,9 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 # Doesn't really matter which inversion solution because all the NSHM fault files are the same.
 NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MDEz"
 # provide model extension to match the mesh directory and name output directory
-discretised_extension = "_CFM"
+discretised_extension = "_CFM_pref"
 
-mesh_directory = f"../data/mesh2500"
+mesh_directory = f"../data/mesh2500_pref"
 # this must be the same length as the number of meshes and have some value that matches all the target fault sections
 # will need to come up with a better way to do this in the future when more faults/meshes are used
 target_NSHM_fault_names = ["Aotea|Evans Bay", "Dry River|Huangarua", "Fisherman", "Honeycomb",
@@ -58,15 +58,16 @@ else:
 # stl can be visualised by command line meshio convert, and opening in paraview
 
 # Read in all meshes from mesh directory, and add to mesh list_and mesh_name_list
-stl_list = glob.glob(f"{mesh_directory}/*.stl")
+stl_vtk_list =  [p for p in Path(mesh_directory).iterdir() if p.suffix in {".stl", ".vtk"}]
+stl_vtk_list.sort()
 mesh_list = []
 mesh_name_list = []
 target_NSHM_fault_names = []
-for mesh in stl_list:
+for mesh in stl_vtk_list:
     mesh_list.append(meshio.read(mesh))
     mesh_name = os.path.basename(mesh).split(".")[0].replace('remeshed', 'mesh')
     mesh_name_list.append(mesh_name)
-    target_NSHM_fault_names.append(mesh_name.split('_')[0].replace('-combined', 'combined'))
+    target_NSHM_fault_names.append(mesh_name.split('_')[0].replace('-combined', 'combined').replace(' ', ''))
 
 # Read in combination file
 combine_meshes = True
@@ -280,9 +281,14 @@ for i in range(len(mesh_list)):
     mesh_name = mesh_name_list[i]
 
     if np.sum(named_rectangle_centroids_gdf['mesh_name'].str.contains(target_NSHM_fault_names[i], case=False)):
-        print(f"making discretised mesh for {mesh_name} ({target_NSHM_fault_names[i]})")
+        print(f"making discretised mesh {i:0{len(str(len(mesh_list)))}d}/{len(mesh_list)} for {mesh_name} ({target_NSHM_fault_names[i]})")
+        used_mesh.append(target_NSHM_fault_names[i])
+    elif np.sum(named_rectangle_centroids_gdf['mesh_name'].str.contains(target_NSHM_fault_names[i].replace("&", "&amp;"), case=False)):  # Holdover from weird "&" handling in .stl filenames
+        print(f"making discretised mesh {i:0{len(str(len(mesh_list)))}d}/{len(mesh_list)} for {mesh_name} ({target_NSHM_fault_names[i]})")
+        target_NSHM_fault_names[i] = target_NSHM_fault_names[i].replace("&", "&amp;")
         used_mesh.append(target_NSHM_fault_names[i])
     else:
+        print(f"failed discretised mesh {i:0{len(str(len(mesh_list)))}d}/{len(mesh_list)} for {mesh_name} ({target_NSHM_fault_names[i]})")
         continue
 
     mesh_triangles_indices = mesh.cells_dict["triangle"]    # indices of vertices that make up triangles
