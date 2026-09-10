@@ -436,7 +436,7 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
                  extension1, branch_key="nan", time_interval=[100], sd=0.4, error_chunking=1000, scaling='', load_random=False,
                  thresh_lims=[0, 3], thresh_step=0.01, array_process=False, NSHM_branch=True, single_site=None,
-                 crustal_model_dir="", subduction_model_dirs="", cumu_PPEh5_file='', scenario_dir=''):
+                 crustal_model_dir="", subduction_model_dirs="", cumu_PPEh5_file='', scenario_dir='', save_errors=False):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
 
@@ -458,7 +458,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         _ = sparse_thresholds(np.arange(0, 1, 0.1), np.ones(100), np.array([0, 100]))
 
     # use random number generator to initialise monte carlo sampling
-    rng = np.random.default_rng(seed=0)  # Ensure seed is always the same. When used with load_random, ensures same result every time
+    rng = np.random.default_rng(seed=0)  # Ensure starting seed is always the same
 
     # Load the displacement/rate data for all sites
     if slip_taper is True:
@@ -467,7 +467,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         taper_extension = ""
 
     n_chunks = int(n_samples / error_chunking)
-    if n_chunks < 100:
+    if n_chunks < 100 and save_errors:
         error_chunking = int(n_samples / 100)
         print(f'Too few chunks for accurate error estimation. Decreasing error_chunking to {error_chunking}')
 
@@ -682,7 +682,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                              "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
 
             # Save the rest of the data if this is a NSHM branch
-            save_errors = False
             if NSHM_branch:
                 if save_errors:
                     ## Reverting back to the old method of subsampling the scenarios right now
@@ -843,7 +842,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
         
         if not remake_branch_PPE:
-            print('\tChecking for existing PPE at each site...')
+            print(f'\tChecking for existing PPE from {n_samples} scenarios at each site...')
             well_processed_sites = check_meta_h5_samples(fault_branch_meta_h5, fault_model_allbranch_PPE_dict[branch_id], inv_sites, n_samples, time_interval)
         else:
             well_processed_sites = set()
