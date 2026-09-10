@@ -5,7 +5,7 @@ try:
     from rasterio.transform import Affine
 except:
     os.system(f"echo Running on NESI. Some functions wont work....")
-from helper_scripts import make_qualitative_colormap, get_probability_color, percentile, dict_to_hdf5, hdf5_to_dict, write_sites_to_geojson
+from helper_scripts import make_qualitative_colormap, get_probability_color, percentile, dict_to_hdf5, hdf5_to_dict, write_sites_to_geojson, check_meta_h5_samples
 import xarray as xr
 import h5py as h5
 from glob import glob
@@ -435,7 +435,7 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
 
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
                  extension1, branch_key="nan", time_interval=[100], sd=0.4, error_chunking=1000, scaling='', load_random=False,
-                 thresh_lims=[0, 3], thresh_step=0.01, array_process=False, NSHM_branch=True,
+                 thresh_lims=[0, 3], thresh_step=0.01, array_process=False, NSHM_branch=True, single_site=None,
                  crustal_model_dir="", subduction_model_dirs="", cumu_PPEh5_file='', scenario_dir=''):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
@@ -537,6 +537,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         begin = time()
         lap = time()
 
+        site_dict = {}
+
         if benchmarking:
             print(f"Site {site_of_interest} ({i}/{len(site_ids)})")
 
@@ -545,7 +547,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             if os.path.exists(cumu_PPEh5_file):
                 os.remove(cumu_PPEh5_file)
         else:
-            if extension1 != "" and scaling == "":
+            if single_site:
+                cumu_PPEh5_file = f"{single_site}/{site_of_interest}.h5"
+            elif extension1 != "" and scaling == "":
                 cumu_PPEh5_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.h5"
             elif scaling != "":
                 cumu_PPEh5_file = f"../{model_version_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.h5"
@@ -558,7 +562,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             site_dict_i = branch_site_disp_dict[site_of_interest]
             site_dict_i["scaled_rates"] = branch_h5["scaled_rates"][:]
 
-        site_PPE_dict[site_of_interest] = {}
         for investigation_time in time_interval:
             if not NSHM_branch:
                 cumulative_disp_scenarios = np.zeros(n_samples)
@@ -675,8 +678,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             exceedance_probs_down = n_exceedances_down / n_samples
 
             # Minimum data needed for weighted_mean_PPE (done to reduce required storage, and if errors can be recalculated later if needed)
-            site_PPE_dict[site_of_interest][investigation_time] = {"exceedance_probs_up": exceedance_probs_up[exceedance_probs_up != 0],
-                                                                   "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
+            site_dict[investigation_time] = {"exceedance_probs_up": exceedance_probs_up[exceedance_probs_up != 0],
+                                             "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
 
             # Save the rest of the data if this is a NSHM branch
             save_errors = False
@@ -715,9 +718,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                     error_up = np.percentile(exceedance_errs_up, sigma_lims, axis=1)
                     error_down = np.percentile(exceedance_errs_down, sigma_lims, axis=1)
 
-                    site_PPE_dict[site_of_interest][investigation_time].update({"error_up": error_up[:, error_up.sum(axis=0) != 0],
-                                                                                "error_down": error_down[:, error_down.sum(axis=0) != 0],
-                                                                                "sigma_lims": sigma_lims})
+                    site_dict[investigation_time].update({"error_up": error_up[:, error_up.sum(axis=0) != 0],
+                                                          "error_down": error_down[:, error_down.sum(axis=0) != 0],
+                                                          "sigma_lims": sigma_lims})
 
                 ## Convert data to ints to reduce memory usage
                 min_disp = 1e-3  # Set min disp to save as (1 mm)
@@ -727,22 +730,31 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 scenario_displacements = {'up': {'displacements': cumulative_disp_scenarios[0, 0, up_slip_scenarios], 'scenario_ix': up_slip_scenarios},
                                           'down': {'displacements': cumulative_disp_scenarios[1, 0, down_slip_scenarios], 'scenario_ix': down_slip_scenarios}}
 
-                site_PPE_dict[site_of_interest][investigation_time].update({"scenario_displacements": scenario_displacements,
-                                                                            "standard_deviation": sd,
-                                                                            "n_samples": n_samples,
-                                                                            "thresh_para": np.hstack([thresh_lims, thresh_step]),
-                                                                            "disp_scaling": min_disp})
-        site_PPE_dict[site_of_interest].update({"site_coords": site_dict_i["site_coords"]})
-        # Every 100th site, write the data to the h5 file
-        if i % 100 == 99 or array_process:
+                site_dict[investigation_time].update({"scenario_displacements": scenario_displacements,
+                                                      "standard_deviation": sd,
+                                                      "n_samples": n_samples,
+                                                      "thresh_para": np.hstack([thresh_lims, thresh_step]),
+                                                      "disp_scaling": min_disp})
+        if single_site:
             lap = time()
-            if not benchmarking:
-                printProgressBar(i + 1, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix=f'Write Chunk {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length=50)
-            with h5.File(cumu_PPEh5_file, "a") as PPEh5:
-                dict_to_hdf5(PPEh5, site_PPE_dict, replace_groups=True)
-            site_PPE_dict = {}
+            site_dict["site_coords"] = site_dict_i["site_coords"]
+            with h5.File(cumu_PPEh5_file, "w", libver='latest') as PPEh5:
+                dict_to_hdf5(PPEh5, site_dict, replace_groups=True)
             if benchmarking:
-                print(f"Sites written to h5 : {time() - lap:.5f} s")
+                print(f"Site written to h5 : {time() - lap:.5f} s")
+        else:
+            site_PPE_dict[site_of_interest].update({"site_coords": site_dict_i["site_coords"]})
+            # Every 100th site, write the data to the h5 file
+            if i % 100 == 99 or array_process:
+                lap = time()
+                if not benchmarking:
+                    elapsed = time_elasped(time(), start)
+                    printProgressBar(i + 1, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix=f'Write Chunk {elapsed} ({(time()-start) / (i + 1):.2f}s/site)', length=50)
+                with h5.File(cumu_PPEh5_file, "a") as PPEh5:
+                    dict_to_hdf5(PPEh5, site_PPE_dict, replace_groups=True)
+                site_PPE_dict = {}
+                if benchmarking:
+                    print(f"Sites written to h5 : {time() - lap:.5f} s")
 
         elapsed = time_elasped(time(), start)
         if benchmarking:
@@ -823,45 +835,18 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 branch_site_disp_dict.create_dataset("scaled_rates", data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
                 site_set = set(branch_site_disp_dict.keys()) - {'rates', 'scaled_rates'}
 
-        branch_cumu_PPE_dict_file = f"../{model_version_results_directory}/{extension1}/{branch_id}{taper_extension}_cumu_PPE.h5"
-        fault_model_allbranch_PPE_dict[branch_id] = branch_cumu_PPE_dict_file
+        fault_model_allbranch_PPE_dict[branch_id] = f"../{model_version_results_directory}/{extension1}/{branch_id}{taper_extension}_sites"
+        fault_branch_meta_h5 = f"{fault_model_allbranch_PPE_dict[branch_id][:-6]}_meta.h5"
+        os.makedirs(fault_model_allbranch_PPE_dict[branch_id], exist_ok=True)
 
         # Reduce site set to only those that have not been processed or not processed to the required number of samples
         thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
-        well_processed_sites = set()
-        if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_branch_PPE:
+        
+        if not remake_branch_PPE:
             print('\tChecking for existing PPE at each site...')
-            with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r") as branch_PPEh5:
-                # Checks that sites have been processed
-                existing_sites = branch_PPEh5.keys() & inv_sites
-                n_inv, n_existing, width, n_good = len(inv_sites), max(1, len(existing_sites)), len(str(len(existing_sites))), 0
-                # Checks that previous processing had required sampling (i.e. wasn't a testing run)
-                required_keys = frozenset(['n_samples', 'thresh_para'])
-                check_samples = False
-                t1 = time()
-                if check_samples:
-                    print(f'\t\t{n_existing}/{n_inv} sites previously tested, {0:0{width}d}/{0:0{width}d} sampled enough...', end='\r')
-                    print_every = max(1, n_existing // 100)  # throttle progress output to ~100 updates
-                    for ixs, site in enumerate(existing_sites, 1):
-                        site_h5 = branch_PPEh5[site]
-                        site_intervals = site_h5.keys()
-                        if all(interval in site_intervals 
-                               and required_keys <= (interval_h5 := site_h5[interval]).keys() 
-                               and interval_h5['n_samples'][()] >= n_samples 
-                               for interval in time_interval):
-                            well_processed_sites.add(site)
-                            n_good += 1
-                        if ixs % print_every == 0 or ixs == n_existing:
-                            print(f'\t\t{n_existing}/{n_inv} sites previously tested, {n_good:0{width}d}/{ixs:0{width}d} sampled enough... {(time() - t1) / ixs:.05f}s/site', end='\r')
-                    print('')
-                else:      
-                    print(f'\t\t{n_existing}/{n_inv} sites previously tested, skipping sampled enough check...')              
-                    well_processed_sites = existing_sites
-
+            well_processed_sites = check_meta_h5_samples(fault_branch_meta_h5, fault_model_allbranch_PPE_dict[branch_id], inv_sites, n_samples, time_interval)
         else:
-            branch_PPEh5 = h5.File(fault_model_allbranch_PPE_dict[branch_id], "a")
-            branch_PPEh5.close()
-            remake_branch_PPE = True
+            well_processed_sites = set()
 
         prep_list = list(inv_sites - well_processed_sites)
         n_jobs += len(prep_list)
@@ -908,14 +893,19 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                              model_version_results_directory=model_version_results_directory,
                              time_interval=time_interval, n_samples=n_samples, extension1="",
                              thresh_lims=thresh_lims, thresh_step=thresh_step, cumu_PPEh5_file=fault_model_allbranch_PPE_dict[branch_id],
-                             scenario_dir=scenario_dir)
+                             scenario_dir=scenario_dir, single_site=fault_model_allbranch_PPE_dict[branch_id])
 
         if not all([nesi, nesi_step == 'combine', sbatch]):
-            if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]):
-                with h5.File(fault_model_allbranch_PPE_dict[branch_id], "r+") as branch_PPEh5:
-                    if 'branch_weight' in branch_PPEh5.keys():
-                        del branch_PPEh5['branch_weight']
-                    branch_PPEh5.create_dataset('branch_weight', data=branch_weight_list[-1])
+            completed_sites = inv_sites
+            with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
+                if 'branch_weight' in branch_meta_PPEh5.keys():
+                    del branch_meta_PPEh5['branch_weight']
+                branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight_list[-1])
+                
+                if str(n_samples) in branch_meta_PPEh5:
+                    completed_sites |= {id.decode() for id in branch_meta_PPEh5[str(n_samples)][:]}
+                    del branch_meta_PPEh5[str(n_samples)]
+                branch_meta_PPEh5.create_dataset(str(n_samples), data=list(completed_sites))
 
     n_sites = len(prep_list)
     if nesi and nesi_step == 'prep':
