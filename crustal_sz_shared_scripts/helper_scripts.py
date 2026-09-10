@@ -19,6 +19,7 @@ finally:
     from time import time
     import h5py as h5
     from scipy.sparse import csr_matrix
+    from glob import glob
 
 def dict_to_hdf5(hdf5_group, dictionary, compression=None, compression_opts=None, replace_groups=False):
     for key, value in dictionary.items():
@@ -58,6 +59,86 @@ def get_probability_color(exceed_type):
 
     return color
 
+def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, time_interval):
+    """Function that will check that sites have been processed with the required amount of samples, and removes sites that have
+    beed deleted manually"""
+
+    all_existing_sites = {os.path.basename(site_file)[:-3] for site_file in glob(f"{site_dir}/*h5")} # All sites that have a file associated with it
+    existing_sites = all_existing_sites & inv_sites  # Sites for this run that have a file associated with it
+    individual_check = existing_sites
+
+    well_processed_sites, reprocess_sites, logged_sites = set(), set(), set()
+    n_inv, n_existing, width, n_good = len(inv_sites), len(existing_sites), len(str(len(existing_sites))), 0
+    width = len(str(n_inv))
+
+    if os.path.exists(fault_branch_meta_h5):
+        with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
+            processed_samples = [int(key) for key in branch_meta_PPEh5.keys() if key not in ['branch_weight']]
+            processed_samples.sort()
+            for sample in processed_samples[::-1]:
+                relog_sample = False
+                # First stage removes any log of sites from the meta file that may have been manually deleted from site dir
+                # Always runs, regardless of any existing sites
+                sites_processed = {site.decode() for site in branch_meta_PPEh5[str(sample)][:]}
+                removed_sites = sites_processed - all_existing_sites
+                if len(removed_sites) > 0:
+                    # Remove sites from log that have been deleted previously
+                    sites_processed -= removed_sites
+                    relog_sample = True
+                if len(sites_processed & logged_sites) > 0:
+                    # Ensure that site appears in the highest bracket that it has been processed in
+                    sites_processed -= logged_sites
+                    relog_sample = True
+                if relog_sample:
+                    del branch_meta_PPEh5[str(sample)]
+                    branch_meta_PPEh5.create_dataset(str(sample), data=list(sites_processed))
+                logged_sites |= sites_processed
+
+                if n_existing > 0:
+                    # Second stage to check if any requested existing sites have been processed enough
+                    if sample >= n_samples:
+                        well_processed_sites |= existing_sites & sites_processed
+                    else:
+                        reprocess_sites |= reprocess_sites & sites_processed
+                    n_good = len(well_processed_sites)
+                    print(f'\t\t{n_existing:0{width}d}/{n_inv} sites previously processed..., {n_good:0{width}d}/{n_good:0{width}d} sampled enough...', end='\r')
+                    if len(well_processed_sites) == n_inv:
+                        break
+
+    if n_existing == 0:
+        print(f'\t\t0/{n_inv} sites previously processed...')
+        return well_processed_sites
+
+    # Identify sites that exist, but for some reason aren't in meta file (e.g. meta was deleted) so need be be checked individually
+    individual_check = existing_sites - well_processed_sites - reprocess_sites
+    
+    if len(individual_check) > 0:
+        # Checks for sites that exist but there are no log for
+        print_every = max(1, max(1, n_existing) // 100)  # throttle progress output to ~100 updates
+        required_keys = frozenset(['n_samples', 'thresh_para'])
+        check_dict = {}
+        for ixs, site in enumerate(individual_check, n_good + 1):
+            with h5.File(f"{site_dir}/{site}.h5") as site_h5:
+                site_intervals = site_h5.keys()
+                if all(interval in site_intervals 
+                        and required_keys <= (interval_h5 := site_h5[interval]).keys() 
+                        and interval_h5['n_samples'][()] >= n_samples 
+                        for interval in time_interval):
+                    well_processed_sites.add(site)
+                    n_good += 1
+                    check_dict[str(interval_h5['n_samples'][()])] = check_dict.get(str(interval_h5['n_samples'][()]), []) + [site]
+            if ixs % print_every == 0 or ixs == n_existing:
+                print(f'\t\t{n_existing}/{n_inv} sites previously processed, {n_good:0{width}d}/{ixs:0{width}d} sampled enough...', end='\r')
+        # Add checked files to metadata file, ensuring that they are placed into the top processing bracket
+        with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
+            for k, v in check_dict.items():
+                if k in branch_meta_PPEh5:
+                    v += [site.decode() for site in branch_meta_PPEh5[k][:]]
+                    del branch_meta_PPEh5[k]
+                branch_meta_PPEh5.create_dataset(k, data=v)
+        print('')
+
+    return well_processed_sites
 
 def make_qualitative_colormap(name, length):
     from collections import namedtuple
