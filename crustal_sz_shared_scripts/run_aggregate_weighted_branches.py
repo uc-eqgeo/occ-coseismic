@@ -157,7 +157,7 @@ if single_branch is not None:
 time_interval = [str(int(interval)) for interval in time_interval]
 ######################################################
 
-def make_branch_weight_dict(branch_weight_file_path, sheet_name):
+def make_branch_weight_dict(branch_weight_file_path, sheet_name, rate_scaling=True):
     """
     This function reads in the excel file with the branch weights and returns a dictionary with the branch weights
     and other information (scaling values, solution file names, etc.).
@@ -187,6 +187,8 @@ def make_branch_weight_dict(branch_weight_file_path, sheet_name):
         file_suffix = branch_weights["PCDHM_file_suffix"][row]
         total_weight_RN = branch_weights["total_weight_RN"][row]
 
+        if not rate_scaling and S_val != 1:
+            continue
         # make a unique ID for each branch.
         # The NSHM solution files do not include the rate scaling factor (S) (i.e., they are all S=1)
         # These lines use the same solution file for 3 different S values
@@ -269,7 +271,7 @@ if 'py' in fault_type:
 branch_weight_dict_list = []
 for sheet in sheet_list:
     branch_weight_dict_list.append(make_branch_weight_dict(branch_weight_file_path=branch_weight_file_path,
-                                                            sheet_name=sheet))
+                                                            sheet_name=sheet, rate_scaling=rate_scaling))
 
 # designate which branch weight dictionary to use based on the fault type
 if not paired_crustal_sz:
