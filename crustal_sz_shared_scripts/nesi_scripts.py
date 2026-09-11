@@ -38,7 +38,7 @@ def nesiprint(string, end='\n'):
         print(string, end=end)
 
 
-def prep_nesi_site_list(model_version_results_directory, sites_of_interest, extension1, S=""):
+def prep_nesi_site_list(model_version_results_directory, branch_id, sites_of_interest, extension1, S=""):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates
 
@@ -55,7 +55,7 @@ def prep_nesi_site_list(model_version_results_directory, sites_of_interest, exte
 
     branchdir = f"{model_version_results_directory}/{extension1}"
 
-    os.makedirs(f"../{branchdir}/site_cumu_exceed{S}", exist_ok=True)
+    os.makedirs(f"../{branchdir}/{branch_id}_sites", exist_ok=True)
 
     site_file = f"../{model_version_results_directory}/site_name_list.txt"
 
@@ -65,7 +65,7 @@ def prep_nesi_site_list(model_version_results_directory, sites_of_interest, exte
     # Append site information for this branch to the main list
     with open(site_file, "a") as f:
         for site in sites_of_interest:
-            f.write(f"{str(site).replace(' ','-/-')} {branchdir} {S}\n")
+            f.write(f"{str(site).replace(' ','-/-')} {branch_id} {branchdir} {S}\n")
 
 
 def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks,
@@ -417,7 +417,7 @@ if __name__ == "__main__":
     if args.slip_taper:
         taper = "_tapered"
     else:
-        taper = "_uniform"
+        taper = ""
 
     investigation_time = [str(interval) for interval in args.time_interval.split('/')]
     if args.nesi_job == 'site_PPE':
@@ -449,16 +449,17 @@ if __name__ == "__main__":
             raise Exception(f"Task {args.task_number} has no sites to process")
 
         sites = np.array([site_info.split(" ")[0].replace('-/-', ' ') for site_info in task_sites])
-        branch_directories = np.array([site_info.split(" ")[1] for site_info in task_sites])
-        scalings = np.array([site_info.split(" ")[2] for site_info in task_sites])
-        site_df = pd.DataFrame(np.vstack([sites, branch_directories, scalings]).T, columns=['Site', 'Branch Directory', 'Scaling'])
+        branch_ids = np.array([site_info.split(" ")[1].replace('-/-', ' ') for site_info in task_sites])
+        branch_directories = np.array([site_info.split(" ")[2] for site_info in task_sites])
+        scalings = np.array([site_info.split(" ")[3] for site_info in task_sites])
+        site_df = pd.DataFrame(np.vstack([sites, branch_ids, branch_directories, scalings]).T, columns=['Site', 'BranchId', 'Branch Directory', 'Scaling'])
 
         # Group all of these based on scaling and branch
         site_groups = site_df.groupby(['Branch Directory', 'Scaling'])
 
-        for name, group in site_groups:
+        for name, group in site_df.groupby(['Branch Directory', 'BranchId', 'Scaling']):
             begin = time()
-            branch_results_directory, scaling = name
+            branch_results_directory, branchId, scaling = name
 
             if scaling == '_' or scaling == '_\r':
                 scaling = ''
@@ -472,7 +473,7 @@ if __name__ == "__main__":
                     if isinstance([key for key in branch_h5.keys()][0], int):
                         if '_' not in sites_of_interest[0]:
                             sites_of_interest = [int(site) for site in sites_of_interest]
-                branch_unique_ids = 'nan'
+                branch_unique_ids = branchId
                 crustal_model_dir = ''
                 subduction_model_dir = ''
             else:
@@ -532,13 +533,30 @@ if __name__ == "__main__":
                 if not args.NSHM_branch:
                     branch_unique_ids = pair_site_disp_dict[site]['branch_key']
                 lap = time()
-                if os.path.exists(f"../{branch_results_directory}/site_cumu_exceed{scaling}/{site}.pkl") and not args.overwrite:
-                    print(f"{ix} {extension1} {site}.pkl already exists")
+                if os.path.exists(f"../{branch_results_directory}/{branchId}_sites/{site}.h5") and not args.overwrite:
+                    print(f"{ix} {extension1} {site}.h5 already exists")
                     list_of_interest.remove(site)
             get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, list_of_interest, n_samples,
                         extension1, branch_key=branch_unique_ids, time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True,
-                        plot_maximum_displacement=False, array_process=True, NSHM_branch=args.NSHM_branch, crustal_model_dir=crustal_model_dir, subduction_model_dirs=subduction_model_dir,
-                        thresh_lims=[float(val) for val in args.thresh_lims.split('/')], thresh_step=float(args.thresh_step))
+                        NSHM_branch=args.NSHM_branch, crustal_model_dir=crustal_model_dir, subduction_model_dirs=subduction_model_dir,
+                        thresh_lims=[float(val) for val in args.thresh_lims.split('/')], thresh_step=float(args.thresh_step), single_site=f"./{branch_results_directory}/{branchId}_sites")
+
+            completed_sites = set(list_of_interest)
+            # This is a hack to get around multiple tasks trying to open the file at once, so it appearing like it doesn't exist
+            find_file_count = 0
+            attempt_limit = 10
+            while find_file_count < attempt_limit:
+                try:
+                    with h5.File(f"./{branch_results_directory}/{branchId}_meta.h5", "a") as branch_meta_PPEh5:                
+                        if str(n_samples) in branch_meta_PPEh5:
+                            completed_sites |= {id.decode() for id in branch_meta_PPEh5[str(n_samples)][:]}
+                            del branch_meta_PPEh5[str(n_samples)]
+                        branch_meta_PPEh5.create_dataset(str(n_samples), data=list(completed_sites))
+                        find_file_count = attempt_limit + 1
+                except (FileNotFoundError, PermissionError) as e:
+                    sleep(1 + np.random.rand())
+                    find_file_count += 1
+                    nesiprint(f"Attempt {find_file_count} to find {args.site_file}")
 
             nesiprint(f"{extension1} complete in : {time() - begin:.2f} seconds\n")
 

@@ -59,7 +59,7 @@ def get_probability_color(exceed_type):
 
     return color
 
-def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, time_interval):
+def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, time_interval, branch_weight):
     """Function that will check that sites have been processed with the required amount of samples, and removes sites that have
     beed deleted manually"""
 
@@ -73,6 +73,8 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
 
     if os.path.exists(fault_branch_meta_h5):
         with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
+            if 'branch_weight' not in branch_meta_PPEh5:
+                branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
             processed_samples = [int(key) for key in branch_meta_PPEh5.keys() if key not in ['branch_weight']]
             processed_samples.sort()
             for sample in processed_samples[::-1]:

@@ -410,7 +410,7 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
                 rates = np.array(branch_site_disp_dict["scaled_rates"])
         n_ruptures = rates.shape[0]   
 
-        print(f'\tPreparing {n_samples} Poissonian Scenarios for {n_ruptures} ruptures...')
+        print(f'\tPreparing {n_samples:,d} Poissonian Scenarios for {n_ruptures} ruptures...')
         process_intervals = time_interval.copy()
         for interval in time_interval:
             if os.path.exists(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios.pkl"):
@@ -435,7 +435,7 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
 
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
                  extension1, branch_key="nan", time_interval=[100], sd=0.4, error_chunking=1000, scaling='', load_random=False,
-                 thresh_lims=[0, 3], thresh_step=0.01, array_process=False, NSHM_branch=True, single_site=None,
+                 thresh_lims=[0, 3], thresh_step=0.01, NSHM_branch=True, single_site=None,
                  crustal_model_dir="", subduction_model_dirs="", cumu_PPEh5_file='', scenario_dir='', save_errors=False):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
@@ -497,11 +497,6 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         branch_scaling = branch_key.split('_')[3]
 
     scenario_dir = f"{procdir}/{model_version_results_directory}/{extension1}" if scenario_dir == '' else scenario_dir
-    if array_process:
-        scenario_dir = os.path.join(scenario_dir, f"site_cumu_exceed{scaling}")
-    # for interval in time_interval:
-    #     if not os.path.exists(f"{scenario_dir}/{branch_scaling}_{interval}_yr_scenarios.pkl"):
-    #         load_random = False
 
     all_scenarios = {}
     # Load array of random samples rather than regenerating them
@@ -523,9 +518,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     if not benchmarking:
         printProgressBar(0, len(site_ids), prefix=f'\tProcessing {len(site_ids)} Sites:', suffix='Processed   00:00:00 (00:00s/site)', length=50)
 
-    if array_process:
-        os.makedirs(f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}", exist_ok=True)
-    else:
+    if not single_site:
         if extension1 != "" and scaling == "":
             cumu_PPEh5_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.h5"
         elif scaling != "":
@@ -542,17 +535,12 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         if benchmarking:
             print(f"Site {site_of_interest} ({i}/{len(site_ids)})")
 
-        if array_process:
-            cumu_PPEh5_file = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed{scaling}/{site_of_interest}.h5"
-            if os.path.exists(cumu_PPEh5_file):
-                os.remove(cumu_PPEh5_file)
-        else:
-            if single_site:
-                cumu_PPEh5_file = f"{single_site}/{site_of_interest}.h5"
-            elif extension1 != "" and scaling == "":
-                cumu_PPEh5_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.h5"
-            elif scaling != "":
-                cumu_PPEh5_file = f"../{model_version_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.h5"
+        if single_site:
+            cumu_PPEh5_file = f"{single_site}/{site_of_interest}.h5"
+        elif extension1 != "" and scaling == "":
+            cumu_PPEh5_file = f"../{model_version_results_directory}/{extension1}/cumu_exceed_prob_{extension1}{taper_extension}.h5"
+        elif scaling != "":
+            cumu_PPEh5_file = f"../{model_version_results_directory}/site_cumu_exceed{scaling}/{site_of_interest}.h5"
 
         if isinstance(branch_site_disp_dict, str):
             with h5.File(branch_site_disp_dict, "r") as branch_h5:
@@ -745,7 +733,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         else:
             site_PPE_dict[site_of_interest].update({"site_coords": site_dict_i["site_coords"]})
             # Every 100th site, write the data to the h5 file
-            if i % 100 == 99 or array_process:
+            if i % 100 == 99:
                 lap = time()
                 if not benchmarking:
                     elapsed = time_elasped(time(), start)
@@ -862,13 +850,17 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         if nesi:
             if nesi_step == 'prep':
                 if load_random:
-                    scenario_dir = f"../{model_version_results_directory}/{extension1}/site_cumu_exceed_S{str(rate_scaling_factor).replace('.', '')}"
+                    scenario_dir = os.path.dirname(branch_site_disp_dict_file)
                     prepare_scenario_arrays(branch_site_disp_dict_file, scenario_dir, time_interval, n_samples, rate_scaling_factor)
 
                 print(f"\tPrepping for NESI....")
-                prep_nesi_site_list(model_version_results_directory, prep_list, extension1, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
+                if not os.path.exists(fault_branch_meta_h5):
+                    with h5.File(fault_branch_meta_h5, "w") as branch_meta_PPEh5:
+                        branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
+                prep_nesi_site_list(model_version_results_directory, branch_id, prep_list, extension1, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
                 continue
             elif nesi_step == 'combine':
+                #+ Use of single site makes this unnessecary
                 if sbatch:
                     print(f"\tPreparing NESI combination for {fault_model_allbranch_PPE_dict[branch_id]}....")
                     prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
@@ -923,6 +915,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
 
     elif nesi and nesi_step == 'combine' and sbatch:
+        #+ Use of single site makes this unnessecary
         tasks_per_array = np.ceil(combine_branches / n_array_tasks)
         min_branches_per_array = 1
         if tasks_per_array < min_branches_per_array:
