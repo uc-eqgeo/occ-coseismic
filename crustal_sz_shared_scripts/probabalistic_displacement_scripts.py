@@ -177,7 +177,7 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
         # multiply the rates by the rate scaling factor
         rate_scaling_factor = branch_weight_dict[branch_id]["S"]
         branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}{taper_extension}.h5"
-        branch_cumu_file = f"../{model_version_results_directory}/{extension1}/{branch_id}_cumu_PPE.h5"
+        branch_cumu_file = f"../{model_version_results_directory}/{extension1}/{branch_id}_meta.h5"
         if os.path.exists(branch_site_disp_dict_file):
             try:  # check in case h5 is corrupted
                 branch_h5 = h5.File(branch_site_disp_dict_file, "a")
@@ -195,7 +195,7 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
 
         all_branches_site_disp_dict[branch_id] = {"site_disp_dict":branch_site_disp_dict_file,
                                                 "branch_weight":branch_weight_dict[branch_id]["total_weight_RN"],
-                                                "cumu_file":branch_cumu_file}
+                                                "cumu_meta_file":branch_cumu_file}
 
     return all_branches_site_disp_dict
 
@@ -1251,8 +1251,11 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     # Check that all sites exists as a crustal site. Subduction sites are optional
     crustal_processed_site_names = set(site_names)
     for branch_id in list(crustal_branch_weight_dict.keys()):
-        with h5.File(all_crustal_branches_site_disp_dict[branch_id]["cumu_file"]) as crust_h5:
-            crustal_processed_site_names = crustal_processed_site_names & set([site for site in crust_h5.keys() if "branch_weight" not in site])
+        with h5.File(all_crustal_branches_site_disp_dict[branch_id]["cumu_meta_file"]) as crust_h5:
+            samples = [int(key) for key in crust_h5.keys() if key != 'branch_weight' and int(key) >= n_samples]
+            samples.sort()
+            for sample in samples[::-1]:
+                crustal_processed_site_names = crustal_processed_site_names & {site.decode() for site in crust_h5[str(sample)][:]}
 
     n_requested = len(site_names)
     site_names = list(set(site_names) & set(crustal_processed_site_names))
@@ -1271,8 +1274,11 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                                                                 sz_model_version_results_directory_list[ix])
         sz_processed_sites = set(site_names)
         for branch_id in list(sz_branch_weight_dict.keys()):
-            with h5.File(all_single_sz_branches_site_disp_dict[branch_id]["cumu_file"], 'r') as sz_h5:
-                sz_processed_sites = sz_processed_sites & set([site for site in sz_h5.keys() if "branch_weight" not in site])
+            with h5.File(all_single_sz_branches_site_disp_dict[branch_id]["cumu_meta_file"]) as crust_h5:
+                samples = [int(key) for key in crust_h5.keys() if key != 'branch_weight' and int(key) >= n_samples]
+                samples.sort()
+                for sample in samples[::-1]:
+                    sz_processed_sites = sz_processed_sites & {site.decode() for site in crust_h5[str(sample)][:]}
         fault_flag_array[:, ix + 1] = np.array([True if site in sz_processed_sites else False for site in site_names])
 
         all_sz_branches_site_disp_dict = all_sz_branches_site_disp_dict | all_single_sz_branches_site_disp_dict
@@ -1629,14 +1635,15 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                     fault_dir = next((sz_dir for sz_dir in sz_directory_list if f'/{sz_name}' in sz_dir))
 
                 branch_tag = branch.split(f'_{fault_type}_')[-1]
-                NSHM_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_cumu_PPE.h5"
+                NSHM_site_file = f"../{fault_dir}/{gf_name}_{fault_type}_{branch_tag}/{branch}_sites/{site}.h5"
 
-                # Biggest issue here is that the first time data is accessed it is slow, and incredibly quick the second time
-                # Future improvement is to find a way to access and cache the displacement data first, so that the next access
-                # can be done quickly. Just loading to _ only works whilst the file is open
-                with h5.File(NSHM_file, 'r') as NSHM_h5:
-                    if site in NSHM_h5:
-                        interval_grp = NSHM_h5[site][interval]
+                #+ Biggest issue here is that the first time data is accessed it is slow, and incredibly quick the second time
+                ## Future improvement is to find a way to access and cache the displacement data first, so that the next access
+                ## can be done quickly. Just loading to _ only works whilst the file is open. Current set up may be optimal as 
+                ## each dataset is only ever accessed once so no need to access twice
+                if os.path.exists(NSHM_site_file):
+                    with h5.File(NSHM_site_file, 'r', driver='core', backing_store=False) as site_h5:
+                        interval_grp = site_h5[interval]
                         disp_scaling = interval_grp['disp_scaling'][()]
 
                         row_cols = [np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)]
