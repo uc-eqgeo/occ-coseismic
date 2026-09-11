@@ -91,7 +91,8 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
                     relog_sample = True
                 if relog_sample:
                     del branch_meta_PPEh5[str(sample)]
-                    branch_meta_PPEh5.create_dataset(str(sample), data=list(sites_processed))
+                    if len(sites_processed) > 0:
+                        branch_meta_PPEh5.create_dataset(str(sample), data=list(sites_processed))
                 logged_sites |= sites_processed
 
                 if n_existing > 0:
@@ -102,8 +103,6 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
                         reprocess_sites |= reprocess_sites & sites_processed
                     n_good = len(well_processed_sites)
                     print(f'\t\t{n_existing:0{width}d}/{n_inv} sites previously processed..., {n_good:0{width}d}/{n_good:0{width}d} sampled enough...', end='\r')
-                    if len(well_processed_sites) == n_inv:
-                        break
 
     if n_existing == 0:
         print(f'\t\t0/{n_inv} sites previously processed...')
@@ -118,17 +117,20 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
         required_keys = frozenset(['n_samples', 'thresh_para'])
         check_dict = {}
         for ixs, site in enumerate(individual_check, n_good + 1):
-            with h5.File(f"{site_dir}/{site}.h5") as site_h5:
-                site_intervals = site_h5.keys()
-                if all(interval in site_intervals 
-                        and required_keys <= (interval_h5 := site_h5[interval]).keys() 
-                        and interval_h5['n_samples'][()] >= n_samples 
-                        for interval in time_interval):
-                    well_processed_sites.add(site)
-                    n_good += 1
-                    check_dict[str(interval_h5['n_samples'][()])] = check_dict.get(str(interval_h5['n_samples'][()]), []) + [site]
-            if ixs % print_every == 0 or ixs == n_existing:
-                print(f'\t\t{n_existing}/{n_inv} sites previously processed, {n_good:0{width}d}/{ixs:0{width}d} sampled enough...', end='\r')
+            try:
+                with h5.File(f"{site_dir}/{site}.h5") as site_h5:
+                    site_intervals = site_h5.keys()
+                    if all(interval in site_intervals 
+                            and required_keys <= (interval_h5 := site_h5[interval]).keys() 
+                            and interval_h5['n_samples'][()] >= n_samples 
+                            for interval in time_interval):
+                        well_processed_sites.add(site)
+                        n_good += 1
+                        check_dict[str(interval_h5['n_samples'][()])] = check_dict.get(str(interval_h5['n_samples'][()]), []) + [site]
+                if ixs % print_every == 0 or ixs == n_existing:
+                    print(f'\t\t{n_existing}/{n_inv} sites previously processed, {n_good:0{width}d}/{ixs:0{width}d} sampled enough...', end='\r')
+            except OSError:
+                os.remove(f"{site_dir}/{site}.h5")
         # Add checked files to metadata file, ensuring that they are placed into the top processing bracket
         with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
             for k, v in check_dict.items():
