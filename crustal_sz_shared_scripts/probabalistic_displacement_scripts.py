@@ -654,8 +654,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
             # Find indexes of scenarios where slip occurred
             dtype = np.int32 if n_samples < np.iinfo(np.int32).max else np.int64  # Saves as int32 if less than 2,147,483,647 samples
-            up_slip_scenarios = np.where(cumulative_disp_scenarios[0, 0, :] != 0)[0].astype(dtype)
-            down_slip_scenarios = np.where(cumulative_disp_scenarios[1, 0, :] != 0)[0].astype(dtype)
+            up_slip_scenarios = np.where(cumulative_disp_scenarios[0, 0, :] >= thresh_step / 2)[0].astype(dtype)
+            down_slip_scenarios = np.where(cumulative_disp_scenarios[1, 0, :] <= -thresh_step / 2)[0].astype(dtype)
             cumulative_data = np.hstack([cumulative_up_scenarios[0, up_slip_scenarios], cumulative_down_scenarios[0, down_slip_scenarios]])            
 
             if cumulative_data.shape[0] < 2e6:  # Anecdatally, with less than 2 million scenarios, the sparse method is faster
@@ -723,8 +723,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
                 ## Convert data to ints to reduce memory usage
                 min_disp = 1e-3  # Set min disp to save as (1 mm)
-                min_disp = min_disp if min_disp < thresh_step else thresh_step
-                cumulative_disp_scenarios = np.floor(cumulative_disp_scenarios / min_disp).astype(np.int32)  # Convert to np.int to save space
+                min_disp = min_disp if min_disp <= 0.2 * thresh_step else 0.2 * thresh_step
+                cumulative_disp_scenarios[0, 0, :] = np.floor(cumulative_disp_scenarios[0, 0, :] / min_disp).astype(np.int32)  # Convert to np.int to save space
+                cumulative_disp_scenarios[1, 0, :] = np.ceil(cumulative_disp_scenarios[1, 0, :] / min_disp).astype(np.int32)  # Convert to np.int to save space
 
                 scenario_displacements = {'up': {'displacements': cumulative_disp_scenarios[0, 0, up_slip_scenarios], 'scenario_ix': up_slip_scenarios},
                                           'down': {'displacements': cumulative_disp_scenarios[1, 0, down_slip_scenarios], 'scenario_ix': down_slip_scenarios}}
