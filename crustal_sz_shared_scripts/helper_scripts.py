@@ -75,7 +75,7 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
         with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
             if 'branch_weight' not in branch_meta_PPEh5:
                 branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
-            processed_samples = [int(key) for key in branch_meta_PPEh5.keys() if key not in ['branch_weight']]
+            processed_samples = [int(key) for key in branch_meta_PPEh5.keys() if key not in ['branch_weight', 'site_coords']]
             processed_samples.sort()
             for sample in processed_samples[::-1]:
                 relog_sample = False
@@ -118,10 +118,12 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
         print_every = max(1, max(1, n_existing) // 100)  # throttle progress output to ~100 updates
         required_keys = frozenset(['n_samples', 'thresh_para'])
         check_dict = {}
+        coords = []
         for ixs, site in enumerate(individual_check, n_good + 1):
             try:
                 with h5.File(f"{site_dir}/{site}.h5") as site_h5:
                     site_intervals = site_h5.keys()
+                    coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
                     if all(interval in site_intervals 
                             and required_keys <= (interval_h5 := site_h5[interval]).keys() 
                             and interval_h5['n_samples'][()] >= n_samples 
@@ -140,6 +142,13 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
                     v += [site.decode() for site in branch_meta_PPEh5[k][:]]
                     del branch_meta_PPEh5[k]
                 branch_meta_PPEh5.create_dataset(k, data=v)
+            if 'site_coords' in branch_meta_PPEh5.keys():
+                all_coords = [[site.decode(), lon.decode(), lat.decode()] for site, lon, lat in branch_meta_PPEh5['site_coords'][:]]
+                del branch_meta_PPEh5['site_coords']
+            else:
+                all_coords = []
+            all_coords += coords
+            branch_meta_PPEh5.create_dataset('site_coords', data=all_coords)
         print('')
 
     return well_processed_sites

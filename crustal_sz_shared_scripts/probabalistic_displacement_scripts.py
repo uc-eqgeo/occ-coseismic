@@ -832,7 +832,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         
         if not remake_branch_PPE:
             print(f'\tChecking for existing PPE from {n_samples} scenarios at each site...')
-            well_processed_sites = check_meta_h5_samples(fault_branch_meta_h5, fault_model_allbranch_PPE_dict[branch_id], inv_sites, n_samples, time_interval)
+            well_processed_sites = check_meta_h5_samples(fault_branch_meta_h5, fault_model_allbranch_PPE_dict[branch_id], inv_sites, n_samples, time_interval, branch_weight)
         else:
             well_processed_sites = set()
 
@@ -855,8 +855,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
                 print(f"\tPrepping for NESI....")
                 if not os.path.exists(fault_branch_meta_h5):
-                    with h5.File(fault_branch_meta_h5, "w") as branch_meta_PPEh5:
-                        branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
+                    with h5.File(fault_branch_meta_h5, "w") as branch_meta_h5:
+                        branch_meta_h5.create_dataset('branch_weight', data=branch_weight)
                 prep_nesi_site_list(model_version_results_directory, branch_id, prep_list, extension1, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
                 continue
             elif nesi_step == 'combine':
@@ -888,16 +888,23 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                              scenario_dir=scenario_dir, single_site=fault_model_allbranch_PPE_dict[branch_id])
 
         if not all([nesi, nesi_step == 'combine', sbatch]):
-            completed_sites = inv_sites
-            with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
-                if 'branch_weight' in branch_meta_PPEh5.keys():
-                    del branch_meta_PPEh5['branch_weight']
-                branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight_list[-1])
+            completed_sites = set(prep_list)
+            with h5.File(fault_branch_meta_h5, "a") as branch_meta_h5:
+                if 'branch_weight' in branch_meta_h5.keys():
+                    del branch_meta_h5['branch_weight']
+                branch_meta_h5.create_dataset('branch_weight', data=branch_weight_list[-1])
                 
-                if str(n_samples) in branch_meta_PPEh5:
-                    completed_sites |= {id.decode() for id in branch_meta_PPEh5[str(n_samples)][:]}
-                    del branch_meta_PPEh5[str(n_samples)]
-                branch_meta_PPEh5.create_dataset(str(n_samples), data=list(completed_sites))
+                if str(n_samples) in branch_meta_h5:
+                    completed_sites |= {id.decode() for id in branch_meta_h5[str(n_samples)][:]}
+                    del branch_meta_h5[str(n_samples)]
+                branch_meta_h5.create_dataset(str(n_samples), data=list(completed_sites))
+                site_coord_dict = dict([[site.decode(), [float(lon), float(lat)]] for site, lon, lat in branch_meta_h5['site_coords'][:]])
+                if len(set(prep_list) - site_coord_dict.keys()) > 0:
+                    for site in set(prep_list) - site_coord_dict.keys():
+                        with h5.File(f"{fault_model_allbranch_PPE_dict[branch_id]}/{site}.h5", 'r') as site_PPE:
+                            site_coord_dict[site] = site_PPE['site_coords'][:].tolist()
+                    del branch_meta_h5['site_coords']
+                    branch_meta_h5.create_dataset('site_coords', data=[[site, str(lon), str(lat)] for site, [lon, lat] in site_coord_dict.items()])
 
     n_sites = len(prep_list)
     if nesi and nesi_step == 'prep':
