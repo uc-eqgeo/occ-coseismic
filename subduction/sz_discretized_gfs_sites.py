@@ -15,7 +15,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_v0-0-1S_geoval"
+version_extension = "_v0-0-2"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
@@ -27,7 +27,14 @@ maximum_slip = 12 if sz_zone == 'puysegur' else 50 if 'fq_' in sz_zone else 25  
 minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 1 cm of displacement from 10 m of slip)
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_file = os.path.join('..', 'sites', 'CUSP_v0-0-1_geovalS.geojson')
+site_list_file = os.path.join('..', 'sites', 'CUSP_v0-0-2')
+if sz_zone.startswith("p"):
+    site_list_file = f"{site_list_file}S.geojson"
+    version_extension += 'S'
+else:
+    site_list_file = f"{site_list_file}N.geojson"
+    version_extension += 'N'
+
 if site_list_file.endswith('.csv'):
     sites_df = pd.read_csv(site_list_file).drop_duplicates().reset_index(drop=True)
 else:
