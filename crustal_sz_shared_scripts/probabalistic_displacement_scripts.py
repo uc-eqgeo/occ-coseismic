@@ -1645,6 +1645,8 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
                 if os.path.exists(NSHM_site_file):
                     with h5.File(NSHM_site_file, 'r', driver='core', backing_store=False) as site_h5:
                         interval_grp = site_h5[interval]
+                        if interval_grp['n_samples'][()] < n_samples:
+                            return
                         disp_scaling = interval_grp['disp_scaling'][()]
 
                         row_cols = [np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)]
