@@ -1753,7 +1753,7 @@ def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type,
                 # get first index that is < 10% (ideally we would interpolate for exact value but don't have a function)
                 # exceedance_index = next((index for index, value in enumerate(site_PPE) if value <= round(probability,4)), -1)
                 exceedance_index = site_PPE.shape[0] - np.searchsorted(site_PPE[:], probability, side='right', sorter=np.arange(site_PPE.shape[0])[::-1])
-                disps.append(thresholds[exceedance_index] if exceedance_index < site_PPE.shape[0] else thresholds[-1])
+                disps.append(thresholds[exceedance_index] if exceedance_index < site_PPE.shape[0] else thresholds[site_PPE.shape[0] + 1])
             else:
                 disps.append(0)
         except KeyError:
@@ -1790,6 +1790,9 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
         Outputs:
         :return    probs_threshold: list of probabilities of exceeding the specified threshold (one per site)
             """
+
+    if isinstance(site_PPE_dictionary, str):
+        return get_single_site_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, site_list, interval)
 
     if weighted:
         prefix = 'weighted_'
@@ -1828,6 +1831,45 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
 
     return probs_threshold
 
+def get_single_site_probability_bar_chart_data(site_PPE_dir, exceed_type, threshold, site_list, interval='100'):
+    """ function that finds the probability at each site for the specified displacement threshold on the hazard curve
+        Inputs:
+        :param: Directory containing each site PPE file
+        :param exceedance type: string; "up", or "down"
+        :param: list of sites to get data for. If None, will get data for all sites in site_PPE_dictionary.
+                I made this option so that you could skip the sites you didn't care about (e.g., use "plot_order")
+
+        Outputs:
+        :return    probs_threshold: list of probabilities of exceeding the specified threshold (one per site)
+            """
+
+    for ix, site in enumerate(site_list):
+        with h5.File(f"{site_PPE_dir}/{site}.h5", "r") as site_h5:
+            thresholds = list(np.round(np.arange(site_h5[interval]['thresh_para'][0], site_h5[interval]['thresh_para'][1], site_h5[interval]['thresh_para'][2]), 4))
+
+            # get list of probabilities at defined displacement threshold (one for each site)
+            if isinstance(threshold, float):
+                # find index in thresholds where the value matches the parameter threshold
+                index = thresholds.index(round(threshold, 4))
+                probs_threshold = []
+                try:
+                    if site_h5[interval][f"exceedance_probs_{exceed_type}"].shape[0] > index:
+                        probs_threshold.append(site_h5[interval][f"exceedance_probs_{exceed_type}"][index])
+                    else:
+                        probs_threshold.append(0)
+                except KeyError:
+                    probs_threshold.append(np.nan)
+            else:
+                probs_threshold = np.zeros((len(site_list), len(threshold)))
+                index = np.array([thresholds.index(round(thresh, 4)) for thresh in threshold])
+                try:
+                    site_PPE = site_h5[interval][f"exceedance_probs_{exceed_type}"]
+                    if sum(site_PPE.shape[0] > index) > 0:
+                        probs_threshold[ix, :sum(site_PPE.shape[0] > index)] = site_PPE[index[:sum(site_PPE.shape[0] > index)]]
+                except KeyError:
+                    probs_threshold[ix, :] = np.nan       
+
+    return probs_threshold
 
 def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_directory, file_type_list, plot_order=[]):
     """makes hazard curves for each site. includes the probability of cumulative displacement from multiple
@@ -2957,7 +2999,7 @@ def save_disp_prob_tifs(extension1, slip_taper, model_version_results_directory,
 def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directory, thresh_lims=[0, 3], thresh_step=0,
                            probs_lims=[0.01, 0.2], probs_step=0, output_thresh=True, output_probs=True, weighted=False,
                            output_grids=True, thresholds=None, probabilities=None, sites=[], out_tag='', single_branch='',
-                           time_intervals=['100'], interp_sites=None, model_id=None, rate_scaling=None):
+                           time_intervals=['100'], interp_sites=None, model_id=None, rate_scaling=None, save_full_res=True):
     """
     Add all results to x_array datasets, and save as netcdf files
     """
@@ -2984,6 +3026,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
     elif single_branch != '':
         branch_suffix = '_'.join(single_branch.split('_')[6:])
         h5_file = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/{single_branch}{taper_extension}_cumu_PPE.h5"
+        sites_dir = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/{single_branch}{taper_extension}_sites"
         outfile_directory = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/probability_grids"
         model_id = branch_suffix + f"_S{str(rate_scaling).replace('.','')}"
         print(f"Saving data arrays for sites_{model_id}...")
@@ -2992,19 +3035,22 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         outfile_directory = f"../{model_version_results_directory}/{extension1}/probability_grids"
         model_id = model_version_results_directory.split('/')[-1]
         print(f"Saving data arrays for {model_version_results_directory}...")
-    
-    PPEh5 = h5.File(h5_file, 'r')
 
     metadata_keys = ['branch_weights', 'branch_ids', 'thresholds', 'threshold_vals', 'sigma_lims']
 
-    if sites == []:
-        sites = [*PPEh5.keys()]
+    if weighted:
+        PPEh5 = h5.File(h5_file, 'r')
+        PPE_sites = PPEh5.keys()
+    else:
+        PPE_sites = {os.path.basename(site)[:-3] for site in glob(f"{sites_dir}/*.h5")}
 
-    sites = set(sites)
-    sites = sites - set(metadata_keys)
+    if sites == []:
+        sites = [PPE_sites]
+
+    sites = set(sites) - set(metadata_keys)
 
     # check sites have been processed
-    sitesinPPE = sites & PPEh5.keys()
+    sitesinPPE = sites & PPE_sites
     if len(sites) != len(sitesinPPE):
         print(f"Only {len(sitesinPPE)} of {len(sites)} requested sites have been processed")
         sites = sitesinPPE
@@ -3016,7 +3062,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             thresholds = PPEh5["thresholds"]
     
     check_thresholds = False
-    check_thresholds = check_thresholds if 'thresholds' in PPEh5.keys() else True
+    # check_thresholds = check_thresholds if 'thresholds' in PPE_sites and else True
     for interval in time_intervals:
         if single_branch != '' and check_thresholds:
             # check processing thresholds for all are the same
@@ -3051,7 +3097,13 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
 
     if output_grids:
         print("\tIdentifying processed points...")
-        site_xy = np.array([PPEh5[site]['site_coords'][:] for site in sites])
+        if weighted:
+            site_xy = np.array([PPEh5[site]['site_coords'][:] for site in sites])
+        else:
+            with h5.File(f"{sites_dir[:-6]}_meta.h5", "r") as branch_meta_h5:
+                site_coord_dict = dict([[site.decode(), [int(float(lon)), int(float(lat))]] for site, lon, lat in branch_meta_h5['site_coords'][:]])
+            site_xy = np.array([site_coord_dict[site] for site in sites])
+
         site_x, site_y = site_xy[:, 0], site_xy[:, 1]
 
         x_data = np.unique(site_x)
@@ -3065,12 +3117,19 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         y_data = np.arange(ymin, ymax + y_res, y_res)
 
         if not all(np.isin(site_x, x_data)) or not all(np.isin(site_y, y_data)):
-            print("Site coordinates can't all be aligned to grid. Check sites are evenly spaced. Saving as site geojson instead...")
-            save_disp_prob_geojson(extension1, slip_taper, model_version_results_directory, h5_file,
-                                   thresh_lims=thresh_lims, thresh_step=thresh_step, thresholds=thresholds,
-                                   probs_lims=probs_lims, probs_step=probs_step, probabilities=probabilities, weighted=weighted,
-                                   model_id=model_id, out_name="" if extension1 == "" else f"{extension1}_", out_tag=out_tag)
-            return
+            sites = list(sites)
+            bad_sites = [sites[ix] for ix in set(np.where(~np.isin(site_x, x_data))[0]) | set(np.where(~np.isin(site_y, y_data))[0])]
+            print(f"[ERROR]: Site coordinates can't all be aligned to grid. Dropping {len(bad_sites)} misaligned sites...")
+            for site in bad_sites:
+                sites.remove(site)
+            site_x = site_x[np.isin(site_x, x_data)]
+            site_y = site_y[np.isin(site_y, y_data)]
+            # print("Site coordinates can't all be aligned to grid. Check sites are evenly spaced. Saving as site geojson instead...")
+            # save_disp_prob_geojson(extension1, slip_taper, model_version_results_directory, h5_file,
+            #                        thresh_lims=thresh_lims, thresh_step=thresh_step, thresholds=thresholds,
+            #                        probs_lims=probs_lims, probs_step=probs_step, probabilities=probabilities, weighted=weighted,
+            #                        model_id=model_id, out_name="" if extension1 == "" else f"{extension1}_", out_tag=out_tag)
+            # return
 
         site_x = (np.array(site_x) - x_data[0]) / x_res
         site_y = (np.array(site_y) - y_data[0]) / y_res
@@ -3101,7 +3160,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                 print("\tTriangulating Processed Sites...")
                 fault_lines = []
 
-            triang, nearest_dict, vertex_steps = constrained_triangulation_grid(site_xy, fault_lines, bounds=(xmin, ymin, xmax, ymax), epsilon=1)
+            triang, nearest_dict, vertex_steps = constrained_triangulation_grid(site_xy, fault_lines, bounds=(min([xmin, x_data.min()]), min([ymin, y_data.min()]), max([xmax, x_data.max()]), max([ymax, y_data.max()])), epsilon=1)
 
         # Create Datasets
         da = {}
@@ -3121,7 +3180,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         if output_thresh:
             print(f"\tAdding Displacement Probability DataArrays....")
 
-            if not all(np.isin(thresholds, np.round(PPEh5["thresholds"][:], 4))):
+            if single_branch == '' and not all(np.isin(thresholds, np.round(PPEh5["thresholds"][:], 4))):
                 dropped_thresholds = thresholds[np.isin(thresholds, PPEh5["thresholds"][:], invert=True)]
                 thresholds = thresholds[np.isin(thresholds, PPEh5["thresholds"][:])]
                 if len(thresholds) == 0:
@@ -3132,23 +3191,32 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                     print('Running available thresholds:\n', thresholds)
 
             for exceed_type in exceed_type_list:
-                thresh_grd = np.zeros([len(thresholds), len(time_intervals), len(y_data), len(x_data)]) * np.nan
                 probs = np.zeros([len(sites), len(time_intervals), len(thresholds)])
                 printProgressBar(0, len(thresholds), prefix=f'\t\tProcessing {time_intervals[0]} yrs', suffix=f'{exceed_type}', length=50)
                 for ti, interval in enumerate(time_intervals):
-                    probs[:, ti, :] = get_probability_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
-                                                                        threshold=thresholds, site_list=sites, weighted=weighted, interval=interval)
+                    try:
+                        probs[:, ti, :] = get_probability_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
+                                                                         threshold=thresholds, site_list=sites, weighted=weighted, interval=interval)
+                    except UnboundLocalError:
+                        probs[:, ti, :] = get_probability_bar_chart_data(site_PPE_dictionary=sites_dir, exceed_type=exceed_type,
+                                                                         threshold=thresholds, site_list=sites, weighted=weighted, interval=interval)
                     printProgressBar(ti + 1, len(time_intervals) + len(time_intervals) * interp_flag, prefix=f'\t\tProcessing {interval} yrs', suffix=f'{exceed_type} {interval} yrs', length=50)
-                for jj in range(len(sites)):
-                    thresh_grd[:, :, int(site_y[jj]), int(site_x[jj])] = probs[jj, :, :].T
 
-                da[exceed_type] = xr.DataArray(thresh_grd, dims=['threshold', 'interval', 'lat', 'lon'], coords={'threshold': thresholds, 'interval': np.array([int(i) for i in time_intervals]), 'lat': y_data, 'lon': x_data})
-                da[exceed_type].attrs['exceed_type'] = exceed_type
-                da[exceed_type].attrs['threshold'] = 'Displacement (m)'
-                da[exceed_type].attrs['interval'] = 'Years'
-                da[exceed_type].attrs['crs'] = 'EPSG:2193'
+                if save_full_res:
+                    try:
+                        thresh_grd = np.zeros([len(thresholds), len(time_intervals), len(y_data), len(x_data)]) * np.nan
+                        for jj in range(len(sites)):
+                            thresh_grd[:, :, int(site_y[jj]), int(site_x[jj])] = probs[jj, :, :].T
 
-                ds['disp_' + exceed_type] = da[exceed_type]
+                        da[exceed_type] = xr.DataArray(thresh_grd, dims=['threshold', 'interval', 'lat', 'lon'], coords={'threshold': thresholds, 'interval': np.array([int(i) for i in time_intervals]), 'lat': y_data, 'lon': x_data})
+                        da[exceed_type].attrs['exceed_type'] = exceed_type
+                        da[exceed_type].attrs['threshold'] = 'Displacement (m)'
+                        da[exceed_type].attrs['interval'] = 'Years'
+                        da[exceed_type].attrs['crs'] = 'EPSG:2193'
+
+                        ds['disp_' + exceed_type] = da[exceed_type]
+                    except np.core._exceptions._ArrayMemoryError as e:
+                        save_full_res = False
 
                 if interp_sites:
                     interp_grd = np.zeros([len(thresholds), len(time_intervals), len(interp_y_data), len(interp_x_data)]) * np.nan
@@ -3182,26 +3250,35 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                     probabilities = np.array([round(val, 4) for val in probabilities])
 
             for exceed_type in exceed_type_list:
-                thresh_grd = np.zeros([len(probabilities), len(time_intervals), len(y_data), len(x_data)]) * np.nan
                 disps = np.zeros([len(sites), len(time_intervals), len(probabilities)])
                 printProgressBar(0, len(probabilities) + len(probabilities) * interp_flag, prefix=f'\t\tProcessing {int(100 * probabilities[0]):0>2} %', suffix=f'{exceed_type}', length=50)
                 for ti, interval in enumerate(time_intervals):
                     for ii, probability in enumerate(probabilities):
-                        disps[:, ti, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
-                                                                         site_list=sites, probability=probability, weighted=weighted, interval=interval)
+                        try:
+                            disps[:, ti, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=PPEh5, exceed_type=exceed_type,
+                                                                            site_list=sites, probability=probability, weighted=weighted, interval=interval)
+                        except UnboundLocalError:
+                            disps[:, ti, ii] = get_exceedance_bar_chart_data(site_PPE_dictionary=sites_dir, exceed_type=exceed_type,
+                                                                            site_list=sites, probability=probability, weighted=weighted, interval=interval)
                         printProgressBar(ii + 1, len(probabilities) + len(probabilities) * interp_flag, prefix=f'\t\tProcessing {int(100 * probability):0>2} %', suffix=f'{exceed_type} {interval} yrs', length=50)
                         if exceed_type == 'down':
                             disps[:, ti, ii] = -1 * disps[:, ti, ii]
-                for jj in range(len(sites)):
-                    thresh_grd[:, :, int(site_y[jj]), int(site_x[jj])] = disps[jj, :, :].T
+                if save_full_res:
+                    try:
+                        thresh_grd = np.zeros([len(probabilities), len(time_intervals), len(y_data), len(x_data)]) * np.nan
+                        for jj in range(len(sites)):
+                            thresh_grd[:, :, int(site_y[jj]), int(site_x[jj])] = disps[jj, :, :].T
 
-                da[exceed_type] = xr.DataArray(thresh_grd, dims=['probability', 'interval', 'lat', 'lon'], coords={'probability': (probabilities * 100).astype(int), 'interval': np.array([int(i) for i in time_intervals]), 'lat': y_data, 'lon': x_data})
-                da[exceed_type].attrs['exceed_type'] = exceed_type
-                da[exceed_type].attrs['threshold'] = 'Exceedance Probability (%)'
-                da[exceed_type].attrs['interval'] = 'Years'
-                da[exceed_type].attrs['crs'] = 'EPSG:2193'
+                        da[exceed_type] = xr.DataArray(thresh_grd, dims=['probability', 'interval', 'lat', 'lon'], coords={'probability': (probabilities * 100).astype(int), 'interval': np.array([int(i) for i in time_intervals]), 'lat': y_data, 'lon': x_data})
+                        da[exceed_type].attrs['exceed_type'] = exceed_type
+                        da[exceed_type].attrs['threshold'] = 'Exceedance Probability (%)'
+                        da[exceed_type].attrs['interval'] = 'Years'
+                        da[exceed_type].attrs['crs'] = 'EPSG:2193'
 
-                ds['prob_' + exceed_type] = da[exceed_type]
+                        ds['prob_' + exceed_type] = da[exceed_type]
+                    except np.core._exceptions._ArrayMemoryError as e:
+                        save_full_res = False
+
                 if interp_sites:
                     interp_grd = np.zeros([len(probabilities), len(time_intervals), len(interp_y_data), len(interp_x_data)]) * np.nan
                     layer, n_layers = 1, len(probabilities) * len(time_intervals)
@@ -3227,10 +3304,11 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
 
             out_name += 'prob_'
 
-        ds.attrs['branch'] = branch_name
         nc_name = f"{outfile_directory}/{model_id}{taper_extension}_{out_name}{out_tag}_grids.nc".replace('__', '_')
-        ds.to_netcdf(nc_name)
-        print(f"\tWritten {nc_name}")
+        if save_full_res:
+            ds.attrs['branch'] = branch_name
+            ds.to_netcdf(nc_name)
+            print(f"\tWritten {nc_name}")
 
         if interp_sites:
             ds_i.attrs['branch'] = branch_name
@@ -3239,7 +3317,8 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             nc_name = nc_name.replace(".nc", f"_{os.path.basename(interp_sites[0]).split('.')[0]}_interp.nc")
             ds_i.to_netcdf(nc_name)
             print(f"\tWritten {nc_name}")
-            triangulation_name = f"{outfile_directory}/{model_id}{out_tag}_triangulation.shp"
+            triangulation_name = f"{outfile_directory}/traingulations/{model_id}{out_tag}_triangulation.shp"
+            os.makedirs(os.path.dirname(triangulation_name), exist_ok=True)
             save_triangulation(triang, triangulation_name, z=vertex_steps, n_samples=site_xy.shape[0], crs="EPSG:2193")
             print(f"\tWritten {triangulation_name}")
         print('')
