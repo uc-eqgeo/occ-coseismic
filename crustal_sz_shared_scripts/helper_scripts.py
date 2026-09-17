@@ -16,7 +16,6 @@ finally:
     import pickle as pkl
     from scipy.interpolate import griddata
     import matplotlib.pyplot as plt
-    from time import time
     import h5py as h5
     from scipy.sparse import csr_matrix
     from glob import glob
@@ -67,8 +66,8 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
     existing_sites = all_existing_sites & inv_sites  # Sites for this run that have a file associated with it
     individual_check = existing_sites
 
-    well_processed_sites, reprocess_sites, logged_sites = set(), set(), set()
-    n_inv, n_existing, width, n_good = len(inv_sites), len(existing_sites), len(str(len(existing_sites))), 0
+    well_processed_sites, logged_sites = set(), set()
+    n_inv, n_existing, n_good = len(inv_sites), len(existing_sites), 0
     width = len(str(n_inv))
 
     if os.path.exists(fault_branch_meta_h5):
@@ -100,18 +99,20 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
                 if n_existing > 0:
                     # Second stage to check if any requested existing sites have been processed enough
                     if sample >= n_samples:
+                        # Site that already exists and has been logged as processed enough
                         well_processed_sites |= existing_sites & sites_processed
-                    else:
-                        reprocess_sites |= reprocess_sites & sites_processed
                     n_good = len(well_processed_sites)
-                    print(f'\t\t{n_existing:0{width}d}/{n_inv} sites previously processed..., {n_good:0{width}d}/{n_good:0{width}d} sampled enough...', end='\r')
+                    print(f'\t\t{n_existing:0{width}d}/{n_inv} sites previously processed, {n_good:0{width}d}/{len(existing_sites & logged_sites):0{width}d} sampled enough...', end='\r')
+    else:
+        with h5.File(fault_branch_meta_h5, "w") as branch_meta_PPEh5:
+            branch_meta_PPEh5.create_dataset('site_coords', data=[])
 
     if n_existing == 0:
         print(f'\t\t0/{n_inv} sites previously processed...')
         return well_processed_sites
 
     # Identify sites that exist, but for some reason aren't in meta file (e.g. meta was deleted) so need be be checked individually
-    individual_check = existing_sites - well_processed_sites - reprocess_sites
+    individual_check = existing_sites - well_processed_sites - logged_sites
     
     if len(individual_check) > 0:
         # Checks for sites that exist but there are no log for

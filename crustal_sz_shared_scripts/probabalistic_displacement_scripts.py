@@ -831,7 +831,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
         
         if not remake_branch_PPE:
-            print(f'\tChecking for existing PPE from {n_samples} scenarios at each site...')
+            print(f'\tChecking for existing PPE from {n_samples:,d} scenarios at each site...')
             well_processed_sites = check_meta_h5_samples(fault_branch_meta_h5, fault_model_allbranch_PPE_dict[branch_id], inv_sites, n_samples, time_interval, branch_weight)
         else:
             well_processed_sites = set()
