@@ -539,7 +539,7 @@ if __name__ == "__main__":
             get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, list_of_interest, n_samples,
                         extension1, branch_key=branch_unique_ids, time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True,
                         NSHM_branch=args.NSHM_branch, crustal_model_dir=crustal_model_dir, subduction_model_dirs=subduction_model_dir,
-                        thresh_lims=[float(val) for val in args.thresh_lims.split('/')], thresh_step=float(args.thresh_step), single_site=f"./{branch_results_directory}/{branchId}_sites")
+                        thresh_lims=[float(val) for val in args.thresh_lims.split('/')], thresh_step=float(args.thresh_step), single_site=f"../{branch_results_directory}/{branchId}_sites")
 
             completed_sites = set(list_of_interest)
             # This is a hack to get around multiple tasks trying to open the file at once, so it appearing like it doesn't exist
@@ -632,7 +632,7 @@ if __name__ == "__main__":
     
         nesiprint(f"Finding weighted means for {len(task_sites)} sites...")
         width = len(str(len(task_sites)))
-        for ix, site in enumerate(task_sites):
+        for ix, site in enumerate(task_sites, 1):
             site_name = os.path.basename(site).replace('.h5', '')
             if os.path.exists(site): # This check is incase you're rerunning the sbatch after partial success
                 nesiprint(f"\t{ix:0{width}d}: Processing {site}...")
@@ -643,9 +643,11 @@ if __name__ == "__main__":
                     else:
                         fault_flag = None
                     if 'required_intervals' in site_h5.keys():
-                        investigation_time = [str(interval.decode('utf-8')) for interval in site_h5['required_intervals'][()]]
+                        site_investigation_time = [str(interval.decode('utf-8')) for interval in site_h5['required_intervals'][()] if interval not in site_h5.keys()]
                     else:
-                        investigation_time = [str(interval) for interval in investigation_time]
+                        site_investigation_time = [str(interval) for interval in investigation_time if interval not in site_h5.keys()]
+                    if len(site_investigation_time) == 0:
+                        continue
                     create_site_weighted_mean(site_h5, site_name, site_h5['n_samples'][()], 
                                             site_h5['crustal_model_version_results_directory'][()].decode('utf-8'), 
                                             [val.decode('utf-8') for val in site_h5['sz_model_version_results_directory_list'][()]], 
@@ -656,7 +658,7 @@ if __name__ == "__main__":
                                             site_h5['sigma_lims'], 
                                             site_h5['branch_weights'],
                                             compression='gzip',
-                                            intervals=[str(interval) for interval in investigation_time],
+                                            intervals=[str(interval) for interval in site_investigation_time],
                                             fault_flag=fault_flag)
                 nesiprint(f"\tSite {site_name} complete in {time() - lap:.2f} seconds")
         print('\nAll sites complete!')

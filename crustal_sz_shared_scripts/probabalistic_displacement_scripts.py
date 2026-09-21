@@ -3,6 +3,7 @@ try:
     import geopandas as gpd
     import rasterio
     from rasterio.transform import Affine
+    from plotting_scripts import constrained_triangulation_grid, save_triangulation
 except:
     os.system(f"echo Running on NESI. Some functions wont work....")
 from helper_scripts import make_qualitative_colormap, get_probability_color, percentile, dict_to_hdf5, hdf5_to_dict, write_sites_to_geojson, check_meta_h5_samples
@@ -26,7 +27,6 @@ from scipy.sparse import csc_array, csr_array, hstack, csr_matrix
 from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, combine_site_cumu_PPE, \
                          prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission, \
                          slurm_timeleft, nesiprint
-from plotting_scripts import constrained_triangulation_grid, save_triangulation
 import matplotlib.tri as mtri
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -1123,9 +1123,12 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
         
         elif nesi_step == 'combine':
             if len(os.popen('echo $SLURM_JOB_ID').read().strip()) > 0:
-                slurm_id = int(os.popen('echo $SLURM_JOB_ID').read().strip())
-                slurm_time = slurm_timeleft(slurm_id)
-                print('\tSLURM ID:', slurm_id, 'Time left:', slurm_time)
+                try:
+                    slurm_id = int(os.popen('echo $SLURM_JOB_ID').read().strip())
+                    slurm_time = slurm_timeleft(slurm_id)
+                    print('\tSLURM ID:', slurm_id, 'Time left:', slurm_time)
+                except ValueError:
+                    slurm_time = None
             else:
                 slurm_time = None
 
@@ -3319,7 +3322,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
             nc_name = nc_name.replace(".nc", f"_{os.path.basename(interp_sites[0]).split('.')[0]}_interp.nc")
             ds_i.to_netcdf(nc_name)
             print(f"\tWritten {nc_name}")
-            triangulation_name = f"{outfile_directory}/traingulations/{model_id}{out_tag}_triangulation.shp"
+            triangulation_name = f"{outfile_directory}/triangulations/{model_id}{out_tag}_triangulation.shp"
             os.makedirs(os.path.dirname(triangulation_name), exist_ok=True)
             save_triangulation(triang, triangulation_name, z=vertex_steps, n_samples=site_xy.shape[0], crs="EPSG:2193")
             print(f"\tWritten {triangulation_name}")
