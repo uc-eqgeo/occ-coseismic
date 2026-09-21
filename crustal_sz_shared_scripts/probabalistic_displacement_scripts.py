@@ -398,8 +398,16 @@ else:
         return n_exceedances_up, n_exceedances_down
 
 
-def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples, rate_scaling_factor=1.0):
+def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples, rate_scaling_factor=1.0, sd=0.4):
+        """
+        Pre-prepare arrays for the ruptures that will occur in each scenario, and slip uncertainties to be applied to each
+        rupture. Should ensure that all sites are effected by the same ruptures with the same slip error, thus reducing noise
+        in the results
+        """
+
+        
         rate_scaling_factor = str(float(rate_scaling_factor)).replace('.', '')
+        rng = np.random.default_rng(seed=0)  # Ensure seed is always the same for same scenarios each time
         
         os.makedirs(randdir, exist_ok=True)
         with h5.File(branch_site_disp_dict_file, "r") as branch_site_disp_dict:
@@ -421,7 +429,23 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
                     process_intervals.remove(interval)
                     print(f"\t\tUsing pre-made rates for {interval} years...")
 
-        rng = np.random.default_rng(seed=0)  # Ensure seed is always the same for same scenarios each time
+                    # Also check that the uncertainites have also been created
+                    make_displacements = True
+                    if os.path.exists(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios_sd{sd}.pkl"):
+                        with open(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios_sd{sd}.pkl", "rb") as f:
+                            displacement_errs = pkl.load(f)
+                        sd_samples, sd_rupts = displacement_errs.shape
+                        if all([samples == sd_samples, rupts == sd_rupts, interval_scenarios.data.shape[0] == displacement_errs.data.shape[0]]):
+                            make_displacements = False
+                            print(f"\t\tUsing pre-made slip uncertainty for {interval} years...")
+
+                    if make_displacements:
+                        print(f"\t\tCreating pre-made slip uncertainties for {interval} years...")
+                        displacement_errs = interval_scenarios.astype(float)
+                        displacement_errs.data = rng.normal(1, sd, size=interval_scenarios.data.shape[0])
+                        with open(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios_sd{sd}.pkl", "wb") as fid:
+                            pkl.dump(displacement_errs, fid)
+                    
         step = int(1e8 / n_samples)  # step size for poisson sampling (100,000,000 elements per run, ~9GB)
         step = step if step < rates.shape[0] else rates.shape[0]  # ensure step is not larger than number of ruptures
         for interval in process_intervals:
@@ -431,6 +455,12 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
 
             with open(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios.pkl", "wb") as fid:
                 pkl.dump(scenarios, fid)
+
+            # Only one loop for displacements as only applying to the scenarios with a rupture, so much smaller array
+            displacement_errs = scenarios.astype(float)
+            displacement_errs.data = rng.normal(1, sd, size=scenarios.data.shape[0])
+            with open(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios_sd{sd}.pkl", "wb") as fid:
+                pkl.dump(displacement_errs, fid)
 
 
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
@@ -498,14 +528,20 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
     scenario_dir = f"{procdir}/{model_version_results_directory}/{extension1}" if scenario_dir == '' else scenario_dir
 
-    all_scenarios = {}
+    all_scenarios, all_scenarios_err = {}, {}
     # Load array of random samples rather than regenerating them
     for interval in time_interval:
-        if load_random and os.path.exists(f"{scenario_dir}/{branch_scaling}_{interval}_yr_scenarios.pkl"):
-            with open(f"{scenario_dir}/{branch_scaling}_{interval}_yr_scenarios.pkl", "rb") as f:
-                all_scenarios[interval] = pkl.load(f)
-        else:
-            all_scenarios[interval] = None
+        if load_random:
+            if os.path.exists(f"{scenario_dir}/{branch_scaling}_{interval}_yr_scenarios.pkl"):
+                with open(f"{scenario_dir}/{branch_scaling}_{interval}_yr_scenarios.pkl", "rb") as f:
+                    all_scenarios[interval] = pkl.load(f)
+            else:
+                all_scenarios[interval] = None
+            if os.path.exists(f"{scenario_dir}/{branch_scaling}_{interval}_yr_scenarios_sd{sd}.pkl"):
+                with open(f"{scenario_dir}/{branch_scaling}_{interval}_yr_scenarios_sd{sd}.pkl", "rb") as f:
+                    all_scenarios_err[interval] = pkl.load(f)
+            else:
+                all_scenarios_err[interval] = None
 
     ## loop through each site and generate a bunch of 100 yr interval scenarios
     site_PPE_dict = {}
@@ -585,12 +621,16 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                     if site_dict_i["disps_ix"] > 0:
                         disps[site_dict_i["disps_ix"]] = site_dict_i['disps']
 
+                disp_uncertainty = None
                 if all_scenarios[investigation_time] is not None:
-                    # Load in scenarios from csc array, or create empty array if no ruptures impact this site
+                    # Load in scenarios and slip uncertainties from csc array, or create empty array if no ruptures impact this site
                     if site_dict_i["disps_ix"].shape[0] > 0:
                         scenarios = all_scenarios[investigation_time][:n_samples, site_dict_i["disps_ix"]]
+                        if all_scenarios_err[investigation_time] is not None:
+                            disp_uncertainty = all_scenarios_err[investigation_time][:n_samples, site_dict_i["disps_ix"]].data
                     else:
                         scenarios = csc_array(np.zeros((int(n_samples), 1)))
+                        disp_uncertainty = np.array([])
                     if benchmarking:
                         print(f"Time taken to load scenarios: {time() - lap:.5f} s")
                         lap = time()
@@ -606,14 +646,15 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                         print(f"Time taken to generate scenarios: {time() - begin:.5f} s")
                         lap = time()
 
-            # Calculate uncertainty for each scenario that ruptures
-            # assigns a normal distribution with a mean of 1 and a standard deviation of sd
-            # effectively the multiplier for the displacement value
-            l1 = time()
-            disp_uncertainty = rng.normal(1, sd, size=scenarios.data.shape[0])
-            if benchmarking:
-                print(f"\tdisp_uncertainty: {time() - l1:.5f} s")
-                l1 = time()  
+                if disp_uncertainty is None:
+                    # Calculate uncertainty for each scenario that ruptures if not loaded from array already
+                    # Assigns a normal distribution with a mean of 1 and a standard deviation of sd
+                    # Effectively the multiplier for the displacement value
+                    l1 = time()
+                    disp_uncertainty = rng.normal(1, sd, size=scenarios.data.shape[0])
+                    if benchmarking:
+                        print(f"\tdisp_uncertainty: {time() - l1:.5f} s")
+                        l1 = time()  
             # for each 100 yr scenario, get displacements from EQs that happened
             disp_scenarios = scenarios * disps
             if benchmarking:
