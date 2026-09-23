@@ -2,7 +2,7 @@ import os
 import pandas as pd
 from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, plot_single_branch_haz_curves, \
     make_sz_crustal_paired_PPE_dict, make_fault_model_PPE_dict, get_weighted_mean_PPE_dict, \
-    save_disp_prob_xarrays
+    save_disp_prob_xarrays, build_branch_PPE_file
 from helper_scripts import get_NSHM_directories, get_rupture_disp_dict
 import pickle as pkl
 try:
@@ -436,6 +436,7 @@ if not paired_crustal_sz and calculate_weighted_mean_PPE:
 if save_arrays:
     if single_branch:
         weighted = False
+        build_branch_PPE_file(out_version_results_directory, single_branch, branch_key, inv_sites, thresh_lims=[0.2, 3], thresh_step=0.2, probs_lims=[0.01, 0.10], probs_step=0.01)
     else:
         weighted = True
         branch_key = ['']
