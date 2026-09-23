@@ -333,6 +333,13 @@ if not paired_crustal_sz:
                                     disc_version_directory=version_discretise_directory[ftype[0]],
                                     crustal_directory=crustal_directory, sz_directory=sz_directory,
                                     search_radius=9e5, fakequakes=fakequakes)
+            with open(all_rupture_disp_file, 'rb') as fid:
+                rupt = pkl.load(fid)
+            sites = rupt['site_name_list']
+            if len(set(inv_sites).difference(sites)) > 0:
+                print(f"{len(set(inv_sites).difference(sites))} requested sites have no Greens Function processed. Skipping these...")
+                for site in set(inv_sites).difference(sites):
+                    inv_sites.remove(site)
 
 ### make a dictionary of all the branch probabilities, oranized by site within each branch
 # option to skip this step if you've already run it once and saved to a pickle file

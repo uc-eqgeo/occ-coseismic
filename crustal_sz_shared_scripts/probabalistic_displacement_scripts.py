@@ -237,7 +237,7 @@ if numba_flag:
 
         if cumulative_disp_scenarios.shape[0] != 0:
             # Limit the thresholds counted to only those that dont exceed maximum displacement
-            max_disp = cumulative_disp_scenarios.max()
+            max_disp = np.abs(cumulative_disp_scenarios).max()
             if max_disp < thresholds[-1]:
                 n_thresholds = np.where(thresholds > max_disp)[0][0]
             
@@ -405,24 +405,19 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
         in the results
         """
 
-        
-        rate_scaling_factor = str(float(rate_scaling_factor)).replace('.', '')
+        rate_scaling_factor_str = str(float(rate_scaling_factor)).replace('.', '')
         rng = np.random.default_rng(seed=0)  # Ensure seed is always the same for same scenarios each time
         
         os.makedirs(randdir, exist_ok=True)
         with h5.File(branch_site_disp_dict_file, "r") as branch_site_disp_dict:
-            if "scaled_rates" not in branch_site_disp_dict.keys():
-                # if no scaled_rate column, assumes scaling of 1 (equal to "rates")
-                rates = np.array(branch_site_disp_dict["rates"])
-            else:
-                rates = np.array(branch_site_disp_dict["scaled_rates"])
+            rates = np.array(branch_site_disp_dict["scaled_rates"][f"rates_S{rate_scaling_factor_str}"])
         n_ruptures = rates.shape[0]   
 
         print(f'\tPreparing {n_samples:,d} Poissonian Scenarios for {n_ruptures} ruptures...')
         process_intervals = time_interval.copy()
         for interval in time_interval:
-            if os.path.exists(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios.pkl"):
-                with open(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios.pkl", "rb") as f:
+            if os.path.exists(f"{randdir}/S{rate_scaling_factor_str}_{interval}_yr_scenarios.pkl"):
+                with open(f"{randdir}/S{rate_scaling_factor_str}_{interval}_yr_scenarios.pkl", "rb") as f:
                     interval_scenarios = pkl.load(f)
                 samples, rupts = interval_scenarios.shape
                 if all([samples >= n_samples, rupts == n_ruptures]):
@@ -431,8 +426,8 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
 
                     # Also check that the uncertainites have also been created
                     make_displacements = True
-                    if os.path.exists(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios_sd{sd}.pkl"):
-                        with open(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios_sd{sd}.pkl", "rb") as f:
+                    if os.path.exists(f"{randdir}/S{rate_scaling_factor_str}_{interval}_yr_scenarios_sd{sd}.pkl"):
+                        with open(f"{randdir}/S{rate_scaling_factor_str}_{interval}_yr_scenarios_sd{sd}.pkl", "rb") as f:
                             displacement_errs = pkl.load(f)
                         sd_samples, sd_rupts = displacement_errs.shape
                         if all([samples == sd_samples, rupts == sd_rupts, interval_scenarios.data.shape[0] == displacement_errs.data.shape[0]]):
@@ -443,7 +438,7 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
                         print(f"\t\tCreating pre-made slip uncertainties for {interval} years...")
                         displacement_errs = interval_scenarios.astype(float)
                         displacement_errs.data = rng.normal(1, sd, size=interval_scenarios.data.shape[0])
-                        with open(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios_sd{sd}.pkl", "wb") as fid:
+                        with open(f"{randdir}/S{rate_scaling_factor_str}_{interval}_yr_scenarios_sd{sd}.pkl", "wb") as fid:
                             pkl.dump(displacement_errs, fid)
                     
         step = int(1e8 / n_samples)  # step size for poisson sampling (100,000,000 elements per run, ~9GB)
@@ -453,13 +448,13 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
             for ii in range(step, n_ruptures, step):
                 scenarios = hstack([scenarios, csc_array(rng.poisson(float(interval) * rates[ii:ii + step], size=(int(n_samples), len(rates[ii:ii + step]))))])
 
-            with open(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios.pkl", "wb") as fid:
+            with open(f"{randdir}/S{rate_scaling_factor_str}_{interval}_yr_scenarios.pkl", "wb") as fid:
                 pkl.dump(scenarios, fid)
 
             # Only one loop for displacements as only applying to the scenarios with a rupture, so much smaller array
             displacement_errs = scenarios.astype(float)
             displacement_errs.data = rng.normal(1, sd, size=scenarios.data.shape[0])
-            with open(f"{randdir}/S{rate_scaling_factor}_{interval}_yr_scenarios_sd{sd}.pkl", "wb") as fid:
+            with open(f"{randdir}/S{rate_scaling_factor_str}_{interval}_yr_scenarios_sd{sd}.pkl", "wb") as fid:
                 pkl.dump(displacement_errs, fid)
 
 
@@ -581,10 +576,10 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
         if isinstance(branch_site_disp_dict, str):
             with h5.File(branch_site_disp_dict, "r") as branch_h5:
                 site_dict_i = hdf5_to_dict(branch_h5[site_of_interest])
-                site_dict_i["scaled_rates"] = branch_h5["scaled_rates"][:]
+                site_dict_i["scaled_rates"] = branch_h5["scaled_rates"][f"rates_{branch_scaling}"][:]
         else:
             site_dict_i = branch_site_disp_dict[site_of_interest]
-            site_dict_i["scaled_rates"] = branch_h5["scaled_rates"][:]
+            site_dict_i["scaled_rates"] = branch_h5["scaled_rates"][f"rates_{branch_scaling}"][:]
 
         for investigation_time in time_interval:
             if not NSHM_branch:
@@ -846,23 +841,28 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         branch_weight_list.append(branch_weight)
         rate_scaling_factor = branch_weight_dict[branch_id]["S"]
 
-        branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}{taper_extension}.h5"
+        branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}{taper_extension}.h5"
         if os.path.exists(branch_site_disp_dict_file):
             with h5.File(branch_site_disp_dict_file, 'r') as branch_h5:
                 site_set = set(branch_h5.keys()) - {'rates', 'scaled_rates'}
             missing_sites = inv_sites - site_set
             if len(missing_sites) > 0:
                 write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5_file=branch_site_disp_dict_file)
-                with h5.File(branch_site_disp_dict_file, "a") as branch_site_disp_dict:
-                    branch_site_disp_dict.create_dataset("scaled_rates", data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
+            with h5.File(branch_site_disp_dict_file, "a") as branch_site_disp_dict:
+                if 'scaled_rates' not in branch_site_disp_dict:
+                    branch_site_disp_dict.create_group('scaled_rates')
 
+                scaled_rate = f"rates_S{str(rate_scaling_factor).replace('.', '')}"
+                if scaled_rate not in branch_site_disp_dict['scaled_rates']:
+                    branch_site_disp_dict['scaled_rates'].create_dataset(scaled_rate, data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
         else:
             # Extract rates from the NSHM solution directory, but it is not scaled by the rate scaling factor
             write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5_file=branch_site_disp_dict_file)
             with h5.File(branch_site_disp_dict_file, "a") as branch_site_disp_dict:
+                site_set = set(branch_site_disp_dict.keys()) - {'rates'}
                 # multiply each value in the rates array by the rate scaling factor
-                branch_site_disp_dict.create_dataset("scaled_rates", data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
-                site_set = set(branch_site_disp_dict.keys()) - {'rates', 'scaled_rates'}
+                branch_site_disp_dict.create_group('scaled_rates')
+                branch_site_disp_dict['scaled_rates'].create_dataset(f"rates_S{str(rate_scaling_factor).replace('.', '')}", data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
 
         fault_model_allbranch_PPE_dict[branch_id] = f"../{model_version_results_directory}/{extension1}/{branch_id}{taper_extension}_sites"
         fault_branch_meta_h5 = f"{fault_model_allbranch_PPE_dict[branch_id][:-6]}_meta.h5"
@@ -939,7 +939,10 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                     completed_sites |= {id.decode() for id in branch_meta_h5[str(n_samples)][:]}
                     del branch_meta_h5[str(n_samples)]
                 branch_meta_h5.create_dataset(str(n_samples), data=list(completed_sites))
-                site_coord_dict = dict([[site.decode(), [float(lon), float(lat)]] for site, lon, lat in branch_meta_h5['site_coords'][:]])
+                if 'site_coords' in branch_meta_h5:
+                    site_coord_dict = dict([[site.decode(), [float(lon), float(lat)]] for site, lon, lat in branch_meta_h5['site_coords'][:]])
+                else:
+                    site_coord_dict = {}
                 if len(set(prep_list) - site_coord_dict.keys()) > 0:
                     for site in set(prep_list) - site_coord_dict.keys():
                         with h5.File(f"{fault_model_allbranch_PPE_dict[branch_id]}/{site}.h5", 'r') as site_PPE:

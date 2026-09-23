@@ -139,7 +139,7 @@ def constrained_triangulation_grid(
     ordered_vertices, stats = [], {}
     sample_ix = list(np.arange(n_samples))
 
-    for step in range(1, vertex_steps.max()):
+    for step in range(1, vertex_steps.max() + 1):
         step_ordered_vertices, step_stats = rank_vertices_by_confidence(mesh_triangles, mesh_vertices.shape[0], sample_ix, np.where(vertex_steps == step)[0].tolist(), vertex_steps)
         ordered_vertices += step_ordered_vertices
         sample_ix += step_ordered_vertices

@@ -103,6 +103,13 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
                         well_processed_sites |= existing_sites & sites_processed
                     n_good = len(well_processed_sites)
                     print(f'\t\t{n_existing:0{width}d}/{n_inv} sites previously processed, {n_good:0{width}d}/{len(existing_sites & logged_sites):0{width}d} sampled enough...', end='\r')
+            if 'site_coords' not in branch_meta_PPEh5:
+                coords = []
+                for site in logged_sites:
+                    with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
+                        coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
+                branch_meta_PPEh5.create_dataset('site_coords', data=coords)
+
     else:
         with h5.File(fault_branch_meta_h5, "w") as branch_meta_PPEh5:
             branch_meta_PPEh5.create_dataset('site_coords', data=[])
@@ -112,7 +119,7 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
         return well_processed_sites
 
     # Identify sites that exist, but for some reason aren't in meta file (e.g. meta was deleted) so need be be checked individually
-    individual_check = existing_sites - well_processed_sites - logged_sites
+    individual_check = existing_sites - well_processed_sites
     
     if len(individual_check) > 0:
         # Checks for sites that exist but there are no log for
@@ -122,7 +129,7 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
         coords = []
         for ixs, site in enumerate(individual_check, n_good + 1):
             try:
-                with h5.File(f"{site_dir}/{site}.h5") as site_h5:
+                with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
                     site_intervals = site_h5.keys()
                     coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
                     if all(interval in site_intervals 
@@ -254,7 +261,6 @@ def make_total_slip_dictionary(gf_dict_h5):
     gf_dict = h5.File(gf_dict_h5, "r")
 
     # Makes a new total gf displacement dictionary using rake
-    grid_meta = None
     all_site_names = gf_dict["site_name_list"].asstr()[:]
     n_sites = len(all_site_names)
     n_ruptures = np.sum([1 for key in gf_dict.keys() if key not in ["site_coords", "site_name_list", "grid_meta"]])
@@ -263,25 +269,19 @@ def make_total_slip_dictionary(gf_dict_h5):
     key_list = []
     for ix, key in enumerate([key for key in gf_dict.keys() if key not in ["site_coords", "site_name_list"]]):
         print('Writing total slip dictionary: {}/{} rupture patches'.format(ix, n_ruptures), end="\r")
-        if key == 'grid_meta':
-            grid_meta = gf_dict[key]
-        else:
-            # greens functions are just for the vertical component
-            gf_ix = gf_dict[key]["site_name_ix"]
-#            site_name_list = all_site_names[gf_ix]
-#            site_coords = all_site_coords[gf_ix, :]
+        # greens functions are just for the vertical component
+        gf_ix = gf_dict[key]["site_name_ix"]
+        non_zero_ix = gf_ix[gf_dict[key]['non_zero_sites']]
 
-            non_zero_ix = gf_ix[gf_dict[key]['non_zero_sites']]
-
-            # calculate combined vertical from strike slip and dip slip using rake
-            combined_gf = np.sin(np.radians(gf_dict[key]["rake"])) * gf_dict[key]["ds"] + np.cos(np.radians(gf_dict[key]["rake"])) * gf_dict[key]["ss"]
-            gf_adjusted_array[len(key_list), non_zero_ix] = combined_gf
-            key_list.append(key)
+        # calculate combined vertical from strike slip and dip slip using rake
+        combined_gf = np.sin(np.radians(gf_dict[key]["rake"])) * gf_dict[key]["ds"] + np.cos(np.radians(gf_dict[key]["rake"])) * gf_dict[key]["ss"]
+        gf_adjusted_array[len(key_list), non_zero_ix] = combined_gf
+        key_list.append(key)
 
     gf_dict.close()
     print('')
 
-    return csr_matrix(gf_adjusted_array), all_site_names.tolist(), all_site_coords, key_list, grid_meta
+    return csr_matrix(gf_adjusted_array), all_site_names.tolist(), all_site_coords, key_list
 
 
 def merge_rupture_attributes(directory, trimmed=True):
@@ -598,7 +598,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
 
     # Makes a new total gf displacement dictionary using rake. If points don't have a name (e.g., for whole coastline
     # calculations), the site name list is just a list of numbers
-    gf_total_slip_array, site_name_list, site_coords, key_order, grid_meta = make_total_slip_dictionary(gf_dict_pkl)
+    gf_total_slip_array, site_name_list, site_coords, key_order = make_total_slip_dictionary(gf_dict_pkl)
 
     # calculate displacements at all the sites by rupture. Output dictionary keys are by rupture ID.
     disp_dictionary = {}
@@ -654,10 +654,6 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     with open(f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}_sites.pkl",
               "wb") as f:
         pkl.dump(site_name_dict, f)
-
-    if grid_meta:
-        with open(f"../{results_version_directory}/{extension1}/grid_limits.pkl", "wb") as f:
-            pkl.dump(grid_meta, f)
 
     return disp_dictionary
 
