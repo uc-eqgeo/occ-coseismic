@@ -434,9 +434,11 @@ if not paired_crustal_sz and calculate_weighted_mean_PPE:
 
 # plot hazard curves and save to file
 if save_arrays:
+    probs_lims, probs_step = [0.01, 1], 0.01
+    thresh_lims, thresh_step = [0.2, 50], 0.2
     if single_branch:
         weighted = False
-        build_branch_PPE_file(out_version_results_directory, single_branch, branch_key, inv_sites, thresh_lims=[0.2, 3], thresh_step=0.2, probs_lims=[0.01, 0.10], probs_step=0.01)
+        build_branch_PPE_file(out_version_results_directory, single_branch, branch_key, inv_sites, time_interval, thresh_lims=thresh_lims, thresh_step=thresh_step, probs_lims=probs_lims, probs_step=probs_step)
     else:
         weighted = True
         branch_key = ['']
@@ -446,7 +448,7 @@ if save_arrays:
         interp_sites = [interp_sites, site_geojson]
     for key in branch_key:
         ds = save_disp_prob_xarrays(outfile_extension, slip_taper=slip_taper, model_version_results_directory=out_version_results_directory,
-                            thresh_lims=[0.2, 3], thresh_step=0.2, output_thresh=True, probs_lims = [0.01, 0.10], probs_step=0.01,
+                            thresh_lims=thresh_lims, thresh_step=thresh_step, output_thresh=True, probs_lims=probs_lims, probs_step=probs_step,
                             output_probs=True, weighted=weighted, sites=inv_sites, out_tag=site_names_list[0], single_branch=key,
                             time_intervals=time_interval, interp_sites=interp_sites, model_id=model_id,
                             rate_scaling=fault_model_branch_weight_dict[key]["S"] if single_branch else None)

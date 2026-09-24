@@ -690,7 +690,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                     print(f"Sparse Exceedances Counted : {time() - lap:.15f} s")
             else:
                 cumulative_array = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios])
-                n_exceedances_up, n_exceedances_down= calc_thresholds(thresholds, cumulative_array.reshape(-1, 1, n_samples), np.abs(cumulative_array).max())
+                n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_array.reshape(-1, 1, n_samples))
                 if benchmarking:
                     print(f"Exceedances Counted : {time() - lap:.15f} s")
 
@@ -1773,7 +1773,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
         if benchmarking:
             nesiprint(f'Site complete: {time() - start:.2f}s\n')
 
-def build_branch_PPE_file(out_version_results_directory, single_branch, branch_key, inv_sites, thresh_lims=[0.2, 3], thresh_step=0.2, probs_lims=[0.01, 0.10], probs_step=0.01, intervals=['100']):
+def build_branch_PPE_file(out_version_results_directory, single_branch, branch_key, inv_sites, time_intervals=["100"], thresh_lims=[0.2, 3], thresh_step=0.2, probs_lims=[0.01, 0.10], probs_step=0.01):
 
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
     probabilities = np.round(np.arange(probs_lims[0], probs_lims[1] + probs_step, probs_step), 4)
@@ -1814,7 +1814,7 @@ def build_branch_PPE_file(out_version_results_directory, single_branch, branch_k
                     continue
                 with h5.File(site_file, 'r') as site_h5:
                     site_dict[site] = {}
-                    for interval in intervals:
+                    for interval in time_intervals:
                         site_dict[site][interval] = {}
                         disps = np.round(np.arange(site_h5[interval]['thresh_para'][0], site_h5[interval]['thresh_para'][1] + site_h5[interval]['thresh_para'][2], site_h5[interval]['thresh_para'][2]), 4)
                         disps_ix = np.argmin(np.abs(disps[:, None] - thresholds[None, :]), axis=0)
@@ -3048,7 +3048,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
 
         xmin, xmax = min(x_data), max(x_data)
         ymin, ymax = min(y_data), max(y_data)
-        x_res, y_res = min(np.diff(x_data)), min(np.diff(y_data))
+        x_res, y_res = np.gcd.reduce((x_data - x_data[0]).astype(int)), np.gcd.reduce((y_data - y_data[0]).astype(int))
 
         x_data = np.arange(xmin, xmax + x_res, x_res)
         y_data = np.arange(ymin, ymax + y_res, y_res)
@@ -3162,8 +3162,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                     da[exceed_type].attrs['crs'] = 'EPSG:2193'
                     ds['disp_' + exceed_type] = da[exceed_type]
 
-                    for i, thresh in enumerate(thresholds):
-                        gdf[f"disp_{exceed_type}_{thresh}"] = thresh_grd[i, 0, :]
+                    gdf[[f"disp_{exceed_type}_{thresh}" for thresh in thresholds]] = thresh_grd[:, 0, :].T
 
                 if interp_sites:
                     interp_grd = np.zeros([len(thresholds), len(time_intervals), len(interp_y_data), len(interp_x_data)]) * np.nan
@@ -3234,8 +3233,7 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
                     da[exceed_type].attrs['crs'] = 'EPSG:2193'
                     ds['prob_' + exceed_type] = da[exceed_type]
 
-                    for i, prob in enumerate(probabilities):
-                        gdf[f"prob_{exceed_type}_{prob}"] = thresh_grd[i, 0, :]
+                    gdf[[f"prob_{exceed_type}_{prob}" for prob in probabilities]] = thresh_grd[:, 0, :].T
 
                 if interp_sites:
                     interp_grd = np.zeros([len(probabilities), len(time_intervals), len(interp_y_data), len(interp_x_data)]) * np.nan
