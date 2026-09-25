@@ -1,6 +1,6 @@
 # Data directories
 data/*solutions/
-data/mesh2500/
+data/mesh2500*/
 data/wellington*/
 data/nz_bathy*
 data/coastline/
