@@ -13,15 +13,15 @@ except ImportError:
 os.chdir(os.path.dirname(__file__))
 #### USER INPUTS #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "crustal"                       # "crustal", "sz" or "py"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "sz"                       # "crustal", "sz", "py" or "all"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
-crustal_site_names = "_v0-0-1"   # Name of the sites geojson
-sz_site_names = ["_v0-2-5S", "_EastCoastNI_3km"]       # Name of the sites geojson
+crustal_site_names = "_v0-0-2"   # Name of the sites geojson
+sz_site_names = ["_10km_coastS", "_10km_coastN"]       # Name of the sites geojson
 sz_list_order = ["py", "sz"]         # Order of the subduction zones
-sz_names = ["puysegur", "hikkerm"]   # Name of the subduction zone - HIKKERK FOR SENSITIVITY TESTING, HIKKERM FOR FINAL (?)
+sz_names = ["puysegur", "hikkerm_7500"]   # Name of the subduction zone - HIKKERK FOR SENSITIVITY TESTING, HIKKERM FOR FINAL (?)
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
 nesi = False   # Prepares code for NESI runs
-testing = False   # Impacts number of samples runs, job time etc
+testing = True   # Impacts number of samples runs, job time etc
 fakequakes = True  # Use fakequakes for the subduction zone (applied only to hikkerm)
 
 # Processing Flags (True/False)
@@ -32,40 +32,42 @@ single_branch = ["_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nhb110", "_sz_fq_p
 single_branch = ["_c_MDE5", "_c_MDI0", "_c_MDE2", "_c_NjMy", "_c_NjM3", "_c_NjI5", "_c_MDE1", "_c_MDEz", "_c_MDA2", "_c_NjI3", "_c_NjI2", "_c_NjE5"]  # Order they are auto loaded from NSHM
 # single_branch = ["_c_MDE5"] # "_c_MDI0"] # "_c_MDE2"] # "_c_NjMy"] # "_c_NjM3"] # "_c_NjI5"] # "_c_MDE1"] # "_c_MDEz"] # "_c_MDA2"] # "_c_NjI3"] # "_c_NjI2"] # "_c_NjE5"]  # Order they are auto loaded from NSHM
 # single_branch = ["_c_MDA2"] # "_c_MDE2"] #"_c_NjE5"] # "_c_NjI5"] # "_c_MDEz"] #"_c_MDI0"] #"_c_NjI2"] # "_c_NjM3"] # "_c_MDE5"] # "_c_MDE1"] # "_c_NjMy"] # "_c_NjI3"] # Memory order (low -> high)
-# single_branch = ["_sz_NzEx"] 
+# single_branch = ["_sz_NzEx"]
 # single_branch = ["_sz_fq_3nub110", "_sz_fq_3nhb110", "_sz_fq_3lhb110"]  # 3e10 sensitivity
 # single_branch = ["_sz_fq_anub110", "_sz_fq_anhb110", "_sz_fq_alhb110"]  # ATOM senstivity
 # single_branch = ["_sz_fq_pnub110", "_sz_fq_pnhb110", "_sz_fq_plhb110"]  # PREM senstivity
 # single_branch = ["_sz_fq_plhb110"]
-single_branch = ["_c_NjE5"] 
-single_branch = None
-rate_scaling = True           # Do you want to calculate PPEs for a single branch with different rate scalings?
-paired_crustal_sz = False      # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+# single_branch = ["_c_NjI3"]
+single_branch = ["_py_M5NQ"]
+single_branch = ["_sz_fq_alhb110"]
+# single_branch = None
+rate_scaling = False          # Do you want to calculate PPEs for a single branch with different rate scalings?
+paired_crustal_sz = False     # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 load_random = True             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
-remake_PPE = False            # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
-calculate_weighted_mean_PPE = True   # Do you want to weighted mean calculate PPEs?
+remake_PPE = False           # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
+calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
 remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 save_arrays = True         # Do you want to save the displacement and probability arrays?
-interp_sites = '../sites/national_1km.geojson'  # csv file with the sites to interpolate the displacements to for xarray output. None for default (i.e. use the sites in the PPE dictionary)
-# interp_sites = None
+interp_sites = '../sites/national_1kmS.geojson'  # csv file with the sites to interpolate the displacements to for xarray output. None for default (i.e. use the sites in the PPE dictionary)
+interp_sites = None
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../sites/gf_test_sites.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
-branch_weight_csv = "branch_weight_data_v0-1"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
+branch_weight_csv = "branch_weight_data_sensitivity"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
 # branch_weight_csv = "branch_weight_data_sensitivity"
 
 # Processing Parameters
 time_interval = [5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150]     # Time span of hazard forecast (yrs)
-time_interval = [100]
+time_interval = [7500]
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 1
-thresh_lims = [0, 10]
+thresh_lims = [0, 50]
 thresh_step = 0.01
 
 # Nesi Parameters
-prep_sbatch = True   # Prep jobs for sbatch
+prep_sbatch = False   # Prep jobs for sbatch
 nesi_step = 'prep'  # 'prep' or 'combine'
 n_array_tasks = 250    # Number of array tasks
 min_tasks_per_array = 250   # Minimum number of sites per array
@@ -87,8 +89,8 @@ if testing:
     mem = 1    # Memory allocation for cumu_PPE task array
 else:
     n_samples = 1e6   # Number of scenarios to run
-    job_time = 5    # Amount of time to allocate per site in the cumu_PPE task array
-    mem = 3    # Memory allocation for cumu_PPE task array
+    job_time = 3    # Amount of time to allocate per site in the cumu_PPE task array
+    mem = 2    # Memory allocation for cumu_PPE task array
 
 if paired_crustal_sz and nesi_step == 'prep':
     if n_array_tasks < 500:
