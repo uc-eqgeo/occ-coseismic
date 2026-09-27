@@ -462,7 +462,7 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
                  extension1, branch_key="nan", time_interval=[100], sd=0.4, error_chunking=1000, scaling='', load_random=False,
                  thresh_lims=[0, 3], thresh_step=0.01, NSHM_branch=True, single_site=None,
-                 crustal_model_dir="", subduction_model_dirs="", cumu_PPEh5_file='', scenario_dir='', save_errors=False):
+                 crustal_model_dir="", subduction_model_dirs="", cumu_PPEh5_file='', scenario_dir='', save_errors=False, sed_PPE=True):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
 
@@ -659,7 +659,51 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             # multiplies displacement by the uncertainty multiplier
             disp_scenarios.data *= disp_uncertainty
             if benchmarking:
-                print(f"\tdisp_scenarios2: {time() - l1:.5f} s")
+                print(f"\tdisp_scenarios2: {time() - lap:.5f} s")
+                lap = time()
+
+            if sed_PPE:
+                # Calculate single
+                lsed = time()
+                SED_step = 0.1
+                if disp_scenarios.data.shape[0] == 0:
+                    up_SED_PPE, down_SED_PPE = np.array([0]), np.array([0])
+                    up_SED_thresh, down_SED_thresh = np.array([0]), np.array([0])
+                    if benchmarking:
+                        print(f"SED_PPE Calculated Total: {time() - lap:.5f} s")
+                        lap = time()
+                else:
+                    up_scenarios_ix = np.where(disp_scenarios.data > 0)[0]
+                    down_scenarios_ix = np.where(disp_scenarios.data < 0)[0]
+                    if benchmarking:
+                        print(f"SED_PPE scenario_ix: {time() - lsed:.5f} s")
+                        lsed = time()
+                    up_SED = csc_array((np.ceil(disp_scenarios.data[up_scenarios_ix] / SED_step) * SED_step, (disp_scenarios.row[up_scenarios_ix], disp_scenarios.col[up_scenarios_ix])), shape=disp_scenarios.shape)
+                    down_SED = csc_array((np.floor(disp_scenarios.data[down_scenarios_ix] / SED_step) * SED_step, (disp_scenarios.row[down_scenarios_ix], disp_scenarios.col[down_scenarios_ix])), shape=disp_scenarios.shape)
+                    if benchmarking:
+                        print(f"SED_PPE SED arrays: {time() - lsed:.5f} s")
+                        lsed = time()
+                    up_SED_thresh = np.unique(up_SED.data - SED_step)
+                    up_SED_PPE = np.zeros_like(up_SED_thresh)
+
+                    for ix, PPE in enumerate(up_SED_thresh):
+                        up_SED_PPE[ix] = np.unique((up_SED > PPE).indices).shape[0] / n_samples
+
+                    if benchmarking:
+                        print(f"SED_PPE Up Complete: {time() - lsed:.5f} s")
+                        lsed = time()
+                    down_SED_thresh = np.unique(down_SED.data + SED_step)[::-1]
+                    down_SED_PPE = np.zeros_like(down_SED_thresh)
+
+                    for ix, PPE in enumerate(down_SED_thresh):
+                        down_SED_PPE[ix] = np.unique((down_SED < PPE).indices).shape[0] / n_samples
+
+                    if benchmarking:
+                        print(f"SED_PPE Down Complete: {time() - lsed:.5f} s")
+                    if benchmarking:
+                        print(f"SED_PPE Calculated Total: {time() - lap:.5f} s")
+                        lap = time()
+
 
             # sum all displacement values at that site in that 100 yr interval
             up_scenarios = np.where(disp_scenarios.data > 0, disp_scenarios.data, 0)
@@ -705,6 +749,12 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             # Minimum data needed for weighted_mean_PPE (done to reduce required storage, and if errors can be recalculated later if needed)
             site_dict[investigation_time] = {"exceedance_probs_up": exceedance_probs_up[exceedance_probs_up != 0],
                                              "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
+
+            if sed_PPE:
+                site_dict[investigation_time]["SED_PPE"] = {"up_SED_thresh": up_SED_thresh, 
+                                                            "down_SED_thresh": down_SED_thresh, 
+                                                            "up_SED_PPE": up_SED_PPE,
+                                                            "down_SED_PPE": down_SED_PPE}
 
             # Save the rest of the data if this is a NSHM branch
             if NSHM_branch:
@@ -799,7 +849,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension, inv_sites=[],
                               nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
                               time_interval=['100'], sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=3, load_random=False,
-                              remake_PPE=True, sbatch=False, thresh_lims=[0, 3], thresh_step=0.01):
+                              remake_PPE=True, sbatch=False, thresh_lims=[0, 3], thresh_step=0.01, calculate_SED=False):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
     It then combines the PPEs (key = unique branch ID).
 
@@ -927,7 +977,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                              model_version_results_directory=model_version_results_directory,
                              time_interval=time_interval, n_samples=n_samples, extension1="",
                              thresh_lims=thresh_lims, thresh_step=thresh_step, cumu_PPEh5_file=fault_model_allbranch_PPE_dict[branch_id],
-                             scenario_dir=scenario_dir, single_site=fault_model_allbranch_PPE_dict[branch_id])
+                             scenario_dir=scenario_dir, single_site=fault_model_allbranch_PPE_dict[branch_id], sed_PPE=calculate_SED)
 
         if not all([nesi, nesi_step == 'combine', sbatch]):
             completed_sites = set(prep_list)

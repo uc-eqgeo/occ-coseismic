@@ -43,6 +43,7 @@ single_branch = ["_sz_fq_alhb110"]
 # single_branch = None
 rate_scaling = False          # Do you want to calculate PPEs for a single branch with different rate scalings?
 paired_crustal_sz = False     # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
+calculate_SED = False         # Do you want to calculate the PPEs for single event displacement in addition to cumulatively?
 load_random = True             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
 remake_PPE = False           # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
