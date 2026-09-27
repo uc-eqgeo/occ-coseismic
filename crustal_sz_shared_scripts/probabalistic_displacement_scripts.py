@@ -646,16 +646,16 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                     # Calculate uncertainty for each scenario that ruptures if not loaded from array already
                     # Assigns a normal distribution with a mean of 1 and a standard deviation of sd
                     # Effectively the multiplier for the displacement value
-                    l1 = time()
+                    lap = time()
                     disp_uncertainty = rng.normal(1, sd, size=scenarios.data.shape[0])
                     if benchmarking:
-                        print(f"\tdisp_uncertainty: {time() - l1:.5f} s")
-                        l1 = time()  
+                        print(f"\tdisp_uncertainty: {time() - lap:.5f} s")
+                        lap = time()  
             # for each 100 yr scenario, get displacements from EQs that happened
             disp_scenarios = scenarios * disps
             if benchmarking:
-                print(f"\tdisp_scenarios: {time() - l1:.5f} s")
-                l1 = time()
+                print(f"\tdisp_scenarios: {time() - lap:.5f} s")
+                lap = time()
             # multiplies displacement by the uncertainty multiplier
             disp_scenarios.data *= disp_uncertainty
             if benchmarking:
@@ -812,9 +812,10 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                                       "disp_scaling": min_disp})
         if single_site:
             lap = time()
-            site_dict["site_coords"] = site_dict_i["site_coords"]
-            with h5.File(cumu_PPEh5_file, "w", libver='latest') as PPEh5:
+            with h5.File(cumu_PPEh5_file, "a", libver='latest') as PPEh5:
                 dict_to_hdf5(PPEh5, site_dict, replace_groups=True)
+                if "site_coords" not in PPEh5:
+                    PPEh5.create_dataset("site_coords", data=site_dict_i["site_coords"])
             if benchmarking:
                 print(f"Site written to h5 : {time() - lap:.5f} s")
         else:
@@ -935,7 +936,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             print(f"\tAll sites have been processed for {branch_id}. Skipping...")
             continue
         else:
-            print(f"\t{len(prep_list)}/{len(inv_sites)} requested sites need processing for {branch_id}...")
+            print(f"\t{len(prep_list)}/{len(inv_sites)} requested sites need processing for {branch_id} {time_interval[0]} years...")
             remake_branch_PPE = True
 
         ### get exceedance probability dictionary
@@ -998,7 +999,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                     for site in set(prep_list) - site_coord_dict.keys():
                         with h5.File(f"{fault_model_allbranch_PPE_dict[branch_id]}/{site}.h5", 'r') as site_PPE:
                             site_coord_dict[site] = site_PPE['site_coords'][:].tolist()
-                    del branch_meta_h5['site_coords']
+                    if 'site_coords' in branch_meta_h5:
+                        del branch_meta_h5['site_coords']
                     branch_meta_h5.create_dataset('site_coords', data=[[site, str(lon), str(lat)] for site, [lon, lat] in site_coord_dict.items()])
 
     n_sites = len(prep_list)
