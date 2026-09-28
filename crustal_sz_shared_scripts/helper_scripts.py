@@ -58,26 +58,137 @@ def get_probability_color(exceed_type):
 
     return color
 
-def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, time_interval, branch_weight):
+def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, time_intervals, branch_weight):
     """Function that will check that sites have been processed with the required amount of samples, and removes sites that have
-    beed deleted manually"""
-
-    if isinstance(time_interval, list):
-        time_interval = time_interval[0]
+    been deleted manually"""
 
     all_existing_sites = {os.path.basename(site_file)[:-3] for site_file in glob(f"{site_dir}/*h5")} # All sites that have a file associated with it
     existing_sites = all_existing_sites & inv_sites  # Sites for this run that have a file associated with it
 
-    n_inv, n_existing= len(inv_sites), len(existing_sites)
+    n_inv, n_existing = len(inv_sites), len(existing_sites)
     width = len(str(n_inv))
 
-    well_processed_sites, logged_sites, n_good = set(), set(), 0
+    well_processed_sites = {time_interval: set() for time_interval in time_intervals}
+    all_coords = []
 
     if not os.path.exists(fault_branch_meta_h5):
         with h5.File(fault_branch_meta_h5, "w") as branch_meta_PPEh5:
             branch_meta_PPEh5.create_dataset('site_coords', data=[])
             branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
-            branch_meta_PPEh5.create_group(time_interval)
+            for time_interval in time_intervals:
+                branch_meta_PPEh5.create_group(time_interval)
+    else:
+        with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
+            if 'branch_weight' not in branch_meta_PPEh5:
+                branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
+
+    if n_existing == 0:
+        print(f'\t\t0/{n_inv} sites previously processed...')
+        return well_processed_sites
+
+    for time_interval in time_intervals:
+        logged_sites, zero_sites, n_good = set(), set(), 0
+        with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
+            print(f'\t\t{0:0{width}d}/{n_inv} sites previously processed, {0:0{width}d} sampled enough for {time_interval} years...', end='\r')
+            if time_interval not in branch_meta_PPEh5:
+                branch_meta_PPEh5.create_group(time_interval)
+            processed_samples = [int(key) for key in branch_meta_PPEh5[time_interval].keys()]
+            processed_samples.sort()
+            for sample in processed_samples[::-1]:
+                relog_sample = False
+                # First stage removes any log of sites from the meta file that may have been manually deleted from site dir
+                # Always runs, regardless of any existing sites
+                sites_processed = {site.decode() for site in branch_meta_PPEh5[time_interval][str(sample)][:]}
+                removed_sites = sites_processed - all_existing_sites
+                if len(removed_sites) > 0:
+                    # Remove sites from log that have been deleted previously
+                    sites_processed -= removed_sites
+                    relog_sample = True
+                if len(sites_processed & logged_sites) > 0:
+                    # Ensure that site appears in the highest bracket that it has been processed in
+                    sites_processed -= logged_sites
+                    relog_sample = True
+                if relog_sample:
+                    del branch_meta_PPEh5[time_interval][str(sample)]
+                    if len(sites_processed) > 0:
+                        branch_meta_PPEh5[time_interval].create_dataset(str(sample), data=list(sites_processed))
+                logged_sites |= sites_processed
+                if sample == 0:
+                    zero_sites |= sites_processed
+
+                if n_existing > 0:
+                    # Second stage to check if any requested existing sites have been processed enough
+                    if sample >= n_samples:
+                        # Site that already exists and has been logged as processed enough
+                        well_processed_sites[time_interval] |= existing_sites & sites_processed
+                    n_good = len(well_processed_sites[time_interval])
+                    print(f'\t\t{len(existing_sites & (logged_sites - zero_sites)):0{width}d}/{n_inv} sites previously processed, {n_good:0{width}d} sampled enough for {time_interval} years...', end='\r')
+            if 'site_coords' not in branch_meta_PPEh5:
+                coords = []
+                for site in logged_sites:
+                    with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
+                        coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
+                branch_meta_PPEh5.create_dataset('site_coords', data=coords)
+
+            # Identify sites that exist, but for some reason aren't in meta file (e.g. meta was deleted) so need be be checked individually
+            individual_check = existing_sites - well_processed_sites[time_interval] - logged_sites
+            
+            if len(individual_check) > 0:
+                # Checks for sites that exist but there are no log for
+                print_every = max(1, max(1, n_existing) // 100)  # throttle progress output to ~100 updates
+                required_keys = frozenset(['n_samples', 'thresh_para'])
+                check_dict = {}
+                coords = []
+                for ixs, site in enumerate(individual_check, n_good + 1):
+                    try:
+                        with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
+                            site_intervals = site_h5.keys()
+                            coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
+                            if all([time_interval in site_intervals 
+                                    and required_keys <= (interval_h5 := site_h5[time_interval]).keys() 
+                                    and interval_h5['n_samples'][()] >= n_samples]):
+                                well_processed_sites[time_interval].add(site)
+                                n_good += 1
+                                check_dict[str(interval_h5['n_samples'][()])] = check_dict.get(str(interval_h5['n_samples'][()]), []) + [site]
+                            else:
+                                check_dict['0'] = check_dict.get('0', []) + [site]
+                        if ixs % print_every == 0 or ixs == n_existing:
+                            print(f'\t\t{n_existing}/{n_inv} sites previously processed, {n_good:0{width}d}/{ixs:0{width}d} sampled enough for {time_interval} years...', end='\r')
+                    except OSError:
+                        os.remove(f"{site_dir}/{site}.h5")
+                        check_dict['0'] = check_dict.get('0', []) + [site]
+                # Add checked files to metadata file, ensuring that they are placed into the top processing bracket
+                with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
+                    for k, v in check_dict.items():
+                        if k in branch_meta_PPEh5[time_interval]:
+                            v += [site.decode() for site in branch_meta_PPEh5[time_interval][k][:]]
+                            del branch_meta_PPEh5[time_interval][k]
+                        branch_meta_PPEh5[time_interval].create_dataset(k, data=v)
+                    if 'site_coords' in branch_meta_PPEh5.keys():
+                        all_coords = [[site.decode(), lon.decode(), lat.decode()] for site, lon, lat in branch_meta_PPEh5['site_coords'][:]]
+                        del branch_meta_PPEh5['site_coords']
+                    all_coords += coords
+        print('')
+        if len(all_coords) > 0:
+            with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
+                branch_meta_PPEh5.create_dataset('site_coords', data=[list(c) for c in set(tuple(c) for c in all_coords)])  # Removes duplicate entries
+
+    return well_processed_sites
+
+def remove_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, time_intervals, branch_weight):
+    """If option to reprocess all sites is selected, start by deleting the any prcessed time intervals"""
+
+    all_existing_sites = {os.path.basename(site_file)[:-3] for site_file in glob(f"{site_dir}/*h5")} # All sites that have a file associated with it
+    existing_sites = all_existing_sites & inv_sites  # Sites for this run that have a file associated with it
+
+    n_inv, n_existing= len(inv_sites), len(existing_sites)
+
+    if not os.path.exists(fault_branch_meta_h5):
+        with h5.File(fault_branch_meta_h5, "w") as branch_meta_PPEh5:
+            branch_meta_PPEh5.create_dataset('site_coords', data=[])
+            branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
+            for time_interval in time_intervals:
+                branch_meta_PPEh5.create_group(time_interval)
     else:
         with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
             if 'branch_weight' not in branch_meta_PPEh5:
@@ -85,91 +196,41 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
 
     if n_existing == 0:
         print(f'\t\t0/{n_inv} sites previously processed to {time_interval} years...')
-        return well_processed_sites
+        return
 
+    for ix, site in enumerate(existing_sites, 1):
+        print(f'\t\tRemoving time intervals from {ix}/{len(existing_sites)} sites...', end='\r')
+        remove_site = False
+        with h5.File(f"{site_dir}/{site}.h5", 'a') as siteh5:
+            processed_intervals = siteh5.keys()
+            remove_intervals = set(processed_intervals) & set(time_intervals)
+            if len(remove_intervals) == len(time_intervals):
+                # Going to reprocess everything from scratch. Delete h5 to reduce disc space
+                remove_site = True
+            else:
+                for time_interval in remove_intervals:
+                    if time_interval in processed_intervals:
+                        del siteh5[time_interval]
+        if remove_site:
+            os.remove(f"{site_dir}/{site}.h5")
+
+    print(f'\n\t\tRemoving sites from meta file...')
     with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
-        print(f'\t\t{0:0{width}d}/{n_inv} sites previously processed to {time_interval} years, {0:0{width}d} sampled enough...', end='\r')
-        if time_interval not in branch_meta_PPEh5:
-            branch_meta_PPEh5.create_group(time_interval)
-        processed_samples = [int(key) for key in branch_meta_PPEh5[time_interval].keys()]
-        processed_samples.sort()
-        for sample in processed_samples[::-1]:
-            relog_sample = False
-            # First stage removes any log of sites from the meta file that may have been manually deleted from site dir
-            # Always runs, regardless of any existing sites
-            sites_processed = {site.decode() for site in branch_meta_PPEh5[time_interval][str(sample)][:]}
-            removed_sites = sites_processed - all_existing_sites
-            if len(removed_sites) > 0:
-                # Remove sites from log that have been deleted previously
-                sites_processed -= removed_sites
-                relog_sample = True
-            if len(sites_processed & logged_sites) > 0:
-                # Ensure that site appears in the highest bracket that it has been processed in
-                sites_processed -= logged_sites
-                relog_sample = True
-            if relog_sample:
-                del branch_meta_PPEh5[time_interval][str(sample)]
-                if len(sites_processed) > 0:
-                    branch_meta_PPEh5[time_interval].create_dataset(str(sample), data=list(sites_processed))
-            logged_sites |= sites_processed
-
-            if n_existing > 0:
-                # Second stage to check if any requested existing sites have been processed enough
-                if sample >= n_samples:
-                    # Site that already exists and has been logged as processed enough
-                    well_processed_sites |= existing_sites & sites_processed
-                n_good = len(well_processed_sites)
-                print(f'\t\t{len(existing_sites & logged_sites):0{width}d}/{n_inv} sites previously processed to {time_interval} years, {n_good:0{width}d} sampled enough...', end='\r')
-        if 'site_coords' not in branch_meta_PPEh5:
-            coords = []
-            for site in logged_sites:
-                with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
-                    coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
-            branch_meta_PPEh5.create_dataset('site_coords', data=coords)
-
-        # Identify sites that exist, but for some reason aren't in meta file (e.g. meta was deleted) so need be be checked individually
-        individual_check = existing_sites - well_processed_sites
-        
-        if len(individual_check) > 0:
-            # Checks for sites that exist but there are no log for
-            print_every = max(1, max(1, n_existing) // 100)  # throttle progress output to ~100 updates
-            required_keys = frozenset(['n_samples', 'thresh_para'])
-            check_dict = {}
-            coords = []
-            for ixs, site in enumerate(individual_check, n_good + 1):
-                try:
-                    with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
-                        site_intervals = site_h5.keys()
-                        coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
-                        if all([time_interval in site_intervals 
-                                and required_keys <= (interval_h5 := site_h5[time_interval]).keys() 
-                                and interval_h5['n_samples'][()] >= n_samples]):
-                            well_processed_sites.add(site)
-                            n_good += 1
-                            check_dict[str(interval_h5['n_samples'][()])] = check_dict.get(str(interval_h5['n_samples'][()]), []) + [site]
-                    if ixs % print_every == 0 or ixs == n_existing:
-                        print(f'\t\t{n_existing}/{n_inv} sites previously processed to {time_interval} years, {n_good:0{width}d}/{ixs:0{width}d} sampled enough...', end='\r')
-                except OSError:
-                    os.remove(f"{site_dir}/{site}.h5")
-            # Add checked files to metadata file, ensuring that they are placed into the top processing bracket
-            with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
-                for k, v in check_dict.items():
-                    if k in branch_meta_PPEh5[time_interval]:
-                        v += [site.decode() for site in branch_meta_PPEh5[k][:]]
-                        del branch_meta_PPEh5[time_interval][k]
-                    branch_meta_PPEh5[time_interval].create_dataset(k, data=v)
-                if 'site_coords' in branch_meta_PPEh5.keys():
-                    all_coords = [[site.decode(), lon.decode(), lat.decode()] for site, lon, lat in branch_meta_PPEh5['site_coords'][:]]
-                    del branch_meta_PPEh5['site_coords']
-                else:
-                    all_coords = []
-                all_coords += coords
-                branch_meta_PPEh5.create_dataset('site_coords', data=[list(c) for c in set(tuple(c) for c in all_coords)])  # Removes duplicate entries
+        for time_interval in time_intervals:
+            if time_interval not in branch_meta_PPEh5:
+                branch_meta_PPEh5.create_group(time_interval)
+            else:
+                processed_samples = [int(key) for key in branch_meta_PPEh5[time_interval].keys()]
+                processed_samples.sort()
+                for sample in processed_samples[::-1]:
+                    sites_processed = {site.decode() for site in branch_meta_PPEh5[time_interval][str(sample)][:]}
+                    sites_processed_old = sites_processed - existing_sites
+                    if len(sites_processed) != len(sites_processed_old):
+                        del branch_meta_PPEh5[time_interval][str(sample)]
+                        branch_meta_PPEh5[time_interval].create_dataset(str(sample), data=list(sites_processed_old))
     print('')
 
-    # well_processed_sites = set.union(*well_processed_sites.values())  # Output now is if a site is missing one time interval, reprocess for all time intervals
-
-    return well_processed_sites
+    return
 
 def make_qualitative_colormap(name, length):
     from collections import namedtuple
