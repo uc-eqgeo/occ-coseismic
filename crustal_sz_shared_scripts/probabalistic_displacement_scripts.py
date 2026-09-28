@@ -1,17 +1,15 @@
 import os
 try:
     import geopandas as gpd
-    import rasterio
-    from rasterio.transform import Affine
     from plotting_scripts import constrained_triangulation_grid, save_triangulation
     from shapely.geometry import Point
 except:
     os.system(f"echo Running on NESI. Some functions wont work....")
-from helper_scripts import make_qualitative_colormap, get_probability_color, percentile, dict_to_hdf5, hdf5_to_dict, write_sites_to_geojson, check_meta_h5_samples
+from helper_scripts import make_qualitative_colormap, get_probability_color, percentile, dict_to_hdf5, hdf5_to_dict, write_sites_to_geojson, \
+                           check_meta_h5_samples, remove_h5_samples
 import xarray as xr
 import h5py as h5
 from glob import glob
-import json
 import shutil
 import random
 import itertools
@@ -36,7 +34,7 @@ numba_flag = True
 if numba_flag:
     try:
         from numba import njit, prange, get_num_threads
-        from numba.typed import Dict, List
+        from numba.typed import Dict
         from numba.core import types
     except:
         numba_flag = False
@@ -399,7 +397,7 @@ else:
         return n_exceedances_up, n_exceedances_down
 
 
-def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, n_samples, rate_scaling_factor=1.0, sd=0.4):
+def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_intervals, n_samples, rate_scaling_factor=1.0, sd=0.4):
         """
         Pre-prepare arrays for the ruptures that will occur in each scenario, and slip uncertainties to be applied to each
         rupture. Should ensure that all sites are effected by the same ruptures with the same slip error, thus reducing noise
@@ -415,8 +413,8 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_interval, 
         n_ruptures = rates.shape[0]   
 
         print(f'\tPreparing {n_samples:,d} Poissonian Scenarios for {n_ruptures} ruptures...')
-        process_intervals = time_interval.copy()
-        for interval in time_interval:
+        process_intervals = time_intervals.copy()
+        for interval in time_intervals:
             if os.path.exists(f"{randdir}/S{rate_scaling_factor_str}_{interval}_yr_scenarios.pkl"):
                 with open(f"{randdir}/S{rate_scaling_factor_str}_{interval}_yr_scenarios.pkl", "rb") as f:
                     interval_scenarios = pkl.load(f)
@@ -478,6 +476,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     """
     commence = time()
 
+    print(f'\tCalculating cumulative PPE scenarios...')
     procdir = os.path.relpath(os.path.dirname(__file__) + '/..')
     if numba_flag:
         _ = calc_thresholds(np.arange(0, 1, 0.1), np.ones((2, 10, 100)))
@@ -583,6 +582,17 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             site_dict_i["scaled_rates"] = branch_h5["scaled_rates"][f"rates_{branch_scaling}"][:]
 
         for investigation_time in time_interval:
+            if benchmarking:
+                print(f"Processing {investigation_time} years...")
+                itime = time()
+            if single_site and os.path.exists(cumu_PPEh5_file):
+                with h5.File(cumu_PPEh5_file, 'r') as site_h5:
+                    if investigation_time in site_h5:
+                        if site_h5[investigation_time]['n_samples'][()] >= n_samples:
+                            # cumu_PPE calculated. Continue only if sed_PPE requested but not previously processed
+                            if not sed_PPE or (sed_PPE and "SED_PPE" in site_h5[investigation_time]):
+                                continue
+
             if not NSHM_branch:
                 cumulative_disp_scenarios = np.zeros(n_samples)
                 for NSHM_PPE in NSHM_PPEh5_list[1:]:
@@ -592,7 +602,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
                     cumulative_disp_scenarios[slip_scenarios] += NSHM_displacements.reshape(-1)
                 if benchmarking:
-                    print(f"Loaded PPE: {time() - begin:.5f} s")
+                    print(f"\tLoaded PPE: {time() - begin:.5f} s")
                 lap = time()
             else:
                 # Set up params for sampling
@@ -628,7 +638,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                         scenarios = csc_array(np.zeros((int(n_samples), 1)))
                         disp_uncertainty = np.array([])
                     if benchmarking:
-                        print(f"Time taken to load scenarios: {time() - lap:.5f} s")
+                        print(f"\tTime taken to load scenarios: {time() - lap:.5f} s")
                         lap = time()
                 else:
                     # average number of events per time interval (effectively R*T from Ned's guide)
@@ -639,7 +649,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                     # Save as csc array to save memory
                     scenarios = csc_array(rng.poisson(lambdas, size=(int(n_samples), lambdas.size)))
                     if benchmarking:
-                        print(f"Time taken to generate scenarios: {time() - begin:.5f} s")
+                        print(f"\tTime taken to generate scenarios: {time() - begin:.5f} s")
                         lap = time()
 
                 if disp_uncertainty is None:
@@ -649,17 +659,17 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                     lap = time()
                     disp_uncertainty = rng.normal(1, sd, size=scenarios.data.shape[0])
                     if benchmarking:
-                        print(f"\tdisp_uncertainty: {time() - lap:.5f} s")
+                        print(f"\tGenerate disp_uncertainty: {time() - lap:.5f} s")
                         lap = time()  
             # for each 100 yr scenario, get displacements from EQs that happened
             disp_scenarios = scenarios * disps
             if benchmarking:
-                print(f"\tdisp_scenarios: {time() - lap:.5f} s")
+                print(f"\tGenerate disp_scenarios: {time() - lap:.5f} s")
                 lap = time()
             # multiplies displacement by the uncertainty multiplier
             disp_scenarios.data *= disp_uncertainty
             if benchmarking:
-                print(f"\tdisp_scenarios2: {time() - lap:.5f} s")
+                print(f"\tApply disp_uncertainty: {time() - lap:.5f} s")
                 lap = time()
 
             if sed_PPE:
@@ -669,47 +679,46 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 if disp_scenarios.data.shape[0] == 0:
                     up_SED_PPE, down_SED_PPE = np.array([0]), np.array([0])
                     up_SED_thresh, down_SED_thresh = np.array([0]), np.array([0])
-                    if benchmarking:
-                        print(f"SED_PPE Calculated Total: {time() - lap:.5f} s")
-                        lap = time()
                 else:
                     up_scenarios_ix = np.where(disp_scenarios.data > 0)[0]
                     down_scenarios_ix = np.where(disp_scenarios.data < 0)[0]
                     if benchmarking:
-                        print(f"SED_PPE scenario_ix: {time() - lsed:.5f} s")
+                        print(f"\t\tSED_PPE scenario_ix: {time() - lsed:.5f} s")
                         lsed = time()
                     up_SED = csc_array((np.ceil(disp_scenarios.data[up_scenarios_ix] / SED_step) * SED_step, (disp_scenarios.row[up_scenarios_ix], disp_scenarios.col[up_scenarios_ix])), shape=disp_scenarios.shape)
                     down_SED = csc_array((np.floor(disp_scenarios.data[down_scenarios_ix] / SED_step) * SED_step, (disp_scenarios.row[down_scenarios_ix], disp_scenarios.col[down_scenarios_ix])), shape=disp_scenarios.shape)
                     if benchmarking:
-                        print(f"SED_PPE SED arrays: {time() - lsed:.5f} s")
+                        print(f"\t\tSED_PPE SED arrays: {time() - lsed:.5f} s")
                         lsed = time()
                     up_SED_thresh = np.unique(up_SED.data - SED_step)
                     up_SED_PPE = np.zeros_like(up_SED_thresh)
 
                     for ix, PPE in enumerate(up_SED_thresh):
-                        up_SED_PPE[ix] = np.unique((up_SED > PPE).indices).shape[0] / n_samples
+                        up_SED_PPE[ix] = np.where((up_SED > PPE).sum(axis=1))[0].shape[0] / n_samples
 
                     if benchmarking:
-                        print(f"SED_PPE Up Complete: {time() - lsed:.5f} s")
+                        print(f"\t\tSED_PPE Up Complete: {time() - lsed:.5f} s")
                         lsed = time()
+
                     down_SED_thresh = np.unique(down_SED.data + SED_step)[::-1]
                     down_SED_PPE = np.zeros_like(down_SED_thresh)
 
                     for ix, PPE in enumerate(down_SED_thresh):
-                        down_SED_PPE[ix] = np.unique((down_SED < PPE).indices).shape[0] / n_samples
+                        down_SED_PPE[ix] = np.where((down_SED < PPE).sum(axis=1))[0].shape[0] / n_samples
 
                     if benchmarking:
-                        print(f"SED_PPE Down Complete: {time() - lsed:.5f} s")
-                    if benchmarking:
-                        print(f"SED_PPE Calculated Total: {time() - lap:.5f} s")
-                        lap = time()
+                        print(f"\t\tSED_PPE Down Complete: {time() - lsed:.5f} s")
+                        lsed = time()
+                if benchmarking:
+                    print(f"\tSED_PPE Calculated Total: {time() - lap:.5f} s")
+                    lap = time()
 
 
             # sum all displacement values at that site in that 100 yr interval
             up_scenarios = np.where(disp_scenarios.data > 0, disp_scenarios.data, 0)
             down_scenarios = np.where(disp_scenarios.data < 0, disp_scenarios.data, 0)
             if benchmarking:
-                print(f"Exceed Type Scenarios: {time() - lap:.5f} s")
+                print(f"\tExceed Type Scenarios: {time() - lap:.5f} s")
             lap = time()
 
             disp_scenarios.data = up_scenarios
@@ -718,7 +727,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             cumulative_down_scenarios = disp_scenarios.sum(axis=1).reshape(1, n_samples)
             cumulative_disp_scenarios = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios]).reshape(2, 1, n_samples)
             if benchmarking:
-                print(f"Calculated Displacements: {time() - lap:.5f} s")
+                print(f"\tCalculated Displacements: {time() - lap:.5f} s")
             lap = time()    
 
             # Find indexes of scenarios where slip occurred
@@ -731,12 +740,12 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 cumulative_indptr = np.cumsum([0, up_slip_scenarios.shape[0], down_slip_scenarios.shape[0]])
                 n_exceedances_up, n_exceedances_down = sparse_thresholds(thresholds, cumulative_data, cumulative_indptr)                    
                 if benchmarking:
-                    print(f"Sparse Exceedances Counted : {time() - lap:.15f} s")
+                    print(f"\tSparse Exceedances Counted: {time() - lap:.5f} s")
             else:
                 cumulative_array = np.vstack([cumulative_up_scenarios, cumulative_down_scenarios])
                 n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, cumulative_array.reshape(-1, 1, n_samples))
                 if benchmarking:
-                    print(f"Exceedances Counted : {time() - lap:.15f} s")
+                    print(f"\tExceedances Counted: {time() - lap:.5f} s")
 
             lap = time()
 
@@ -782,7 +791,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                     n_exceedances_up, n_exceedances_down = calc_thresholds(thresholds, chunked_disp_scenarios)
 
                     if benchmarking:
-                        print(f"Error Exceedances Counted : {time() - lap:.15f} s")
+                        print(f"\tError Exceedances Counted : {time() - lap:.15f} s")
                     lap = time()
                     exceedance_errs_up = n_exceedances_up / error_chunking   # Change to error_samples for new method
                     exceedance_errs_down = n_exceedances_down / error_chunking   # Change to error_samples for new method
@@ -810,6 +819,8 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                                       "n_samples": n_samples,
                                                       "thresh_para": np.hstack([thresh_lims, thresh_step]),
                                                       "disp_scaling": min_disp})
+                if benchmarking:
+                    print(f"\t{investigation_time} years complete: {time()-itime:.05f} s")
         if single_site:
             lap = time()
             with h5.File(cumu_PPEh5_file, "a", libver='latest') as PPEh5:
@@ -926,8 +937,11 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         if not remake_branch_PPE:
             print(f'\tChecking for existing PPE from {n_samples:,d} scenarios at each site...')
             well_processed_sites = check_meta_h5_samples(fault_branch_meta_h5, fault_model_allbranch_PPE_dict[branch_id], inv_sites, n_samples, time_interval, branch_weight)
+            process_intervals = [interval for interval in well_processed_sites if len(well_processed_sites[interval]) < len(inv_sites)]  # Don't load arrays for fully processed time intervals
+            well_processed_sites = set.intersection(*well_processed_sites.values())
         else:
-            well_processed_sites = set()
+            remove_h5_samples(fault_branch_meta_h5, fault_model_allbranch_PPE_dict[branch_id], inv_sites, time_interval, branch_weight)
+            well_processed_sites, process_intervals = set(), time_interval
 
         prep_list = list(inv_sites - well_processed_sites)
         n_jobs += len(prep_list)
@@ -936,7 +950,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             print(f"\tAll sites have been processed for {branch_id}. Skipping...")
             continue
         else:
-            print(f"\t{len(prep_list)}/{len(inv_sites)} requested sites need processing for {branch_id} {time_interval[0]} years...")
+            print(f"\t{len(prep_list)}/{len(inv_sites)} requested sites needed for {branch_id}")
             remake_branch_PPE = True
 
         ### get exceedance probability dictionary
@@ -944,7 +958,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             if nesi_step == 'prep':
                 if load_random:
                     scenario_dir = os.path.dirname(branch_site_disp_dict_file)
-                    prepare_scenario_arrays(branch_site_disp_dict_file, scenario_dir, time_interval, n_samples, rate_scaling_factor)
+                    prepare_scenario_arrays(branch_site_disp_dict_file, scenario_dir, process_intervals, n_samples, rate_scaling_factor)
 
                 print(f"\tPrepping for NESI....")
                 if not os.path.exists(fault_branch_meta_h5):
@@ -971,12 +985,12 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             else:
                 if load_random:
                     scenario_dir = os.path.dirname(branch_site_disp_dict_file)
-                    prepare_scenario_arrays(branch_site_disp_dict_file, scenario_dir, time_interval, n_samples, rate_scaling_factor)
+                    prepare_scenario_arrays(branch_site_disp_dict_file, scenario_dir, process_intervals, n_samples, rate_scaling_factor)
 
                 get_cumu_PPE(branch_key=branch_id, branch_site_disp_dict=branch_site_disp_dict_file,
                              site_ids=prep_list, slip_taper=slip_taper, load_random=load_random,
                              model_version_results_directory=model_version_results_directory,
-                             time_interval=time_interval, n_samples=n_samples, extension1="",
+                             time_interval=process_intervals, n_samples=n_samples, extension1="",
                              thresh_lims=thresh_lims, thresh_step=thresh_step, cumu_PPEh5_file=fault_model_allbranch_PPE_dict[branch_id],
                              scenario_dir=scenario_dir, single_site=fault_model_allbranch_PPE_dict[branch_id], sed_PPE=calculate_SED)
 
@@ -1015,7 +1029,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         n_tasks = int(np.ceil(n_jobs / tasks_per_array))
         print('\nCreating SLURM submission script....')
         prep_SLURM_submission(model_version_results_directory, int(tasks_per_array), int(n_tasks), hours=int(hours), mins=int(mins), job_time=job_time, mem=mem, cpus=cpus,
-                              account=account, time_interval=time_interval, n_samples=n_samples, sd=sd, thresh_lims=thresh_lims, thresh_step=thresh_step)
+                              account=account, time_interval=process_intervals, n_samples=n_samples, sd=sd, thresh_lims=thresh_lims, thresh_step=thresh_step)
         raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
 
     elif nesi and nesi_step == 'combine' and sbatch:
@@ -1049,6 +1063,13 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         print(f"\nSaving {model_version_results_directory}/{outfile_name}.pkl....")
         with open(f"../{model_version_results_directory}/{outfile_name}.pkl", "wb") as f:
             pkl.dump(fault_model_allbranch_PPE_dict, f)
+
+        with h5.File(fault_branch_meta_h5, 'r+') as meta_h5:
+            for interval in process_intervals:
+                if str(n_samples) in meta_h5[interval]:
+                    prep_list = list(set(prep_list) | {site.decode() for site in meta_h5[process_intervals[0]][str(n_samples)][:]})
+                    del meta_h5[interval][str(n_samples)]
+                meta_h5[interval].create_dataset(str(n_samples), data=prep_list)
 
         return fault_model_allbranch_PPE_dict
 
