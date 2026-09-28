@@ -1192,6 +1192,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                 print(f'Preparing site {ix}: {site} for NESI task array... ({100 * ix / len(site_list):.0f}%)', end ='\r')
                 site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
                 if os.path.exists(site_h5_file):
+                    continue
                     os.remove(site_h5_file)
                 site_meta_dict = {'site_coords': site_coords_dict[site],
                                   'n_samples': n_samples,
@@ -1266,7 +1267,8 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                 if all_intervals_prepared:
                     # Remove the site file if it has added all requested intervals into the weighted_h5
                     # If not, preserve as it'll need to be reprocessed
-                    os.remove(site_h5_file)
+                    pass
+                    # os.remove(site_h5_file)
                 sites_added += 1
                 elapsed = time_elasped(time(), start, decimal=False)
                 printProgressBar(ix + 1, len(site_list), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / max([sites_added, 1]):.2f}s/site)', length=50)
