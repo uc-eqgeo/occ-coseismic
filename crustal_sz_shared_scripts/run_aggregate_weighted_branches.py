@@ -364,7 +364,8 @@ if not paired_crustal_sz:
                         model_version_results_directory=out_version_results_directory, n_samples=n_samples,
                         slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step, sbatch=prep_sbatch, mem=mem,
                         time_interval=time_interval, sd=sd, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array, job_time=job_time,
-                        load_random=load_random, remake_PPE=remake_PPE, account=account, thresh_lims=thresh_lims, thresh_step=thresh_step, inv_sites=inv_sites)
+                        load_random=load_random, remake_PPE=remake_PPE, account=account, thresh_lims=thresh_lims, thresh_step=thresh_step, inv_sites=inv_sites,
+                        calculate_SED=calculate_SED)
         else:
             print('Loading pre-prepared fault model PPE dictionary...')
             with open(PPE_filepath, 'rb') as f:
