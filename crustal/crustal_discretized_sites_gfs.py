@@ -16,7 +16,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_v0-0-1"
+mesh_version = "_v0-0-2"
 
 steeper_dip, gentler_dip = False, False
 
@@ -25,11 +25,13 @@ maximum_slip = 12  # Maximum amount of slip on a patch (set this to maximum slip
 minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 1 cm of displacement from 10 m of slip)
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_file = os.path.join('..', 'sites', 'CUSP_v0-0-1.geojson')
+site_list_file = os.path.join('..', 'sites', 'CUSP_v0-0-2.geojson')
 if site_list_file.endswith('.csv'):
     sites_df = pd.read_csv(site_list_file).drop_duplicates().reset_index(drop=True)
 else:
     sites_df = gpd.read_file(site_list_file).drop_duplicates().reset_index(drop=True)
+
+sites_df[['Max GF Uplift (m)', 'Max GF Subsidence (m)']] = 0.
 
 gf_site_names = [str(site) for site in sites_df['siteId']]
 gf_site_coords = np.array(sites_df[['Lon', 'Lat', 'Height']])
@@ -179,12 +181,18 @@ else:
             del gf_h5[str(fault_id)][key]
             gf_h5[str(fault_id)].create_dataset(key, data=disp_dict[key])
         gf_h5.close()
+
+        if len(non_zero_ix) > 0:
+            sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Uplift (m)'] = np.maximum(sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Uplift (m)'], disps_ds)
+            sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Subsidence (m)'] = np.minimum(sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Subsidence (m)'], disps_ds)
+
                 
         if fault_id % 1 == 0:
             print(f'discretised dict {fault_id:0{sigfig}d} ({fix:0{sigfig}d}/{n_patches}) done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
     print('')
 
 # This geojson file will be used to control the sites of the inversion
+sites_df['Max GF VLM (m)'] = sites_df[['Max GF Uplift (m)', 'Max GF Subsidence (m)']].apply(lambda row: abs(max(row, key=abs)), axis=1)
 gdf = gpd.GeoDataFrame(sites_df, geometry=gpd.points_from_xy(sites_df.Lon, sites_df.Lat), crs='EPSG:2193')
 gdf.to_file(f"discretised{discretise_version}/crustal_site_locations{mesh_version}.geojson", driver="GeoJSON")
 
