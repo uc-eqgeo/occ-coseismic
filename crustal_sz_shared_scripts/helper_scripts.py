@@ -58,9 +58,16 @@ def get_probability_color(exceed_type):
 
     return color
 
-def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, time_intervals, branch_weight):
+
+def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, time_intervals, branch_weight, calculate_SED=False):
     """Function that will check that sites have been processed with the required amount of samples, and removes sites that have
     been deleted manually"""
+
+    if calculate_SED:
+        sed_key = "_SED"
+        time_intervals = [interval + sed_key for interval in time_intervals]
+    else:
+        sed_key = ""
 
     all_existing_sites = {os.path.basename(site_file)[:-3] for site_file in glob(f"{site_dir}/*h5")} # All sites that have a file associated with it
     existing_sites = all_existing_sites & inv_sites  # Sites for this run that have a file associated with it
@@ -147,16 +154,19 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
                             if all([time_interval in site_intervals 
                                     and required_keys <= (interval_h5 := site_h5[time_interval]).keys() 
                                     and interval_h5['n_samples'][()] >= n_samples]):
-                                well_processed_sites[time_interval].add(site)
-                                n_good += 1
-                                check_dict[str(interval_h5['n_samples'][()])] = check_dict.get(str(interval_h5['n_samples'][()]), []) + [site]
+                                if not calculate_SED or (calculate_SED and 'SED_PPE' in site_h5[time_interval.strip("_SED")].keys()):
+                                    well_processed_sites[time_interval].add(site)
+                                    n_good += 1
+                                    check_dict[str(interval_h5['n_samples'][()])] = check_dict.get(str(interval_h5['n_samples'][()]), []) + [site]
+                                else:
+                                    check_dict[f"0{sed_key}"] = check_dict.get(f"0{sed_key}", []) + [site]
                             else:
-                                check_dict['0'] = check_dict.get('0', []) + [site]
+                                check_dict[f"0{sed_key}"] = check_dict.get(f"0{sed_key}", []) + [site]
                         if ixs % print_every == 0 or ixs == n_existing:
                             print(f'\t\t{n_existing}/{n_inv} sites previously processed, {n_good:0{width}d}/{ixs:0{width}d} sampled enough for {time_interval} years...', end='\r')
                     except OSError:
                         os.remove(f"{site_dir}/{site}.h5")
-                        check_dict['0'] = check_dict.get('0', []) + [site]
+                        check_dict[f"0{sed_key}"] = check_dict.get(f"0{sed_key}", []) + [site]
                 # Add checked files to metadata file, ensuring that they are placed into the top processing bracket
                 with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
                     for k, v in check_dict.items():
@@ -174,6 +184,7 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
                 branch_meta_PPEh5.create_dataset('site_coords', data=[list(c) for c in set(tuple(c) for c in all_coords)])  # Removes duplicate entries
 
     return well_processed_sites
+
 
 def remove_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, time_intervals, branch_weight):
     """If option to reprocess all sites is selected, start by deleting the any prcessed time intervals"""
@@ -195,7 +206,7 @@ def remove_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, time_intervals,
                 branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
 
     if n_existing == 0:
-        print(f'\t\t0/{n_inv} sites previously processed to {time_interval} years...')
+        print(f'\t\t0/{n_inv} sites previously processed...')
         return
 
     for ix, site in enumerate(existing_sites, 1):
@@ -209,16 +220,16 @@ def remove_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, time_intervals,
                 remove_site = True
             else:
                 for time_interval in remove_intervals:
-                    if time_interval in processed_intervals:
-                        del siteh5[time_interval]
+                    del siteh5[time_interval]
         if remove_site:
             os.remove(f"{site_dir}/{site}.h5")
 
     print(f'\n\t\tRemoving sites from meta file...')
     with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
-        for time_interval in time_intervals:
+        for time_interval in sum([[interval, interval + "_SED"] for interval in time_intervals], []):
             if time_interval not in branch_meta_PPEh5:
-                branch_meta_PPEh5.create_group(time_interval)
+                if not time_interval.endswith("_SED"):
+                    branch_meta_PPEh5.create_group(time_interval)
             else:
                 processed_samples = [int(key) for key in branch_meta_PPEh5[time_interval].keys()]
                 processed_samples.sort()
@@ -231,6 +242,7 @@ def remove_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, time_intervals,
     print('')
 
     return
+
 
 def make_qualitative_colormap(name, length):
     from collections import namedtuple
@@ -439,6 +451,7 @@ def tol_cset(colorset=None):
         return cset('#77AADD', '#EE8866', '#EEDD88', '#FFAABB', '#99DDFF',
                     '#44BB99', '#BBCC33', '#AAAA00', '#DDDDDD', '#000000')
 
+
 def filter_ruptures_by_rate(directory):
     """returns rupture indices that have annual rate >0"""
 
@@ -498,7 +511,6 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
             filtered_scenarios.append(rupture_index)
     print(f"location filtered scenarios: {len(filtered_scenarios)}")
     return filtered_scenarios
-
 
 
 def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectangle_outlines_gdf, rupture_id,
@@ -612,6 +624,7 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
         disps_scenario = None
 
     return disps_scenario, polygon_slips
+
 
 def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf_name,
                           results_version_directory, disc_version_directory, crustal_directory="crustal_files", sz_directory="subduction_files",
@@ -728,6 +741,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
 
     return disp_dictionary
 
+
 def get_figure_bounds(polygon_gdf="", extent=""):
     """sets figure bounds based on key words
     polygon_gdf: either discretised polygon gdf (for displacement figure) or ruptured rectangles gdf (slip figure)
@@ -772,6 +786,7 @@ def get_figure_bounds(polygon_gdf="", extent=""):
         ymin_tick, ymax_tick = round(plot_ymin, -5) - 100000, round(plot_ymax, -5) + 100000
         tick_separation = 400000.
     return plot_xmin, plot_ymin, plot_xmax, plot_ymax, xmin_tick, xmax_tick, ymin_tick, ymax_tick, tick_separation
+
 
 def save_target_rates(NSHM_directory, target_rupture_ids, extension1, results_version_directory):
     """get the annual rates from NSHM solution for target ruptures, output a csv file
@@ -824,6 +839,7 @@ def maximum_displacement_plot(site_ids, branch_site_disp_dict, model_dir, branch
     else:
         fig.savefig(f"../{model_dir}/{branch_name}/{branch_name}_max_disp.png", dpi=300)
     plt.close(fig)
+
 
 def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodetic', time_independent=True,
                          time_dependent=True, single_branch=False, fakequakes=False):
@@ -1043,6 +1059,7 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
 
     return NSHM_directory_list, file_suffix_list, n_branches
 
+
 def write_sites_to_geojson(h5_file, intervals=['100']):
     """
     This function will read in the h5 file, and write a geojson file of all the sites that have been processed
@@ -1122,6 +1139,7 @@ def percentile(a,
         a, func=_quantile_ureduce_func, q=q, weights=weights, keepdims=keepdims, axis=axis,
         out=out, overwrite_input=overwrite_input, method=method)
 
+
 def _weights_are_valid(weights, a, axis):
     """Validate weights array.
     
@@ -1145,6 +1163,7 @@ def _weights_are_valid(weights, a, axis):
         wgt = wgt.reshape(tuple((s if ax in axis else 1)
                                 for ax, s in enumerate(a.shape)))
     return wgt
+
 
 def _ureduce(a, func, keepdims=False, **kwargs):
     """
@@ -1222,6 +1241,7 @@ def _ureduce(a, func, keepdims=False, **kwargs):
 
     return r
 
+
 def _quantile_ureduce_func(
         a: np.array,
         q: np.array,
@@ -1259,6 +1279,7 @@ def _quantile_ureduce_func(
                        out=out,
                        weights=wgt)
     return result
+
 
 def _quantile(
         arr: np.array,

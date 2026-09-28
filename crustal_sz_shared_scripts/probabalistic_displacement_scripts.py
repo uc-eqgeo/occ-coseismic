@@ -121,6 +121,7 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
     print('')
     return 
 
+
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
     """
     Call in a loop to create terminal progress bar
@@ -142,6 +143,7 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total: 
         print()
 
+
 def time_elasped(current_time, start_time, site_num=None, decimal=False):
     elapsed_time = current_time - start_time
     if site_num is not None:
@@ -159,6 +161,7 @@ def time_elasped(current_time, start_time, site_num=None, decimal=False):
             return "{:0>2}:{:0>2}:{:0>2}.{:.0f}".format(int(hours), int(minutes), int(seconds), rem * 10), per_site
         else:
             return "{:0>2}:{:0>2}:{:0>2}.{:.0f}".format(int(hours), int(minutes), int(seconds), rem * 10)
+
 
 def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, model_version_results_directory):
     """
@@ -476,7 +479,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     """
     commence = time()
 
-    print(f'\tCalculating cumulative PPE scenarios...')
+    print(f'\tCalculating cumulative {"and SED " if sed_PPE else ""}PPE scenarios...')
     procdir = os.path.relpath(os.path.dirname(__file__) + '/..')
     if numba_flag:
         _ = calc_thresholds(np.arange(0, 1, 0.1), np.ones((2, 10, 100)))
@@ -858,6 +861,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
     
     return
 
+
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension, inv_sites=[],
                               nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
                               time_interval=['100'], sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=3, load_random=False,
@@ -936,8 +940,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         
         if not remake_branch_PPE:
             print(f'\tChecking for existing PPE from {n_samples:,d} scenarios at each site...')
-            well_processed_sites = check_meta_h5_samples(fault_branch_meta_h5, fault_model_allbranch_PPE_dict[branch_id], inv_sites, n_samples, time_interval, branch_weight)
-            process_intervals = [interval for interval in well_processed_sites if len(well_processed_sites[interval]) < len(inv_sites)]  # Don't load arrays for fully processed time intervals
+            well_processed_sites = check_meta_h5_samples(fault_branch_meta_h5, fault_model_allbranch_PPE_dict[branch_id], inv_sites, n_samples, time_interval, branch_weight, calculate_SED)
+            process_intervals = [interval.strip("_SED") for interval in well_processed_sites if len(well_processed_sites[interval]) < len(inv_sites)]  # Don't load arrays for fully processed time intervals
             well_processed_sites = set.intersection(*well_processed_sites.values())
         else:
             remove_h5_samples(fault_branch_meta_h5, fault_model_allbranch_PPE_dict[branch_id], inv_sites, time_interval, branch_weight)
@@ -1065,13 +1069,26 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             pkl.dump(fault_model_allbranch_PPE_dict, f)
 
         with h5.File(fault_branch_meta_h5, 'r+') as meta_h5:
-            for interval in process_intervals:
-                if str(n_samples) in meta_h5[interval]:
-                    prep_list = list(set(prep_list) | {site.decode() for site in meta_h5[process_intervals[0]][str(n_samples)][:]})
-                    del meta_h5[interval][str(n_samples)]
-                meta_h5[interval].create_dataset(str(n_samples), data=prep_list)
+            for intervals in process_intervals:
+                intervals = [intervals] if not calculate_SED else [intervals, f"{intervals}_SED"]
+                for interval in intervals:
+                    if str(n_samples) in meta_h5[interval]:
+                        site_list = list(set(prep_list) | {site.decode() for site in meta_h5[interval][str(n_samples)][:]})
+                        del meta_h5[interval][str(n_samples)]
+                        meta_h5[interval].create_dataset(str(n_samples), data=site_list)
+                    else:
+                        meta_h5[interval].create_dataset(str(n_samples), data=prep_list)
+                if not calculate_SED:
+                    if f"{interval}_SED" in meta_h5:
+                        for key in meta_h5[f"{interval}_SED"]:
+                            site_list = list({site.decode() for site in meta_h5[f"{interval}_SED"][key][:]} - set(prep_list))
+                            del meta_h5[f"{interval}_SED"][key]
+                            if len(site_list) > 0:
+                                meta_h5[f"{interval}_SED"].create_dataset(str(n_samples), data=site_list)
+
 
         return fault_model_allbranch_PPE_dict
+
 
 def check_completed_weighted_sites(weighted_h5, requested_sites, time_interval, thresh_lims=[0, 3], thresh_step=0.01, n_samples=100000):
         # Check sites individually to see if they have been processed
@@ -1097,6 +1114,7 @@ def check_completed_weighted_sites(weighted_h5, requested_sites, time_interval, 
                 intervals_list.append(time_interval)
         return site_list, intervals_list
 
+
 def calc_array_times(site_list, min_tasks_per_array=100, n_array_tasks=100, job_time=60):
     # Calculate number of task arrays and required time for each array
     n_sites = len(site_list)
@@ -1109,6 +1127,7 @@ def calc_array_times(site_list, min_tasks_per_array=100, n_array_tasks=100, job_
     mins = np.ceil(rem / 60)
 
     return tasks_per_array, n_array_tasks, hours, mins
+
 
 def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper, site_list=[], thresh_lims=[0, 3], thresh_step=0.01, nesi=False, nesi_step='prep', n_samples=100000,
                                min_tasks_per_array=100, n_array_tasks=100, mem=10, cpus=1, account='', job_time=60, remake_PPE=False, time_interval=['100']):
@@ -1681,12 +1700,14 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     
     return
 
+
 def process_pair(pair_id, branch_disp_dict):
     parts = pair_id.split('_-_')
     cumulative_value = branch_disp_dict[parts[0]]
     for branch in parts[1:]:
         cumulative_value += branch_disp_dict[branch]
     return pair_id, cumulative_value
+
 
 def full_process_pair(pair_id, branch_disp_dict, thresholds, n_samples):
     parts = pair_id.split('_-_')
@@ -1697,8 +1718,10 @@ def full_process_pair(pair_id, branch_disp_dict, thresholds, n_samples):
     n_exceedances_up, n_exceedances_down = sparse_thresholds(thresholds, cumulative_value.data, cumulative_value.indptr)
     return (n_exceedances_up / n_samples).reshape(-1), (n_exceedances_down / n_samples).reshape(-1)
 
+
 def sparse_pair_dict(pair_id, cumulative_pair_dict, n_samples):
     return pair_id, csr_matrix((cumulative_pair_dict[pair_id]['data'], cumulative_pair_dict[pair_id]['indices'], cumulative_pair_dict[pair_id]['indptr']), shape=(3, n_samples))
+
 
 def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_directory_list, gf_name, thresholds, exceed_type_list, pair_id_list, sigma_lims, branch_weights, compression=None, intervals=['100'], fault_flag=None):    
 
@@ -1848,6 +1871,7 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
         if benchmarking:
             nesiprint(f'Site complete: {time() - start:.2f}s\n')
 
+
 def build_branch_PPE_file(out_version_results_directory, single_branch, branch_key, inv_sites, time_intervals=["100"], thresh_lims=[0.2, 3], thresh_step=0.2, probs_lims=[0.01, 0.10], probs_step=0.01):
 
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
@@ -1902,7 +1926,6 @@ def build_branch_PPE_file(out_version_results_directory, single_branch, branch_k
                 dict_to_hdf5(branch_h5, site_dict)
 
     return
-
 
 
 def get_exceedance_bar_chart_data(site_PPE_dictionary, probability, exceed_type, site_list, weighted=False, err_index=None, interval='100'):
@@ -2009,6 +2032,7 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
                 probs_threshold[ix, :] = np.nan       
 
     return probs_threshold
+
 
 def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_directory, file_type_list, plot_order=[]):
     """makes hazard curves for each site. includes the probability of cumulative displacement from multiple
@@ -2377,6 +2401,7 @@ def plot_weighted_mean_haz_curves(weighted_mean_PPE_dictionary, exceed_type_list
                 printProgressBar(plot_n * ix + plot_n + 1, plot_total, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
     weighted_mean_PPE_dictionary.close()
 
+
 def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_version_title, out_directory, file_type_list, slip_taper, plot_order, sigma=2, interval='100'):
     """
     Plots the weighted mean hazard curve for each site, for each exceedance type (up, down)
@@ -2524,6 +2549,7 @@ def plot_single_branch_haz_curves(PPE_dictionary, exceed_type_list, model_versio
             plt.close()
             printProgressBar(plot_n + 1, n_plots, prefix = '\tCompleted Plots:', suffix = 'Complete', length = 50)
     PPE_dictionary.close()
+
 
 def plot_weighted_mean_haz_curves_colorful(weighted_mean_PPE_dictionary, PPE_dictionary, exceed_type_list,
                                            model_version_title, out_directory, file_type_list, slip_taper, file_name,
