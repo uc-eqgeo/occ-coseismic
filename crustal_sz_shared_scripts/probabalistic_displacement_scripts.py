@@ -446,6 +446,7 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_intervals,
         step = int(1e8 / n_samples)  # step size for poisson sampling (100,000,000 elements per run, ~9GB)
         step = step if step < rates.shape[0] else rates.shape[0]  # ensure step is not larger than number of ruptures
         for interval in process_intervals:
+            print(f"\t\tCreating rates and slip uncertainty for {interval} years...")
             scenarios = csc_array(rng.poisson(float(interval) * rates[0:step], size=(int(n_samples), step)))
             for ii in range(step, n_ruptures, step):
                 scenarios = hstack([scenarios, csc_array(rng.poisson(float(interval) * rates[ii:ii + step], size=(int(n_samples), len(rates[ii:ii + step]))))])
@@ -670,48 +671,55 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 print(f"\tGenerate disp_scenarios: {time() - lap:.5f} s")
                 lap = time()
             # multiplies displacement by the uncertainty multiplier
+            # Limitation - if one rupture occurs repeatedly in a scenario, same uncertainty applied to all ruptures
+            # within that scenario
             disp_scenarios.data *= disp_uncertainty
             if benchmarking:
                 print(f"\tApply disp_uncertainty: {time() - lap:.5f} s")
                 lap = time()
 
             if sed_PPE:
-                # Calculate single
+                # Calculate single event displacement exceedances
                 lsed = time()
-                SED_step = 0.1
-                if disp_scenarios.data.shape[0] == 0:
-                    up_SED_PPE, down_SED_PPE = np.array([0]), np.array([0])
-                    up_SED_thresh, down_SED_thresh = np.array([0]), np.array([0])
-                else:
-                    up_scenarios_ix = np.where(disp_scenarios.data > 0)[0]
-                    down_scenarios_ix = np.where(disp_scenarios.data < 0)[0]
+                SED_MIN, SED_MAX, SED_STEP = 0, 10, 0.1
+                SED_THRESH = np.arange(SED_MIN, SED_MAX + SED_STEP, SED_STEP)
+                up_SED_PPE, down_SED_PPE = np.array([0]), np.array([0])
+                if disp_scenarios.data.size:
+                    sed = disp_scenarios.data / scenarios.data
+                    sed_scenarios = disp_scenarios.row
+                    up_scenarios_ix, down_scenarios_ix = sed > 0, sed < 0
+                    up_sed_max, down_sed_max = np.zeros(n_samples), np.zeros(n_samples)
                     if benchmarking:
                         print(f"\t\tSED_PPE scenario_ix: {time() - lsed:.5f} s")
                         lsed = time()
-                    up_SED = csc_array((np.ceil(disp_scenarios.data[up_scenarios_ix] / SED_step) * SED_step, (disp_scenarios.row[up_scenarios_ix], disp_scenarios.col[up_scenarios_ix])), shape=disp_scenarios.shape)
-                    down_SED = csc_array((np.floor(disp_scenarios.data[down_scenarios_ix] / SED_step) * SED_step, (disp_scenarios.row[down_scenarios_ix], disp_scenarios.col[down_scenarios_ix])), shape=disp_scenarios.shape)
+
+                    up_SED = np.ceil(sed[up_scenarios_ix] / SED_STEP) * SED_STEP
+                    down_SED = np.floor(sed[down_scenarios_ix] / SED_STEP) * SED_STEP
                     if benchmarking:
                         print(f"\t\tSED_PPE SED arrays: {time() - lsed:.5f} s")
                         lsed = time()
-                    up_SED_thresh = np.unique(up_SED.data - SED_step)
-                    up_SED_PPE = np.zeros_like(up_SED_thresh)
 
-                    for ix, PPE in enumerate(up_SED_thresh):
-                        up_SED_PPE[ix] = np.where((up_SED > PPE).sum(axis=1))[0].shape[0] / n_samples
+                    if up_SED.size:
+                        np.maximum.at(up_sed_max, sed_scenarios[up_scenarios_ix], up_SED)
+                        scenario_max = np.sort(up_sed_max[up_sed_max > 0])
 
-                    if benchmarking:
-                        print(f"\t\tSED_PPE Up Complete: {time() - lsed:.5f} s")
-                        lsed = time()
+                        n_exceed = scenario_max.size - np.searchsorted(scenario_max, SED_THRESH, side="right")
+                        up_SED_PPE = n_exceed[n_exceed > 0] / n_samples
 
-                    down_SED_thresh = np.unique(down_SED.data + SED_step)[::-1]
-                    down_SED_PPE = np.zeros_like(down_SED_thresh)
+                        if benchmarking:
+                            print(f"\t\tSED_PPE Up Complete: {time() - lsed:.5f} s")
+                            lsed = time()
 
-                    for ix, PPE in enumerate(down_SED_thresh):
-                        down_SED_PPE[ix] = np.where((down_SED < PPE).sum(axis=1))[0].shape[0] / n_samples
+                    if down_SED.size:
+                        np.minimum.at(down_sed_max, sed_scenarios[down_scenarios_ix], down_SED)
+                        scenario_min = np.sort(down_sed_max[down_sed_max < 0])
 
-                    if benchmarking:
-                        print(f"\t\tSED_PPE Down Complete: {time() - lsed:.5f} s")
-                        lsed = time()
+                        n_exceed = np.searchsorted(scenario_min, -SED_THRESH, side="left")
+                        down_SED_PPE = n_exceed[n_exceed > 0] / n_samples
+
+                        if benchmarking:
+                            print(f"\t\tSED_PPE Down Complete: {time() - lsed:.5f} s")
+                            lsed = time()
                 if benchmarking:
                     print(f"\tSED_PPE Calculated Total: {time() - lap:.5f} s")
                     lap = time()
@@ -763,8 +771,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                                              "exceedance_probs_down": exceedance_probs_down[exceedance_probs_down != 0]}
 
             if sed_PPE:
-                site_dict[investigation_time]["SED_PPE"] = {"up_SED_thresh": up_SED_thresh, 
-                                                            "down_SED_thresh": down_SED_thresh, 
+                site_dict[investigation_time]["SED_PPE"] = {"SED_THRESH": [SED_MIN, SED_MAX, SED_STEP],
                                                             "up_SED_PPE": up_SED_PPE,
                                                             "down_SED_PPE": down_SED_PPE}
 
