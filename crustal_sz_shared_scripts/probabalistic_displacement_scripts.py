@@ -946,7 +946,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
         
         if not remake_branch_PPE:
-            print(f'\tChecking for existing PPE from {n_samples:,d} scenarios at each site...')
+            print(f'\tChecking for existing cumu {"and SED " if calculate_SED else ""}PPE from {n_samples:,d} scenarios at each site...')
             well_processed_sites = check_meta_h5_samples(fault_branch_meta_h5, fault_model_allbranch_PPE_dict[branch_id], inv_sites, n_samples, time_interval, branch_weight, calculate_SED)
             process_intervals = [interval.strip("_SED") for interval in well_processed_sites if len(well_processed_sites[interval]) < len(inv_sites)]  # Don't load arrays for fully processed time intervals
             well_processed_sites = set.intersection(*well_processed_sites.values())
@@ -1006,16 +1006,33 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                              scenario_dir=scenario_dir, single_site=fault_model_allbranch_PPE_dict[branch_id], sed_PPE=calculate_SED)
 
         if not all([nesi, nesi_step == 'combine', sbatch]):
-            completed_sites = set(prep_list)
             with h5.File(fault_branch_meta_h5, "a") as branch_meta_h5:
                 if 'branch_weight' in branch_meta_h5.keys():
                     del branch_meta_h5['branch_weight']
                 branch_meta_h5.create_dataset('branch_weight', data=branch_weight_list[-1])
-                
-                if str(n_samples) in branch_meta_h5:
-                    completed_sites |= {id.decode() for id in branch_meta_h5[str(n_samples)][:]}
-                    del branch_meta_h5[str(n_samples)]
-                branch_meta_h5.create_dataset(str(n_samples), data=list(completed_sites))
+
+                for interval in [k for interval in process_intervals for k in ([interval, f"{interval}_SED"] if calculate_SED else [interval])]:
+                    completed_sites = set(prep_list)
+                    if interval not in branch_meta_h5:
+                        branch_meta_h5.create_group(interval)
+                    if str(n_samples) in branch_meta_h5[interval]:
+                        completed_sites |= {id.decode() for id in branch_meta_h5[interval][str(n_samples)][:]}
+                        del branch_meta_h5[interval][str(n_samples)]
+                    branch_meta_h5[interval].create_dataset(str(n_samples), data=list(completed_sites))
+                    if not calculate_SED:
+                        # Remove sites from SED tracking log
+                        if f"{interval}_SED" in branch_meta_h5:
+                            if "0" not in branch_meta_h5[f"{interval}_SED"]:
+                                branch_meta_h5[f"{interval}_SED"].create_dataset("0", data=[])
+                            for key in branch_meta_h5[f"{interval}_SED"]:
+                                if key == "0":
+                                    site_list = list({site.decode() for site in branch_meta_h5[f"{interval}_SED"][key][:]} | set(prep_list))
+                                else:
+                                    site_list = list({site.decode() for site in branch_meta_h5[f"{interval}_SED"][key][:]} - set(prep_list))
+                                del branch_meta_h5[f"{interval}_SED"][key]
+                                if len(site_list) > 0:
+                                    branch_meta_h5[f"{interval}_SED"].create_dataset(key, data=site_list)
+                    
                 if 'site_coords' in branch_meta_h5:
                     site_coord_dict = dict([[site.decode(), [float(lon), float(lat)]] for site, lon, lat in branch_meta_h5['site_coords'][:]])
                 else:
@@ -1074,25 +1091,6 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         print(f"\nSaving {model_version_results_directory}/{outfile_name}.pkl....")
         with open(f"../{model_version_results_directory}/{outfile_name}.pkl", "wb") as f:
             pkl.dump(fault_model_allbranch_PPE_dict, f)
-
-        with h5.File(fault_branch_meta_h5, 'r+') as meta_h5:
-            for intervals in process_intervals:
-                intervals = [intervals] if not calculate_SED else [intervals, f"{intervals}_SED"]
-                for interval in intervals:
-                    if str(n_samples) in meta_h5[interval]:
-                        site_list = list(set(prep_list) | {site.decode() for site in meta_h5[interval][str(n_samples)][:]})
-                        del meta_h5[interval][str(n_samples)]
-                        meta_h5[interval].create_dataset(str(n_samples), data=site_list)
-                    else:
-                        meta_h5[interval].create_dataset(str(n_samples), data=prep_list)
-                if not calculate_SED:
-                    if f"{interval}_SED" in meta_h5:
-                        for key in meta_h5[f"{interval}_SED"]:
-                            site_list = list({site.decode() for site in meta_h5[f"{interval}_SED"][key][:]} - set(prep_list))
-                            del meta_h5[f"{interval}_SED"][key]
-                            if len(site_list) > 0:
-                                meta_h5[f"{interval}_SED"].create_dataset(str(n_samples), data=site_list)
-
 
         return fault_model_allbranch_PPE_dict
 

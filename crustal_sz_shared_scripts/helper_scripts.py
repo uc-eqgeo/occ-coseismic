@@ -64,10 +64,7 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
     been deleted manually"""
 
     if calculate_SED:
-        sed_key = "_SED"
-        time_intervals = [interval + sed_key for interval in time_intervals]
-    else:
-        sed_key = ""
+        time_intervals = [interval + "_SED" for interval in time_intervals]
 
     all_existing_sites = {os.path.basename(site_file)[:-3] for site_file in glob(f"{site_dir}/*h5")} # All sites that have a file associated with it
     existing_sites = all_existing_sites & inv_sites  # Sites for this run that have a file associated with it
@@ -151,22 +148,22 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
                         with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
                             site_intervals = site_h5.keys()
                             coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
-                            if all([time_interval in site_intervals 
-                                    and required_keys <= (interval_h5 := site_h5[time_interval]).keys() 
+                            if all([time_interval.strip("_SED") in site_intervals 
+                                    and required_keys <= (interval_h5 := site_h5[time_interval.strip("_SED")]).keys() 
                                     and interval_h5['n_samples'][()] >= n_samples]):
                                 if not calculate_SED or (calculate_SED and 'SED_PPE' in site_h5[time_interval.strip("_SED")].keys()):
                                     well_processed_sites[time_interval].add(site)
                                     n_good += 1
-                                    check_dict[str(interval_h5['n_samples'][()])] = check_dict.get(str(interval_h5['n_samples'][()]), []) + [site]
+                                    check_dict[f"{interval_h5['n_samples'][()]}"] = check_dict.get(f"{interval_h5['n_samples'][()]}", []) + [site]
                                 else:
-                                    check_dict[f"0{sed_key}"] = check_dict.get(f"0{sed_key}", []) + [site]
+                                    check_dict["0"] = check_dict.get("0", []) + [site]
                             else:
-                                check_dict[f"0{sed_key}"] = check_dict.get(f"0{sed_key}", []) + [site]
+                                check_dict["0"] = check_dict.get("0", []) + [site]
                         if ixs % print_every == 0 or ixs == n_existing:
                             print(f'\t\t{n_existing}/{n_inv} sites previously processed, {n_good:0{width}d}/{ixs:0{width}d} sampled enough for {time_interval} years...', end='\r')
                     except OSError:
                         os.remove(f"{site_dir}/{site}.h5")
-                        check_dict[f"0{sed_key}"] = check_dict.get(f"0{sed_key}", []) + [site]
+                        check_dict["0"] = check_dict.get("0", []) + [site]
                 # Add checked files to metadata file, ensuring that they are placed into the top processing bracket
                 with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
                     for k, v in check_dict.items():
