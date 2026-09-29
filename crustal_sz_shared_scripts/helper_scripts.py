@@ -178,6 +178,8 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
         print('')
         if len(all_coords) > 0:
             with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
+                if 'site_coords' in branch_meta_PPEh5:
+                    del branch_meta_PPEh5['site_coords']
                 branch_meta_PPEh5.create_dataset('site_coords', data=[list(c) for c in set(tuple(c) for c in all_coords)])  # Removes duplicate entries
 
     return well_processed_sites

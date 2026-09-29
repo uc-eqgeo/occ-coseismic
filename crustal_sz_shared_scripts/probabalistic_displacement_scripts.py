@@ -434,7 +434,7 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_intervals,
                         sd_samples, sd_rupts = displacement_errs.shape
                         if all([samples == sd_samples, rupts == sd_rupts, interval_scenarios.data.shape[0] == displacement_errs.data.shape[0]]):
                             make_displacements = False
-                            print(f"\t\tUsing pre-made slip uncertainty for {interval} years...")
+                            print(f"\t\tUsing pre-made slip uncertainties for {interval} years...")
 
                     if make_displacements:
                         print(f"\t\tCreating pre-made slip uncertainties for {interval} years...")
@@ -686,7 +686,9 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
                 up_SED_PPE, down_SED_PPE = np.array([0]), np.array([0])
                 if disp_scenarios.data.size:
                     sed = disp_scenarios.data / scenarios.data
-                    sed_scenarios = disp_scenarios.row
+                    # In event of only 1 rupture, disp_scenarios is csc_array not coo
+                    sed_scenarios = disp_scenarios.indices if isinstance(disp_scenarios, csc_array) else disp_scenarios.row
+
                     up_scenarios_ix, down_scenarios_ix = sed > 0, sed < 0
                     up_sed_max, down_sed_max = np.zeros(n_samples), np.zeros(n_samples)
                     if benchmarking:
