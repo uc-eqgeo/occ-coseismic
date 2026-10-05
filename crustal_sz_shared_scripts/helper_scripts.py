@@ -626,7 +626,7 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
 
 
 def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf_name,
-                          results_version_directory, disc_version_directory, crustal_directory="crustal_files", sz_directory="subduction_files",
+                          disc_version_directory, crustal_directory="crustal_files", sz_directory="subduction_files",
                           location=[1749150, 5428092], search_radius=2.5e5, fakequakes=False):
     """
     inputs: uses extension naming scheme to load NSHM rate/slip data and fault geometry, state slip taper

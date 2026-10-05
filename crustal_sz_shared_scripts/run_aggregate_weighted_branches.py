@@ -332,7 +332,6 @@ if not paired_crustal_sz:
             calculate_fault_model_PPE = True
             get_rupture_disp_dict(NSHM_directory=NSHM_directory_list[ix], extension1=extension1_list[ix],
                                     slip_taper=slip_taper, fault_type=ftype[1], gf_name=gf_name,
-                                    results_version_directory=site_names_list[ftype[0]],
                                     disc_version_directory=version_discretise_directory[ftype[0]],
                                     crustal_directory=crustal_directory, sz_directory=sz_directory,
                                     search_radius=9e5, fakequakes=fakequakes)
