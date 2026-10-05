@@ -93,7 +93,7 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
     for time_interval in time_intervals:
         logged_sites, zero_sites, n_good = set(), set(), 0
         with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
-            print(f'\t\t{0:0{width}d}/{n_inv} sites previously processed, {0:0{width}d} sampled enough for {time_interval} years...', end='\r')
+            print(f'\t\t{0:0{width}d}/{n_inv} sites previously processed for {time_interval} years...', end='\r')
             if time_interval not in branch_meta_PPEh5:
                 branch_meta_PPEh5.create_group(time_interval)
             processed_samples = [int(key) for key in branch_meta_PPEh5[time_interval].keys()]
@@ -126,7 +126,7 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
                         # Site that already exists and has been logged as processed enough
                         well_processed_sites[time_interval] |= existing_sites & sites_processed
                     n_good = len(well_processed_sites[time_interval])
-                    print(f'\t\t{len(existing_sites & (logged_sites - zero_sites)):0{width}d}/{n_inv} sites previously processed, {n_good:0{width}d} sampled enough for {time_interval} years...', end='\r')
+                    print(f'\t\t{len(existing_sites & (logged_sites - zero_sites)):0{width}d}/{n_inv} sites previously processed for {time_interval} years, {n_good:0{width}d} sampled enough...', end='\r')
             if 'site_coords' not in branch_meta_PPEh5:
                 coords = []
                 for site in logged_sites:
@@ -136,7 +136,7 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
 
             # Identify sites that exist, but for some reason aren't in meta file (e.g. meta was deleted) so need be be checked individually
             individual_check = existing_sites - well_processed_sites[time_interval] - logged_sites
-            
+            # individual_check = {}
             if len(individual_check) > 0:
                 # Checks for sites that exist but there are no log for
                 print_every = max(1, max(1, n_existing) // 100)  # throttle progress output to ~100 updates
@@ -160,7 +160,7 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
                             else:
                                 check_dict["0"] = check_dict.get("0", []) + [site]
                         if ixs % print_every == 0 or ixs == n_existing:
-                            print(f'\t\t{n_existing}/{n_inv} sites previously processed, {n_good:0{width}d}/{ixs:0{width}d} sampled enough for {time_interval} years...', end='\r')
+                            print(f'\t\t{n_existing}/{n_inv} sites previously processed for {time_interval} years, {n_good:0{width}d}/{ixs:0{width}d} sampled enough...', end='\r')
                     except OSError:
                         os.remove(f"{site_dir}/{site}.h5")
                         check_dict["0"] = check_dict.get("0", []) + [site]

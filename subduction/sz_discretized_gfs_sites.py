@@ -15,7 +15,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_v0-0-2"
+version_extension = "_CUSP_full_res"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
@@ -27,7 +27,7 @@ maximum_slip = 12 if sz_zone == 'puysegur' else 50 if 'fq_' in sz_zone else 25  
 minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 0.001 for 1mm of displacement from max_slip m of slip)
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_file = os.path.join('..', 'sites', 'CUSP_v0-0-2')
+site_list_file = os.path.join('..', 'sites', 'CUSP_full_res')
 if sz_zone.startswith("p"):
     site_list_file = f"{site_list_file}S.geojson"
     version_extension += 'S'
@@ -99,6 +99,7 @@ else:
     prepare_set = set(prepared_site_names)  # Convert to set for faster lookup
     gf_ix = [ix for ix, site in enumerate(requested_site_names) if site not in prepare_set]
     all_site_names = prepared_site_names + requested_site_names[gf_ix].tolist()
+    _, requested_ix, all_site_ix = np.intersect1d(requested_site_names, all_site_names, return_indices=True)
     if prepared_site_coords.shape[0] == 0:
         all_site_coords = requested_site_coords[:, :2]
     else:
@@ -162,6 +163,11 @@ else:
             site_ix = np.array([ix for ix, site in enumerate(requested_site_names) if site not in prepare_set])
             if not site_ix.any():
                 # All sites have been processed 
+                with h5.File(gf_h5_file, "r") as gf_h5:
+                    if gf_h5[str(fault_id)]['non_zero_sites'].shape[0] > 0:
+                        _, requested_non_zero, all_non_zero = np.intersect1d(all_site_ix, gf_h5[str(fault_id)]['non_zero_sites'][:], return_indices=True)
+                        sites_df.loc[requested_ix[requested_non_zero], 'Max GF Uplift (m)'] = np.maximum(sites_df.loc[requested_ix[requested_non_zero], 'Max GF Uplift (m)'], gf_h5[str(fault_id)]['ds'][all_non_zero])
+                        sites_df.loc[requested_ix[requested_non_zero], 'Max GF Subsidence (m)'] = np.minimum(sites_df.loc[requested_ix[requested_non_zero], 'Max GF Subsidence (m)'], gf_h5[str(fault_id)]['ds'][all_non_zero])
                 print(f'discretised dict {fault_id:0{sigfig}d} of {n_patches} prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
                 continue
 
@@ -217,8 +223,10 @@ else:
             gf_h5.close()
 
             if len(non_zero_ix) > 0:
-                sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Uplift (m)'] = np.maximum(sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Uplift (m)'], disps)
-                sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Subsidence (m)'] = np.minimum(sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Subsidence (m)'], disps)
+                _, requested_non_zero, non_zero_requested = np.intersect1d(all_site_ix, non_zero_ix, return_indices=True)
+                if len(requested_non_zero) > 0:
+                    sites_df.loc[requested_non_zero, 'Max GF Uplift (m)'] = np.maximum(sites_df.loc[requested_non_zero, 'Max GF Uplift (m)'], disps[non_zero_requested])
+                    sites_df.loc[requested_non_zero, 'Max GF Subsidence (m)'] = np.minimum(sites_df.loc[requested_non_zero, 'Max GF Subsidence (m)'], disps[non_zero_requested])
 
             if fault_id % 1 == 0:
                 print(f'discretised dict {fault_id:0{sigfig}d} of {n_patches} done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
@@ -228,6 +236,7 @@ else:
 
 # This geojson file will be used to control the sites of the inversion
 sites_df['Max GF VLM (m)'] = sites_df[['Max GF Uplift (m)', 'Max GF Subsidence (m)']].apply(lambda row: abs(max(row, key=abs)), axis=1)
+sites_df[['Max GF Uplift (m)', 'Max GF Subsidence (m)', 'Max GF VLM (m)']] = sites_df[['Max GF Uplift (m)', 'Max GF Subsidence (m)', 'Max GF VLM (m)']].round(4)
 gdf = gpd.GeoDataFrame(sites_df, geometry=gpd.points_from_xy(sites_df.Lon, sites_df.Lat), crs='EPSG:2193')
 gdf.to_file(f"discretised{sz_zone}/{prefix}_site_locations{version_extension}.geojson", driver="GeoJSON")
 

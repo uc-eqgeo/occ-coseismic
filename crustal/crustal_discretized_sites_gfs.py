@@ -16,16 +16,16 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_v0-0-2"
+mesh_version = "_CUSP_full_res"
 
 steeper_dip, gentler_dip = False, False
 
 # Parameters to pick cut-off for recorded deformation
-maximum_slip = 12  # Maximum amount of slip on a patch (set this to maximum slip in the input ruptures)
+maximum_slip = 15  # Maximum amount of slip on a patch (set this to maximum slip in the input ruptures)
 minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 1 cm of displacement from 10 m of slip)
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_file = os.path.join('..', 'sites', 'CUSP_v0-0-2.geojson')
+site_list_file = os.path.join('..', 'sites', 'CUSP_full_res.geojson')
 if site_list_file.endswith('.csv'):
     sites_df = pd.read_csv(site_list_file).drop_duplicates().reset_index(drop=True)
 else:
@@ -70,8 +70,9 @@ else:
             prepared_site_coords = gf_h5['site_coords'][:]
 
     prepare_set = set(prepared_site_names)  # Convert to set for faster lookup
-    gf_ix = [ix for ix, site in enumerate(requested_site_names) if site not in prepare_set]
+    gf_ix = [ix for ix, site in enumerate(requested_site_names) if site not in prepare_set]  # index of the requested sites that require GF processing in the requested geojson
     all_site_names = prepared_site_names + requested_site_names[gf_ix].tolist()
+    _, requested_ix, all_site_ix = np.intersect1d(requested_site_names, all_site_names, return_indices=True)
     if prepared_site_coords.shape[0] == 0:
         all_site_coords = requested_site_coords[:, :2]
     else:
@@ -129,6 +130,11 @@ else:
         site_ix = np.array([ix for ix, site in enumerate(requested_site_names) if site not in prepare_set])
         if len(site_ix) == 0:
             # All sites have been processed 
+            with h5.File(gf_h5_file, "r") as gf_h5:
+                if gf_h5[str(fault_id)]['non_zero_sites'].shape[0] > 0:
+                    _, requested_non_zero, all_non_zero = np.intersect1d(all_site_ix, gf_h5[str(fault_id)]['non_zero_sites'][:], return_indices=True)
+                    sites_df.loc[requested_ix[requested_non_zero], 'Max GF Uplift (m)'] = np.maximum(sites_df.loc[requested_ix[requested_non_zero], 'Max GF Uplift (m)'], gf_h5[str(fault_id)]['ds'][all_non_zero])
+                    sites_df.loc[requested_ix[requested_non_zero], 'Max GF Subsidence (m)'] = np.minimum(sites_df.loc[requested_ix[requested_non_zero], 'Max GF Subsidence (m)'], gf_h5[str(fault_id)]['ds'][all_non_zero])
             print(f'discretised dict {fault_id:0{sigfig}d} ({fix:0{sigfig}d}/{n_patches}) prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
             continue
 
@@ -183,16 +189,18 @@ else:
         gf_h5.close()
 
         if len(non_zero_ix) > 0:
-            sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Uplift (m)'] = np.maximum(sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Uplift (m)'], disps_ds)
-            sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Subsidence (m)'] = np.minimum(sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Subsidence (m)'], disps_ds)
+            _, requested_non_zero, non_zero_requested = np.intersect1d(all_site_ix, non_zero_ix, return_indices=True)
+            if len(requested_non_zero) > 0:
+                sites_df.loc[requested_non_zero, 'Max GF Uplift (m)'] = np.maximum(sites_df.loc[requested_non_zero, 'Max GF Uplift (m)'], disps_ds[non_zero_requested])
+                sites_df.loc[requested_non_zero, 'Max GF Subsidence (m)'] = np.minimum(sites_df.loc[requested_non_zero, 'Max GF Subsidence (m)'], disps_ds[non_zero_requested])
 
-                
         if fault_id % 1 == 0:
             print(f'discretised dict {fault_id:0{sigfig}d} ({fix:0{sigfig}d}/{n_patches}) done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
     print('')
 
 # This geojson file will be used to control the sites of the inversion
 sites_df['Max GF VLM (m)'] = sites_df[['Max GF Uplift (m)', 'Max GF Subsidence (m)']].apply(lambda row: abs(max(row, key=abs)), axis=1)
+sites_df[['Max GF Uplift (m)', 'Max GF Subsidence (m)', 'Max GF VLM (m)']] = sites_df[['Max GF Uplift (m)', 'Max GF Subsidence (m)', 'Max GF VLM (m)']].round(4)
 gdf = gpd.GeoDataFrame(sites_df, geometry=gpd.points_from_xy(sites_df.Lon, sites_df.Lat), crs='EPSG:2193')
 gdf.to_file(f"discretised{discretise_version}/crustal_site_locations{mesh_version}.geojson", driver="GeoJSON")
 
