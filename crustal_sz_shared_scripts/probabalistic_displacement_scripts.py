@@ -118,6 +118,9 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
             site_group.create_dataset("disps", data=disps_by_location[i])
             site_group.create_dataset("disps_ix", data=scenarios_with_disps[i])
             site_group.create_dataset("site_coords", data=site_coords[i])
+        # Re-add these here, so later on don't need to search every site when creating all_branch_disp_dict after cumu_PPE
+        branch_site_coords = [[siteId, str(Lon), str(Lat)] for siteId, [Lon, Lat] in zip(site_names, site_coords)]
+        site_disp_PPEh5.create_dataset("site_coords", data=np.array(branch_site_coords, dtype="S"))
     print('')
     return 
 
@@ -920,7 +923,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}{taper_extension}.h5"
         if os.path.exists(branch_site_disp_dict_file):
             with h5.File(branch_site_disp_dict_file, 'r') as branch_h5:
-                site_set = set(branch_h5.keys()) - {'rates', 'scaled_rates'}
+                site_set = set(branch_h5.keys()) - {'rates', 'scaled_rates', 'site_coords'}
             missing_sites = inv_sites - site_set
             if len(missing_sites) > 0:
                 write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5_file=branch_site_disp_dict_file)
@@ -1008,6 +1011,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                              scenario_dir=scenario_dir, single_site=fault_model_allbranch_PPE_dict[branch_id], sed_PPE=calculate_SED)
 
         if not all([nesi, nesi_step == 'combine', sbatch]):
+            print(f"\tUpdating {fault_branch_meta_h5}...")
             with h5.File(fault_branch_meta_h5, "a") as branch_meta_h5:
                 if 'branch_weight' in branch_meta_h5.keys():
                     del branch_meta_h5['branch_weight']
@@ -1085,6 +1089,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
         site_coords_dict = {}
         with h5.File(branch_site_disp_dict_file, "r") as branch_h5:
+            site_coords_dict = dict([[site.decode(), [int(float(lon)), int(float(lat))]] for site, lon, lat in branch_h5['site_coords'][:]])
             for site in site_set:
                 site_coords_dict[site] = branch_h5[site]['site_coords'][:]
         fault_model_allbranch_PPE_dict['meta'] = {'branch_ids': branch_list, 'site_ids': list(site_set), 'branch_weights': branch_weight_list, 'site_coords_dict': site_coords_dict}
@@ -1891,7 +1896,7 @@ def build_branch_PPE_file(out_version_results_directory, single_branch, branch_k
                 continue
             single_branch_file = f"../{out_version_results_directory}/sites{branch}/{key}_cumu_PPE.h5"
 
-            print(f"Preparing {single_branch_file}")
+            print(f"Preparing {single_branch_file}", end="\r")
 
             recreate_sites = True
             if os.path.exists(single_branch_file):
@@ -1914,8 +1919,9 @@ def build_branch_PPE_file(out_version_results_directory, single_branch, branch_k
                     process_sites = set(inv_sites) - set(list(branch_h5.keys()))
 
             site_dict = {}
-            for site in process_sites:
+            for ix, site in enumerate(process_sites, 1):
                 site_file = f"../{out_version_results_directory}/sites{branch}/{key}_sites/{site}.h5"
+                print(f"Preparing {single_branch_file} ({ix / len(process_sites) * 100:.02f}%)", end="\r")
                 if not os.path.exists(site_file):
                     continue
                 with h5.File(site_file, 'r') as site_h5:
@@ -1931,6 +1937,8 @@ def build_branch_PPE_file(out_version_results_directory, single_branch, branch_k
 
             with h5.File(single_branch_file, 'a') as branch_h5:
                 dict_to_hdf5(branch_h5, site_dict)
+
+        print('')
 
     return
 
@@ -3143,11 +3151,11 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
     if output_grids:
         print("\tIdentifying processed points...")
         if weighted:
-            site_xy = np.array([PPEh5[site]['site_coords'][:] for site in sites])
+            site_xy = np.array([PPEh5[site]['site_coords'][:] for site in sites if site in PPEh5])
         else:
             with h5.File(f"{sites_dir[:-6]}_meta.h5", "r") as branch_meta_h5:
                 site_coord_dict = dict([[site.decode(), [int(float(lon)), int(float(lat))]] for site, lon, lat in branch_meta_h5['site_coords'][:]])
-            site_xy = np.array([site_coord_dict[site] for site in sites])
+            site_xy = np.array([site_coord_dict[site] for site in sites if site in site_coord_dict])
 
         site_x, site_y = site_xy[:, 0], site_xy[:, 1]
 
