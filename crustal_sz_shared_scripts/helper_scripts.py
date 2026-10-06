@@ -522,6 +522,7 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
     values are tapered according to total rupture length of all rectangles.
     - this version changes all very small displacements to zero, or if no meshes are used, returns zero displacement
     """
+    MIN_DISP = 5e-3  # Minimum vertical displacement at a site from a rupture to store (default: 0.5 cm)
 
     # find which patches have a mesh and which don't, to use greens functions later just with meshed patches
     ruptured_fault_ids_with_mesh, _, mesh_indices = np.intersect1d(ruptured_fault_ids, rupture_order, assume_unique=True, return_indices=True)
@@ -542,7 +543,7 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
 
         # storing zeros is more efficient than nearly zeros. Makes v small displacements = 0
         if len(ruptured_fault_ids_with_mesh) != 0:
-            disps_scenario[np.abs(disps_scenario) < 5.e-3] = 0.
+            disps_scenario[np.abs(disps_scenario) < MIN_DISP] = 0.
         elif len(ruptured_fault_ids_with_mesh) == 0:
             disps_scenario = None
 
@@ -612,7 +613,7 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
         #sum displacements from each patch
         disps_scenario = np.sum(disps_i_list, axis=0).reshape(-1)
         if len(ruptured_fault_ids_with_mesh) != 0:
-            disps_scenario[np.abs(disps_scenario) < 5.e-3] = 0.
+            disps_scenario[np.abs(disps_scenario) < MIN_DISP] = 0.
         elif len(ruptured_fault_ids_with_mesh) == 0:
             disps_scenario = None
 
@@ -683,9 +684,16 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     # calculations), the site name list is just a list of numbers
     gf_total_slip_array, site_name_list, site_coords, key_order = make_total_slip_dictionary(gf_dict_pkl)
 
+    extension3 = "_tapered" if slip_taper else ''
+    os.makedirs(f"{procdir}/results/{disc_version}/{extension1}", exist_ok=True)
+    all_rupture_h5 = f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}.h5"
+    with h5.File(all_rupture_h5, "w") as all_rupture_h5:
+        all_rupture_h5.create_dataset("site_name_list", data=site_name_list)
+        all_rupture_h5.create_dataset("site_coords", data=site_coords)
+
     # calculate displacements at all the sites by rupture. Output dictionary keys are by rupture ID.
     disp_dictionary = {}
-    for ix, rupture_id in enumerate(filtered_ruptures_location):
+    for ix, rupture_id in enumerate(filtered_ruptures_location, 1):
         print(f"calculating displacements for {extension1} ({ix}/{len(filtered_ruptures_location)})", end="\r")
         ruptured_fault_ids = all_ruptures[rupture_id]
         ruptured_discretised_polygons_gdf = discretised_polygons_gdf[
@@ -709,34 +717,20 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
             # displacement dictionary for a single rupture scenario at all sites. Key is rupture id.
             disps_scenario = [(ix, disp) for ix, disp in enumerate(disps_scenario) if disp != 0]
             rupture_disp_dict = {"rupture_id": rupture_id, "v_disps_m": disps_scenario, "annual_rate": annual_rate,
-                                 "site_name_list": site_name_list, "site_coords": site_coords,
                                  "polygon_slips_m": patch_slips}
         else:
             rupture_disp_dict = {"rupture_id": rupture_id, "v_disps_m": np.array([]), "annual_rate": annual_rate,
-                        "site_name_list": site_name_list, "site_coords": np.array([]),
-                        "polygon_slips_m": patch_slips}
+                                 "polygon_slips_m": patch_slips}
         disp_dictionary[rupture_id] = rupture_disp_dict
 
+        if ix % 100 == 0:
+            # save displacements
+            with h5.File(f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}.h5", "a") as all_rupture_h5:
+                dict_to_hdf5(all_rupture_h5, disp_dictionary)
+            disp_dictionary = {}
+
     # print statement about how many scenarios have displacement > 0 at each site
-    print(f"\nscenarios with displacement > 0: {len(disp_dictionary)}")
-
-    if slip_taper is True:
-        extension3 = "_tapered"
-    else:
-        extension3 = ""
-
-    # save displacements
-    os.makedirs(f"{procdir}/results/{disc_version}/{extension1}", exist_ok=True)
-
-    with open(f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}.pkl",
-              "wb") as f:
-        pkl.dump(disp_dictionary, f)
-    
-    # Save the site names to a seperate pickle file, as it is quicker to load and check on later runs
-    site_name_dict = {'site_name_list': site_name_list}
-    with open(f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}_sites.pkl",
-              "wb") as f:
-        pkl.dump(site_name_dict, f)
+    print(f"\nscenarios with displacement > 0: {len(filtered_ruptures_location)}")
 
     return disp_dictionary
 

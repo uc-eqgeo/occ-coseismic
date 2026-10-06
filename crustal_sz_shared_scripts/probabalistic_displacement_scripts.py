@@ -65,55 +65,46 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
     # load saved displacement data
     # disp dictionary has keys for each rupture id and displacement data for each site ( disp length = # of sites)
     # for grids, the disp_dict is still in grid shape instead of list form.
-    with open(f"../{model_version_results_directory}/{extension1}/all_rupture_disps_{extension1}{taper_extension}.pkl",
-              "rb") as fid:
-        rupture_disp_dictionary = pkl.load(fid)
-
-    ###### reshape displacement data to be grouped by site location.
-    site_coords = np.array([])
-    key = 0
-    while site_coords.shape[0] == 0:
-        rupt = list(rupture_disp_dictionary.keys())[key]
-        site_coords = rupture_disp_dictionary[rupt]["site_coords"]
-        key += 1
-    site_names = rupture_disp_dictionary[rupt]["site_name_list"]
-
     # makes a list of lists. each item is a rupture scenario that contains a list of displacements at each site.
     # could probably simplify this because it's the same shape as the dictionary, but I'm not sure how to do that yet
     # and this is easier to understand I think.
     disps_by_scenario = []
     annual_rates_by_scenario = []
-    for ix, rupture_id in enumerate(rupture_disp_dictionary.keys()):
-        print(f"\tPreparing disps by scenario... {ix}\{len(rupture_disp_dictionary.keys())}", end='\r')
-        disps = np.zeros(len(site_names))
-        non_zero_disps = np.array(rupture_disp_dictionary[rupture_id]["v_disps_m"])
-        if non_zero_disps.shape[0] == 0:
-            continue
-        disps[non_zero_disps[:, 0].astype(int)] = non_zero_disps[:, 1]
-        disps_by_scenario.append(disps)
-        annual_rate = rupture_disp_dictionary[rupture_id]["annual_rate"]
-        annual_rates_by_scenario.append(annual_rate)
-    print('')
+
+    with h5.File(f"../{model_version_results_directory}/{extension1}/all_rupture_disps_{extension1}{taper_extension}.h5", 'r') as rupture_disp_h5:
+        site_names = [site.decode() for site in rupture_disp_h5['site_name_list']]
+        site_coords = rupture_disp_h5['site_coords'][:]
+        ruptures = list(rupture_disp_h5.keys() - {'site_name_list', 'site_coords'})
+        n_sites, n_ruptures = len(site_names), len(ruptures)
+
+        for ix, rupture_id in enumerate(ruptures, 1):
+            print(f"\tPreparing disps by scenario... {ix}\{n_ruptures}", end='\r')
+            disps = np.zeros(n_sites)
+            non_zero_disps = np.array(rupture_disp_h5[rupture_id]["v_disps_m"])
+            if non_zero_disps.shape[0] == 0:
+                continue
+            disps[non_zero_disps[:, 0].astype(int)] = non_zero_disps[:, 1]
+            disps_by_scenario.append(disps)
+            annual_rates_by_scenario.append(rupture_disp_h5[rupture_id]["annual_rate"][()])
+        print('')
+
     # list of lists. each item is a site location that contains displacements from each scenario (disp list length =
     # number of rupture scenarios)
     disps_by_location = []
     scenarios_with_disps = []
-    #annual_rates_by_location = []
-    for site_num in range(len(site_names)):
-        print(f"\tPreparing disps by location... {site_num}\{len(site_names)}", end='\r')
+    for site_num in range(n_sites):
+        print(f"\tPreparing disps by location... {site_num}\{n_sites}", end='\r')
         site_disp = np.array([scenario[site_num] for scenario in disps_by_scenario])
         disp_ix = [ix for ix, disp in enumerate(site_disp) if disp != 0]
         disps_by_location.append(site_disp[disp_ix].tolist())
         scenarios_with_disps.append(disp_ix)
-        # annual_rates_by_location.append(annual_rates_by_scenario)
     print('')
+
     # make dictionary of displacements and other data. key is the site name.
-    if os.path.exists(site_disp_h5_file):
-        os.remove(site_disp_h5_file)
     with h5.File(site_disp_h5_file, "w") as site_disp_PPEh5:
         site_disp_PPEh5.create_dataset("rates", data=annual_rates_by_scenario)
         for i, site in enumerate(site_names):
-            print(f"\tWriting sites to {site_disp_h5_file}... {i}\{len(site_names)}", end='\r')
+            print(f"\tWriting sites to {site_disp_h5_file}... {i}\{n_sites}", end='\r')
             site_group = site_disp_PPEh5.create_group(site)
             site_group.create_dataset("disps", data=disps_by_location[i])
             site_group.create_dataset("disps_ix", data=scenarios_with_disps[i])
@@ -122,7 +113,8 @@ def write_site_disp_dict(extension1, slip_taper, model_version_results_directory
         branch_site_coords = [[siteId, str(Lon), str(Lat)] for siteId, [Lon, Lat] in zip(site_names, site_coords)]
         site_disp_PPEh5.create_dataset("site_coords", data=np.array(branch_site_coords, dtype="S"))
     print('')
-    return 
+    sleep(0.1) # Slight break as very next line is to reaccess site_disp_h5_file, so this gives time for it to close
+    return
 
 
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):

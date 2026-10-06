@@ -1,4 +1,5 @@
 import os
+import h5py as h5
 import pandas as pd
 from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, plot_single_branch_haz_curves, \
     make_sz_crustal_paired_PPE_dict, make_fault_model_PPE_dict, get_weighted_mean_PPE_dict, \
@@ -316,13 +317,12 @@ if not paired_crustal_sz:
     for ix, extension1 in enumerate(extension1_list):
         get_rupture_dict = False
         ftype = [(jj, ftype) for jj, ftype in enumerate(fault_type) if '_' + ftype.replace('rustal', '') + '_' in extension1][0]
-        all_rupture_disp_file = f"../{version_discretise_directory[ftype[0]]}/{extension1}/all_rupture_disps_{extension1}{taper_extension}_sites.pkl"
+        all_rupture_disp_file = f"../{version_discretise_directory[ftype[0]]}/{extension1}/all_rupture_disps_{extension1}{taper_extension}.h5"
 
         print(f"\n\tbranch {ix + 1} of {len(extension1_list)}: {extension1}")
         if os.path.exists(all_rupture_disp_file):
-            with open(all_rupture_disp_file, 'rb') as fid:
-                rupt = pkl.load(fid)
-            sites = rupt['site_name_list']
+            with h5.File(all_rupture_disp_file, 'r') as rupt_h5:
+                sites = [site.decode() for site in rupt_h5['site_name_list']]
             if len(set(inv_sites).intersection(sites)) < len(inv_sites):
                 get_rupture_dict = True
         else:
@@ -335,13 +335,17 @@ if not paired_crustal_sz:
                                     disc_version_directory=version_discretise_directory[ftype[0]],
                                     crustal_directory=crustal_directory, sz_directory=sz_directory,
                                     search_radius=9e5, fakequakes=fakequakes)
-            with open(all_rupture_disp_file, 'rb') as fid:
-                rupt = pkl.load(fid)
-            sites = rupt['site_name_list']
+            with h5.File(all_rupture_disp_file, 'r') as rupt_h5:
+                sites = [site.decode() for site in rupt_h5['site_name_list']]
+            no_gf_geojson = f"{os.path.dirname(all_rupture_disp_file)}/{os.path.basename(site_geojson).replace('.geojson', '_no_gf_sites.geojson')}"
             if len(set(inv_sites).difference(sites)) > 0:
                 print(f"{len(set(inv_sites).difference(sites))} requested sites have no Greens Function processed. Skipping these...")
+                no_gf_sites = set(inv_sites).difference(sites)
+                site_gdf[site_gdf.siteId.isin(no_gf_sites)].to_file(no_gf_geojson)
                 for site in set(inv_sites).difference(sites):
                     inv_sites.remove(site)
+            elif os.path.exists(no_gf_geojson):
+                os.remove(no_gf_geojson)
 
 ### make a dictionary of all the branch probabilities, oranized by site within each branch
 # option to skip this step if you've already run it once and saved to a pickle file
@@ -437,8 +441,8 @@ if not paired_crustal_sz and calculate_weighted_mean_PPE:
 
 # plot hazard curves and save to file
 if save_arrays:
-    probs_lims, probs_step = [0.01, 1], 0.01
-    thresh_lims, thresh_step = [0.2, 50], 0.2
+    probs_lims, probs_step = [0.01, 0.1], 0.01
+    thresh_lims, thresh_step = [0.2, 5], 0.2
     if single_branch:
         weighted = False
         build_branch_PPE_file(out_version_results_directory, single_branch, branch_key, inv_sites, time_interval, thresh_lims=thresh_lims, thresh_step=thresh_step, probs_lims=probs_lims, probs_step=probs_step)
