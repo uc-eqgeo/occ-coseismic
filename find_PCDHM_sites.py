@@ -84,7 +84,7 @@ grid_length = 1500e3 # Length of the grid in meters
 
 # Keep as false to make sure all of coast is covered, and therefore all OCC sites can be queried in datamesh
 hires_coast = False # If True, keep splitting cells that intersect the coast
-coastal_trim = False  # If True, removes any centroids that are not overland, even if polygon crosses the coast
+coastal_trim = True  # If True, removes any centroids that are not overland, even if polygon crosses the coast
 
 fault_buffer = 0
 
@@ -201,14 +201,11 @@ for cell in cell_dicts.keys():
 
 print('\nSubsampling Complete')
 
-if max_grid >= 1000:
-    grid_res = f"{int(max_grid / 1000)}km"
-else:
-    grid_res = f"{int(max_grid)}m"
+grid_res = f"{int(max_grid)}m"
 
 if search_type == 'grid':
-    polyname = f"national_{grid_res}_{search_type}_poly"
-    centroid_name = f"national_{grid_res}_{search_type}"
+    polyname = f"NationalGrid\\national_{grid_res}_{search_type}_poly"
+    centroid_name = f"NationalGrid\\national_{grid_res}_{search_type}"
 else:
     outtag = f"_{str(max_grid).replace('.', '_')}_{str(min_grid).replace('.', '_')}_buffer_{str(f'{fault_buffer:.02f}').replace('.', '_')}"
     polyname = f"{search_type}_poly{outtag}"
