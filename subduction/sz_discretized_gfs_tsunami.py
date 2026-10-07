@@ -9,6 +9,7 @@ import h5py as h5
 import xarray as xr
 from scipy.sparse import csc_array, csr_array, hstack, csr_matrix
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 
 """
 This script will take the discretised fault patches, and calculate the Green's functions for each site in the site list.
@@ -32,7 +33,7 @@ version_extension = "_version_0-1S"
 steeper_dip, gentler_dip = False, False
 
 # Define whch subduction zone ([_fq_]hikkerm / puysegur)
-sz_zone = '_hikkerk'
+sz_zone = '_fq_hikkerm'
 
 rake90 = False  # if True, all rakes will be set to 90 degrees (NSHM default, but not our mesh default)
 
@@ -74,10 +75,6 @@ xx, yy = np.meshgrid(lons, lats)
 obs_points = np.vstack([xx.ravel(), yy.ravel(), np.zeros_like(xx.ravel())]).T
 empty_grid = csr_array(np.zeros_like(xx))
 
-with open(f"discretised{sz_zone}/{prefix}_discretised_dict.pkl",
-        "rb") as f:
-    discretised_dict = pkl.load(f)
-
 h5_file = f"discretised{sz_zone}/{prefix}_tsunami_gf_dict{'_rake90' if rake90 else ''}.h5"
 
 if not os.path.exists(h5_file):
@@ -87,7 +84,7 @@ if not os.path.exists(h5_file):
 else:
     poly_list = list(h5.File(h5_file, "r").keys())
     poly_list.remove('grid_extent')
-for poly in discretised_dict.keys():
+for poly in list(discretised_dict.keys()):
     if str(poly) not in poly_list:
         triangles = discretised_dict[poly]["triangles"]
         slip_array = np.zeros([triangles.shape[0], 3])
@@ -102,7 +99,7 @@ for poly in discretised_dict.keys():
         vert_sparse = empty_grid.copy()
         disps = HS.disp_free(obs_pts=recce_points, tris=triangles, slips=slip_array, nu=0.25)
         rvert = disps[:, 2].reshape([rlats.shape[0], rlons.shape[0]])
-        rvert = np.where(np.abs(rvert) < 1e-3, 0, rvert)  # Zero out very small values (less than 1mm)
+        rvert = np.where(np.abs(rvert) < (1e-3 / 100), 0, rvert)  # Zero out very small values (less than 1mm for 100m slip)
         y_search, x_search = np.where(rvert)
         if x_search.shape[0] > 0:
             xmin = x_search.min() - 1 if x_search.min() > 0 else 0
@@ -118,17 +115,31 @@ for poly in discretised_dict.keys():
 
         xx, yy = np.meshgrid(fault_lons, fault_lats)
         obs_points = np.vstack([xx.ravel(), yy.ravel(), np.zeros_like(xx.ravel())]).T
-
+        # plt.plot(obs_points[:, 0], obs_points[:, 1], '.', markersize=3, zorder=0)
+        # plt.scatter(recce_points[:, 0], recce_points[:, 1], c=rvert, s=10, zorder=1)
 
         disps = HS.disp_free(obs_pts=obs_points, tris=triangles, slips=slip_array, nu=0.25)
         vert = disps[:, 2].reshape([fault_lats.shape[0], fault_lons.shape[0]])
-        vert = np.where(np.abs(vert) < 1e-3, 0, vert)  # Zero out very small values (less than 1mm)
+        # plt.scatter(obs_points[:, 0], obs_points[:, 1], c=vert, s=3, zorder=2)
+        # vert = np.where(np.abs(vert) < 1e-3, 0, vert)  # Zero out very small values (less than 1mm)
         grid_sparse = csr_array(vert)
         vert_sparse[ymin:ymax + 1, xmin:xmax + 1] = vert
-        plt.imshow(vert_sparse.toarray(), extent=(lons[0], lons[-1], lats[0], lats[-1]), vmin=-0.01, vmax=0.01, cmap='RdBu')
-        plt.colorbar()
-        plt.savefig(f'greens_{str(poly)}')
-        plt.close()
+        trim_sparse = empty_grid.copy()
+        vert_trim = np.where(np.abs(vert) < 1e-3 / 100, 0, vert)  # Zero out very small values (less than 1mm)
+        trim_sparse[ymin:ymax + 1, xmin:xmax + 1] = vert_trim
+
+        # plt.scatter(obs_points[:, 0], obs_points[:, 1], c=disps[:, 2], cmap="RdBu_r", vmin=-0.01, vmax=0.01), plt.colorbar()
+        # plt.scatter(rlons[x_search], rlats[y_search], c=rvert[np.where(rvert)], cmap="RdBu_r", vmin=-0.01, vmax=0.01, edgecolors='k')
+        # plt.plot(rlons[x_search], rlats[y_search], ',')
+        # plt.imshow(vert_sparse.toarray(), origin='lower', extent=(lons[0], lons[-1], lats[0], lats[-1]), vmin=-0.01, vmax=0.01, cmap='RdBu')
+        # plt.plot(triangles[:, :, 0], triangles[:, :, 1], ',')
+        # plt.xlim([rlons[x_search].min() - 5000, rlons[x_search].max() + 5000])
+        # plt.ylim([rlats[y_search].min() - 5000, rlats[y_search].max() + 5000])
+        # plt.colorbar()
+        # plt.title(f"{poly}: {np.mean(triangles[:, :, 2]) * -1e-3:.2f} km")
+        # plt.savefig(f'greens_{str(poly)}')
+        # plt.close()
+
         with h5.File(h5_file, "r+") as gf_h5:
             gf_h5.create_group(str(poly))
             gf_h5[str(poly)].create_dataset('vertical', data=vert_sparse.data)
