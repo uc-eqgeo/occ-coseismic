@@ -161,7 +161,7 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
                                 check_dict["0"] = check_dict.get("0", []) + [site]
                         if ixs % print_every == 0 or ixs == n_existing:
                             print(f'\t\t{n_existing}/{n_inv} sites previously processed for {time_interval} years, {n_good:0{width}d}/{ixs:0{width}d} sampled enough...', end='\r')
-                    except OSError:
+                    except (OSError, KeyError) as e:
                         os.remove(f"{site_dir}/{site}.h5")
                         check_dict["0"] = check_dict.get("0", []) + [site]
                 # Add checked files to metadata file, ensuring that they are placed into the top processing bracket
@@ -723,7 +723,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
                                  "polygon_slips_m": patch_slips}
         disp_dictionary[rupture_id] = rupture_disp_dict
 
-        if ix % 100 == 0:
+        if ix % 100 == 0 or ix == len(filtered_ruptures_location):
             # save displacements
             with h5.File(f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}.h5", "a") as all_rupture_h5:
                 dict_to_hdf5(all_rupture_h5, disp_dictionary)
@@ -732,7 +732,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     # print statement about how many scenarios have displacement > 0 at each site
     print(f"\nscenarios with displacement > 0: {len(filtered_ruptures_location)}")
 
-    return disp_dictionary
+    return
 
 
 def get_figure_bounds(polygon_gdf="", extent=""):
