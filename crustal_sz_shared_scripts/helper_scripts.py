@@ -16,9 +16,9 @@ finally:
     import pickle as pkl
     from scipy.interpolate import griddata
     import matplotlib.pyplot as plt
-    from time import time
     import h5py as h5
     from scipy.sparse import csr_matrix
+    from glob import glob
 
 def dict_to_hdf5(hdf5_group, dictionary, compression=None, compression_opts=None, replace_groups=False):
     for key, value in dictionary.items():
@@ -58,6 +58,179 @@ def get_probability_color(exceed_type):
 
     return color
 
+def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, time_intervals, branch_weight):
+    """Function that will check that sites have been processed with the required amount of samples, and removes sites that have
+    been deleted manually"""
+
+    all_existing_sites = {os.path.basename(site_file)[:-3] for site_file in glob(f"{site_dir}/*h5")} # All sites that have a file associated with it
+    existing_sites = all_existing_sites & inv_sites  # Sites for this run that have a file associated with it
+
+    n_inv, n_existing = len(inv_sites), len(existing_sites)
+    width = len(str(n_inv))
+
+    well_processed_sites = {time_interval: set() for time_interval in time_intervals}
+    all_coords = []
+
+    if not os.path.exists(fault_branch_meta_h5):
+        with h5.File(fault_branch_meta_h5, "w") as branch_meta_PPEh5:
+            branch_meta_PPEh5.create_dataset('site_coords', data=[])
+            branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
+            for time_interval in time_intervals:
+                branch_meta_PPEh5.create_group(time_interval)
+    else:
+        with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
+            if 'branch_weight' not in branch_meta_PPEh5:
+                branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
+
+    if n_existing == 0:
+        print(f'\t\t0/{n_inv} sites previously processed...')
+        return well_processed_sites
+
+    for time_interval in time_intervals:
+        logged_sites, zero_sites, n_good = set(), set(), 0
+        with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
+            print(f'\t\t{0:0{width}d}/{n_inv} sites previously processed, {0:0{width}d} sampled enough for {time_interval} years...', end='\r')
+            if time_interval not in branch_meta_PPEh5:
+                branch_meta_PPEh5.create_group(time_interval)
+            processed_samples = [int(key) for key in branch_meta_PPEh5[time_interval].keys()]
+            processed_samples.sort()
+            for sample in processed_samples[::-1]:
+                relog_sample = False
+                # First stage removes any log of sites from the meta file that may have been manually deleted from site dir
+                # Always runs, regardless of any existing sites
+                sites_processed = {site.decode() for site in branch_meta_PPEh5[time_interval][str(sample)][:]}
+                removed_sites = sites_processed - all_existing_sites
+                if len(removed_sites) > 0:
+                    # Remove sites from log that have been deleted previously
+                    sites_processed -= removed_sites
+                    relog_sample = True
+                if len(sites_processed & logged_sites) > 0:
+                    # Ensure that site appears in the highest bracket that it has been processed in
+                    sites_processed -= logged_sites
+                    relog_sample = True
+                if relog_sample:
+                    del branch_meta_PPEh5[time_interval][str(sample)]
+                    if len(sites_processed) > 0:
+                        branch_meta_PPEh5[time_interval].create_dataset(str(sample), data=list(sites_processed))
+                logged_sites |= sites_processed
+                if sample == 0:
+                    zero_sites |= sites_processed
+
+                if n_existing > 0:
+                    # Second stage to check if any requested existing sites have been processed enough
+                    if sample >= n_samples:
+                        # Site that already exists and has been logged as processed enough
+                        well_processed_sites[time_interval] |= existing_sites & sites_processed
+                    n_good = len(well_processed_sites[time_interval])
+                    print(f'\t\t{len(existing_sites & (logged_sites - zero_sites)):0{width}d}/{n_inv} sites previously processed, {n_good:0{width}d} sampled enough for {time_interval} years...', end='\r')
+            if 'site_coords' not in branch_meta_PPEh5:
+                coords = []
+                for site in logged_sites:
+                    with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
+                        coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
+                branch_meta_PPEh5.create_dataset('site_coords', data=coords)
+
+            # Identify sites that exist, but for some reason aren't in meta file (e.g. meta was deleted) so need be be checked individually
+            individual_check = existing_sites - well_processed_sites[time_interval] - logged_sites
+            
+            if len(individual_check) > 0:
+                # Checks for sites that exist but there are no log for
+                print_every = max(1, max(1, n_existing) // 100)  # throttle progress output to ~100 updates
+                required_keys = frozenset(['n_samples', 'thresh_para'])
+                check_dict = {}
+                coords = []
+                for ixs, site in enumerate(individual_check, n_good + 1):
+                    try:
+                        with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
+                            site_intervals = site_h5.keys()
+                            coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
+                            if all([time_interval in site_intervals 
+                                    and required_keys <= (interval_h5 := site_h5[time_interval]).keys() 
+                                    and interval_h5['n_samples'][()] >= n_samples]):
+                                well_processed_sites[time_interval].add(site)
+                                n_good += 1
+                                check_dict[str(interval_h5['n_samples'][()])] = check_dict.get(str(interval_h5['n_samples'][()]), []) + [site]
+                            else:
+                                check_dict['0'] = check_dict.get('0', []) + [site]
+                        if ixs % print_every == 0 or ixs == n_existing:
+                            print(f'\t\t{n_existing}/{n_inv} sites previously processed, {n_good:0{width}d}/{ixs:0{width}d} sampled enough for {time_interval} years...', end='\r')
+                    except OSError:
+                        os.remove(f"{site_dir}/{site}.h5")
+                        check_dict['0'] = check_dict.get('0', []) + [site]
+                # Add checked files to metadata file, ensuring that they are placed into the top processing bracket
+                with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
+                    for k, v in check_dict.items():
+                        if k in branch_meta_PPEh5[time_interval]:
+                            v += [site.decode() for site in branch_meta_PPEh5[time_interval][k][:]]
+                            del branch_meta_PPEh5[time_interval][k]
+                        branch_meta_PPEh5[time_interval].create_dataset(k, data=v)
+                    if 'site_coords' in branch_meta_PPEh5.keys():
+                        all_coords = [[site.decode(), lon.decode(), lat.decode()] for site, lon, lat in branch_meta_PPEh5['site_coords'][:]]
+                        del branch_meta_PPEh5['site_coords']
+                    all_coords += coords
+        print('')
+        if len(all_coords) > 0:
+            with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
+                branch_meta_PPEh5.create_dataset('site_coords', data=[list(c) for c in set(tuple(c) for c in all_coords)])  # Removes duplicate entries
+
+    return well_processed_sites
+
+def remove_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, time_intervals, branch_weight):
+    """If option to reprocess all sites is selected, start by deleting the any prcessed time intervals"""
+
+    all_existing_sites = {os.path.basename(site_file)[:-3] for site_file in glob(f"{site_dir}/*h5")} # All sites that have a file associated with it
+    existing_sites = all_existing_sites & inv_sites  # Sites for this run that have a file associated with it
+
+    n_inv, n_existing= len(inv_sites), len(existing_sites)
+
+    if not os.path.exists(fault_branch_meta_h5):
+        with h5.File(fault_branch_meta_h5, "w") as branch_meta_PPEh5:
+            branch_meta_PPEh5.create_dataset('site_coords', data=[])
+            branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
+            for time_interval in time_intervals:
+                branch_meta_PPEh5.create_group(time_interval)
+    else:
+        with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
+            if 'branch_weight' not in branch_meta_PPEh5:
+                branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
+
+    if n_existing == 0:
+        print(f'\t\t0/{n_inv} sites previously processed to {time_interval} years...')
+        return
+
+    for ix, site in enumerate(existing_sites, 1):
+        print(f'\t\tRemoving time intervals from {ix}/{len(existing_sites)} sites...', end='\r')
+        remove_site = False
+        with h5.File(f"{site_dir}/{site}.h5", 'a') as siteh5:
+            processed_intervals = siteh5.keys()
+            remove_intervals = set(processed_intervals) & set(time_intervals)
+            if len(remove_intervals) == len(time_intervals):
+                # Going to reprocess everything from scratch. Delete h5 to reduce disc space
+                remove_site = True
+            else:
+                for time_interval in remove_intervals:
+                    if time_interval in processed_intervals:
+                        del siteh5[time_interval]
+        if remove_site:
+            os.remove(f"{site_dir}/{site}.h5")
+
+    print(f'\n\t\tRemoving sites from meta file...')
+    with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
+        for time_interval in time_intervals:
+            if time_interval not in branch_meta_PPEh5:
+                branch_meta_PPEh5.create_group(time_interval)
+            else:
+                processed_samples = [int(key) for key in branch_meta_PPEh5[time_interval].keys()]
+                processed_samples.sort()
+                for sample in processed_samples[::-1]:
+                    sites_processed = {site.decode() for site in branch_meta_PPEh5[time_interval][str(sample)][:]}
+                    sites_processed_old = sites_processed - existing_sites
+                    if len(sites_processed) != len(sites_processed_old):
+                        del branch_meta_PPEh5[time_interval][str(sample)]
+                        branch_meta_PPEh5[time_interval].create_dataset(str(sample), data=list(sites_processed_old))
+    print('')
+
+    return
 
 def make_qualitative_colormap(name, length):
     from collections import namedtuple
@@ -159,7 +332,6 @@ def make_total_slip_dictionary(gf_dict_h5):
     gf_dict = h5.File(gf_dict_h5, "r")
 
     # Makes a new total gf displacement dictionary using rake
-    grid_meta = None
     all_site_names = gf_dict["site_name_list"].asstr()[:]
     n_sites = len(all_site_names)
     n_ruptures = np.sum([1 for key in gf_dict.keys() if key not in ["site_coords", "site_name_list", "grid_meta"]])
@@ -168,25 +340,19 @@ def make_total_slip_dictionary(gf_dict_h5):
     key_list = []
     for ix, key in enumerate([key for key in gf_dict.keys() if key not in ["site_coords", "site_name_list"]]):
         print('Writing total slip dictionary: {}/{} rupture patches'.format(ix, n_ruptures), end="\r")
-        if key == 'grid_meta':
-            grid_meta = gf_dict[key]
-        else:
-            # greens functions are just for the vertical component
-            gf_ix = gf_dict[key]["site_name_ix"]
-#            site_name_list = all_site_names[gf_ix]
-#            site_coords = all_site_coords[gf_ix, :]
+        # greens functions are just for the vertical component
+        gf_ix = gf_dict[key]["site_name_ix"]
+        non_zero_ix = gf_ix[gf_dict[key]['non_zero_sites']]
 
-            non_zero_ix = gf_ix[gf_dict[key]['non_zero_sites']]
-
-            # calculate combined vertical from strike slip and dip slip using rake
-            combined_gf = np.sin(np.radians(gf_dict[key]["rake"])) * gf_dict[key]["ds"] + np.cos(np.radians(gf_dict[key]["rake"])) * gf_dict[key]["ss"]
-            gf_adjusted_array[len(key_list), non_zero_ix] = combined_gf
-            key_list.append(key)
+        # calculate combined vertical from strike slip and dip slip using rake
+        combined_gf = np.sin(np.radians(gf_dict[key]["rake"])) * gf_dict[key]["ds"] + np.cos(np.radians(gf_dict[key]["rake"])) * gf_dict[key]["ss"]
+        gf_adjusted_array[len(key_list), non_zero_ix] = combined_gf
+        key_list.append(key)
 
     gf_dict.close()
     print('')
 
-    return csr_matrix(gf_adjusted_array), all_site_names.tolist(), all_site_coords, key_list, grid_meta
+    return csr_matrix(gf_adjusted_array), all_site_names.tolist(), all_site_coords, key_list
 
 
 def merge_rupture_attributes(directory, trimmed=True):
@@ -370,65 +536,76 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
             disps_scenario = None
 
     elif slip_taper is True:
-        # get centroid coords of faults discretised polygons with a mesh
-        ruptured_polygon_centroid_points = ruptured_discretised_polygons_gdf.centroid
-        ruptured_polygon_centroids_x = [point.x for point in ruptured_polygon_centroid_points]
-        ruptured_polygon_centroids_y = [point.y for point in ruptured_polygon_centroid_points]
-        ruptured_polygon_centroid_coords = np.array([ruptured_polygon_centroids_x, ruptured_polygon_centroids_y]).T
+        # Taper each fault seperately. Possibility may be better to run tapering first to assign a new averageSlip to each fault, and fault accordingly
+        ruptured_discretised_polygons_gdf['polygon_slips'], n_segments = 0., ruptured_discretised_polygons_gdf.shape[0]
+        for _, ruptured_discretised_fault_polygons_gdf in ruptured_discretised_polygons_gdf.groupby("fault_name"): 
+            # get centroid coords of faults discretised polygons with a mesh
+            ruptured_polygon_centroid_points = ruptured_discretised_fault_polygons_gdf.centroid
+            ruptured_polygon_centroids_x = [point.x for point in ruptured_polygon_centroid_points]
+            ruptured_polygon_centroids_y = [point.y for point in ruptured_polygon_centroid_points]
+            ruptured_polygon_centroid_coords = np.array([ruptured_polygon_centroids_x, ruptured_polygon_centroids_y]).T
 
-        # get bounds of fault patches, makes np array with 4 coords (minx, miny, maxx, maxy)
-        rupture_bounds = ruptured_rectangle_outlines_gdf.total_bounds
+            # get bounds of fault patches, makes np array with 4 coords (minx, miny, maxx, maxy)
+            rupture_bounds = ruptured_rectangle_outlines_gdf[ruptured_rectangle_outlines_gdf.fault_id.isin(ruptured_discretised_fault_polygons_gdf['fault_id'])].total_bounds
 
-        # makes 1000 points along a line between endpoints (bounds of fault rectangles).
-        along_rupture_line_x = np.linspace(rupture_bounds[0], rupture_bounds[2], 1000)
-        along_rupture_line_y = np.linspace(rupture_bounds[1], rupture_bounds[3], 1000)
-        # stack into one column of xy pairs
-        along_rupture_line_xy = np.column_stack((along_rupture_line_x, along_rupture_line_y))
+            # makes 1000 points along a line between endpoints (bounds of fault rectangles).
+            along_rupture_line_x = np.linspace(rupture_bounds[0], rupture_bounds[2], 1000)
+            along_rupture_line_y = np.linspace(rupture_bounds[1], rupture_bounds[3], 1000)
+            # stack into one column of xy pairs
+            along_rupture_line_xy = np.column_stack((along_rupture_line_x, along_rupture_line_y))
 
-        # calculate distance along line for each xy point
-        start_point = Point(along_rupture_line_xy[0])
-        line_distances = []
-        for coord in along_rupture_line_xy:
-            next_point = Point(coord)
-            distance = start_point.distance(next_point)
-            line_distances.append(distance)
-        line_length = np.max(line_distances)
+            # calculate distance along line for each xy point
+            start_point = Point(along_rupture_line_xy[0])
+            line_distances = []
+            for coord in along_rupture_line_xy:
+                next_point = Point(coord)
+                distance = start_point.distance(next_point)
+                line_distances.append(distance)
+            line_length = np.max(line_distances)
 
-        # calculate slip at each interpolated point based on distance
-        # this constant is based on the integral of the sin function from 0 to 1 (see NSHM taper)
-        max_slip = rupture_slip_dict[rupture_id] / 0.76276
-        # apply slip taper function to max slip. slip = sqrt(sin(pi * distance/line_length))
-        # making a multiplier list is verbose but helps me keep track of things
-        tapered_slip_multipliers = []
-        tapered_slip_values = []
-        for distance in line_distances:
-            if np.sin(np.pi * distance / line_length) < 5.e-5:      # this is to fix error below of sqrt(0)
-                tapered_slip_multiplier = 0.
-            else:
-                tapered_slip_multiplier = np.sqrt(np.sin(np.pi * distance / line_length))
-            tapered_slip_multipliers.append(tapered_slip_multiplier)
-            tapered_slip_values.append(max_slip * tapered_slip_multiplier)
+            # calculate slip at each interpolated point based on distance
+            # this constant is based on the integral of the sin function from 0 to 1 (see NSHM taper)
+            max_slip = rupture_slip_dict[rupture_id] / 0.76276
+            # apply slip taper function to max slip. slip = sqrt(sin(pi * distance/line_length))
+            # making a multiplier list is verbose but helps me keep track of things
+            tapered_slip_multipliers = []
+            tapered_slip_values = []
+            for distance in line_distances:
+                if np.sin(np.pi * distance / line_length) < 5.e-5:      # this is to fix error below of sqrt(0)
+                    tapered_slip_multiplier = 0.
+                else:
+                    tapered_slip_multiplier = np.sqrt(np.sin(np.pi * distance / line_length))
+                tapered_slip_multipliers.append(tapered_slip_multiplier)
+                tapered_slip_values.append(max_slip * tapered_slip_multiplier)
 
-        # interpolate slip at each discretised polygon (i.e., patch) centroid and corresponding displacement
-        polygon_slips = griddata(along_rupture_line_xy, tapered_slip_values, ruptured_polygon_centroid_coords,
-                               method="nearest")
+            # interpolate slip at each discretised polygon (i.e., patch) centroid and corresponding displacement
+            polygon_slips = griddata(along_rupture_line_xy, tapered_slip_values, ruptured_polygon_centroid_coords,
+                                method="nearest")
+
+            ruptured_discretised_polygons_gdf.loc[ruptured_discretised_fault_polygons_gdf.index, 'polygon_slips'] = polygon_slips
+
+        # Adjust polygon slips so that they match the average slip (use of max slip for faults ith few segments can result
+        # in some ruptures where all segements are slipping higher than av slip)
+        ruptured_discretised_polygons_gdf['polygon_slips'] /= ruptured_discretised_polygons_gdf['polygon_slips'].mean() / rupture_slip_dict[rupture_id]
 
         # calculate displacements by multiplying the polygon green's function by slip on each fault
         # this will be a list of lists
         disps_i_list = []
         for i, fault_id in enumerate(ruptured_discretised_polygons_gdf.fault_id):
             # This section has never been tested following change from gf_total_slip_dict to gf_arrays
-            fault_ix = rupture_order.index(fault_id)
+            fault_ix = rupture_order.index(str(fault_id))
             combined_gf = gf_total_slip_array[fault_ix, :].toarray()
-            disp_i = combined_gf * polygon_slips[i]
+            disp_i = combined_gf * ruptured_discretised_polygons_gdf['polygon_slips'].iloc[i]
             # disp_i = gf_total_slip_dict[fault_id]["combined_gf"] * polygon_slips[i]
             disps_i_list.append(disp_i)
         #sum displacements from each patch
-        disps_scenario = np.sum(disps_i_list, axis=0)
+        disps_scenario = np.sum(disps_i_list, axis=0).reshape(-1)
         if len(ruptured_fault_ids_with_mesh) != 0:
             disps_scenario[np.abs(disps_scenario) < 5.e-3] = 0.
         elif len(ruptured_fault_ids_with_mesh) == 0:
             disps_scenario = None
+
+        # ruptured_discretised_polygons_gdf.to_file(f"./rupture{rupture_id}_{rupture_slip_dict[rupture_id]:.02f}_tapered.geojson", driver="GeoJSON")
 
     # Abandon ruptures that don't cause any displacement
     if disps_scenario is not None and sum(np.abs(disps_scenario)) == 0:
@@ -492,7 +669,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
 
     # Makes a new total gf displacement dictionary using rake. If points don't have a name (e.g., for whole coastline
     # calculations), the site name list is just a list of numbers
-    gf_total_slip_array, site_name_list, site_coords, key_order, grid_meta = make_total_slip_dictionary(gf_dict_pkl)
+    gf_total_slip_array, site_name_list, site_coords, key_order = make_total_slip_dictionary(gf_dict_pkl)
 
     # calculate displacements at all the sites by rupture. Output dictionary keys are by rupture ID.
     disp_dictionary = {}
@@ -534,7 +711,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     if slip_taper is True:
         extension3 = "_tapered"
     else:
-        extension3 = "_uniform"
+        extension3 = ""
 
     # save displacements
     os.makedirs(f"{procdir}/results/{disc_version}/{extension1}", exist_ok=True)
@@ -548,10 +725,6 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     with open(f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}_sites.pkl",
               "wb") as f:
         pkl.dump(site_name_dict, f)
-
-    if grid_meta:
-        with open(f"../{results_version_directory}/{extension1}/grid_limits.pkl", "wb") as f:
-            pkl.dump(grid_meta, f)
 
     return disp_dictionary
 

@@ -34,6 +34,7 @@ steeper_dip, gentler_dip = False, False
 
 # Define whch subduction zone ([_fq_]hikkerm / puysegur)
 sz_zone = '_fq_hikkerm'
+sz_zone = '_fq_hikkerm'
 
 rake90 = False  # if True, all rakes will be set to 90 degrees (NSHM default, but not our mesh default)
 

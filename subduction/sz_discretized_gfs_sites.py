@@ -15,7 +15,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 # Calculates greens functions along coastline at specified interval
 # Read in the geojson file from the NSHM inversion solution
-version_extension = "_v0-0-1S_geoval"
+version_extension = "_v0-0-2"
 # NSHM_directory = "NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6MTA3MTUy"
 steeper_dip, gentler_dip = False, False
 
@@ -24,14 +24,23 @@ sz_zone = 'puysegur'
 
 # Parameters to pick cut-off for recorded deformation
 maximum_slip = 12 if sz_zone == 'puysegur' else 50 if 'fq_' in sz_zone else 25  # Maximum amount of slip on a patch (set this to maximum slip in the input ruptures) 12: py, 25: sz_NSHM, 50: sz_fq
-minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 1 cm of displacement from 10 m of slip)
+minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 0.001 for 1mm of displacement from max_slip m of slip)
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_file = os.path.join('..', 'sites', 'CUSP_v0-0-1_geovalS.geojson')
+site_list_file = os.path.join('..', 'sites', 'CUSP_v0-0-2')
+if sz_zone.startswith("p"):
+    site_list_file = f"{site_list_file}S.geojson"
+    version_extension += 'S'
+else:
+    site_list_file = f"{site_list_file}N.geojson"
+    version_extension += 'N'
+
 if site_list_file.endswith('.csv'):
     sites_df = pd.read_csv(site_list_file).drop_duplicates().reset_index(drop=True)
 else:
     sites_df = gpd.read_file(site_list_file).drop_duplicates().reset_index(drop=True)
+
+sites_df[['Max GF Uplift (m)', 'Max GF Subsidence (m)']] = 0.
 
 # Names of the sites we need to prepare
 gf_site_names = [str(site) for site in sites_df['siteId']]
@@ -207,6 +216,10 @@ else:
                 gf_h5[str(fault_id)].create_dataset(key, data=disp_dict[key])
             gf_h5.close()
 
+            if len(non_zero_ix) > 0:
+                sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Uplift (m)'] = np.maximum(sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Uplift (m)'], disps)
+                sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Subsidence (m)'] = np.minimum(sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Subsidence (m)'], disps)
+
             if fault_id % 1 == 0:
                 print(f'discretised dict {fault_id:0{sigfig}d} of {n_patches} done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
         print('')
@@ -214,6 +227,7 @@ else:
         retry_ids = []
 
 # This geojson file will be used to control the sites of the inversion
+sites_df['Max GF VLM (m)'] = sites_df[['Max GF Uplift (m)', 'Max GF Subsidence (m)']].apply(lambda row: abs(max(row, key=abs)), axis=1)
 gdf = gpd.GeoDataFrame(sites_df, geometry=gpd.points_from_xy(sites_df.Lon, sites_df.Lat), crs='EPSG:2193')
 gdf.to_file(f"discretised{sz_zone}/{prefix}_site_locations{version_extension}.geojson", driver="GeoJSON")
 

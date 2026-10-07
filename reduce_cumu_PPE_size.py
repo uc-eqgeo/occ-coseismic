@@ -13,14 +13,17 @@ Sites to be kept are listed in the keep geojson file, which should have a 'siteI
 Useful if you are trying to reduce the number of pairs when running paired crustal-subduction
 """
 
-results_dir = 'CFM'
-fault_type = 'crustal'
-keep_geojson = 'v0-0-1_geoval'
+results_dir = 'puysegur'
+fault_type = 'subduction'
+keep_geojson = 'v0-0-1S_geoval'
 h5_search_term = f'*_cumu_PPE.h5'
-max_workers = 12   # tune to your I/O bandwidth
-force_repack = False
+max_workers = 1   # tune to your I/O bandwidth
+force_repack = True
+fakequakes = False
 
-keep_geojson = os.path.join('.', fault_type, f'discretised_{results_dir}', f'{fault_type}_site_locations_{keep_geojson}.geojson')
+fault_prefix = 'crustal' if results_dir == 'crustal' else 'py' if results_dir == 'puysegur' else 'sz'
+fakequakes = '_fq' if fakequakes and fault_prefix == 'sz' else ''
+keep_geojson = os.path.join('.', fault_type, f'discretised_{results_dir}', f'{fault_prefix}_site_locations{fakequakes}_{keep_geojson}.geojson')
 results_dir = os.path.join('.', 'results', results_dir)
 
 sites = set(gpd.read_file(keep_geojson)['siteId'])
@@ -39,7 +42,8 @@ def process_file(cumu_h5: str, sites: set, force_repack: bool) -> str:
     """Delete unwanted sites and repack a single h5 file. Returns a status string."""
     with h5.File(cumu_h5, 'a') as f:
         h5_sites  = set(f.keys()) - META_KEYS
-        to_remove = h5_sites - sites
+        # to_remove = h5_sites - sites
+        to_remove = set()
  
         if not to_remove:
             if not force_repack:
@@ -56,47 +60,52 @@ def process_file(cumu_h5: str, sites: set, force_repack: bool) -> str:
     fd, tmp_path = tempfile.mkstemp(dir=dir_, suffix='.repack_tmp.h5')
     os.close(fd)
     try:
-        subprocess.run(
-            ["h5repack", cumu_h5, tmp_path],
-            check=True,
-            capture_output=True,
-        )
-        size_after = os.path.getsize(tmp_path) / 1024**3
+        with h5.File(cumu_h5, 'r') as h5_src, h5.File(tmp_path, 'w') as h5_dst:
+            for key, item in h5_src.items():
+                write_group(h5_src, h5_dst, key, item)
         os.replace(tmp_path, cumu_h5)
     except Exception:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
         raise
  
+    size_after = os.path.getsize(cumu_h5) / 1024**3
     removed = len(to_remove) if to_remove else 0
     return (
         f"[DONE]  {base} — removed {removed} sites, "
         f"{size_before:.2f} GB → {size_after:.2f} GB "
         f"(saved {size_before - size_after:.2f} GB)"
     )
- 
+
+def write_group(src, dst, key, item):
+    if isinstance(src[key], h5.Dataset):
+        dst.create_dataset(key, item)
+    else:
+        dst.create_group(key)
+        for keys, items in item.items():
+            write_group(src[key], dst[key], keys, items)
  
 # ── Parallel dispatch ─────────────────────────────────────────────────────────
-if __name__ == '__main__':
-    max_workers   = min(max_workers, os.cpu_count(), len(cumu_h5_list)) 
-    if max_workers > 1:
-        print(f"Processing with {max_workers} parallel workers...\n")
-        with ProcessPoolExecutor(max_workers=max_workers) as pool:
-            futures = {
-                pool.submit(process_file, path, sites, force_repack): path
-                for path in cumu_h5_list
-            }
-            for future in as_completed(futures):
-                path = futures[future]
-                try:
-                    print(future.result())
-                except Exception as exc:
-                    print(f"[ERROR] {os.path.basename(path)}: {exc}")
-    else:
-        for path in cumu_h5_list:
+# if __name__ == '__main__':
+max_workers   = min(max_workers, os.cpu_count(), len(cumu_h5_list)) 
+if max_workers > 1:
+    print(f"Processing with {max_workers} parallel workers...\n")
+    with ProcessPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(process_file, path, sites, force_repack): path
+            for path in cumu_h5_list
+        }
+        for future in as_completed(futures):
+            path = futures[future]
             try:
-                print(process_file(path, sites, force_repack))
+                print(future.result())
             except Exception as exc:
                 print(f"[ERROR] {os.path.basename(path)}: {exc}")
-    
-    print("\nAll done.")
+else:
+    for path in cumu_h5_list:
+        try:
+            print(process_file(path, sites, force_repack))
+        except Exception as exc:
+            print(f"[ERROR] {os.path.basename(path)}: {exc}")
+
+print("\nAll done.")
