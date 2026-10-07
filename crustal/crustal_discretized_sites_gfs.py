@@ -16,7 +16,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
 discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
-mesh_version = "_CUSP_full_res"
+mesh_version = "_CUSP_v0-1-0"
 
 steeper_dip, gentler_dip = False, False
 
@@ -25,7 +25,7 @@ maximum_slip = 15  # Maximum amount of slip on a patch (set this to maximum slip
 minimum_recorded_slip = 0.001  # Minimum slip to record a non-zero value from, following maximum slip (e.g. 1 cm of displacement from 10 m of slip)
 
 # in list form for one coord or list of lists for multiple (in NZTM)
-site_list_file = os.path.join('..', 'sites', 'CUSP_full_res.geojson')
+site_list_file = os.path.join('..', 'sites', 'CUSP_v0-1-0.geojson')
 if site_list_file.endswith('.csv'):
     sites_df = pd.read_csv(site_list_file).drop_duplicates().reset_index(drop=True)
 else:
@@ -72,7 +72,7 @@ else:
     prepare_set = set(prepared_site_names)  # Convert to set for faster lookup
     gf_ix = [ix for ix, site in enumerate(requested_site_names) if site not in prepare_set]  # index of the requested sites that require GF processing in the requested geojson
     all_site_names = prepared_site_names + requested_site_names[gf_ix].tolist()
-    _, requested_ix, all_site_ix = np.intersect1d(requested_site_names, all_site_names, return_indices=True)
+    _, requested_site_ix, all_site_ix = np.intersect1d(requested_site_names, all_site_names, return_indices=True)
     if prepared_site_coords.shape[0] == 0:
         all_site_coords = requested_site_coords[:, :2]
     else:
@@ -133,8 +133,8 @@ else:
             with h5.File(gf_h5_file, "r") as gf_h5:
                 if gf_h5[str(fault_id)]['non_zero_sites'].shape[0] > 0:
                     _, requested_non_zero, all_non_zero = np.intersect1d(all_site_ix, gf_h5[str(fault_id)]['non_zero_sites'][:], return_indices=True)
-                    sites_df.loc[requested_ix[requested_non_zero], 'Max GF Uplift (m)'] = np.maximum(sites_df.loc[requested_ix[requested_non_zero], 'Max GF Uplift (m)'], gf_h5[str(fault_id)]['ds'][all_non_zero])
-                    sites_df.loc[requested_ix[requested_non_zero], 'Max GF Subsidence (m)'] = np.minimum(sites_df.loc[requested_ix[requested_non_zero], 'Max GF Subsidence (m)'], gf_h5[str(fault_id)]['ds'][all_non_zero])
+                    sites_df.loc[requested_site_ix[requested_non_zero], 'Max GF Uplift (m)'] = np.maximum(sites_df.loc[requested_site_ix[requested_non_zero], 'Max GF Uplift (m)'], gf_h5[str(fault_id)]['ds'][all_non_zero])
+                    sites_df.loc[requested_site_ix[requested_non_zero], 'Max GF Subsidence (m)'] = np.minimum(sites_df.loc[requested_site_ix[requested_non_zero], 'Max GF Subsidence (m)'], gf_h5[str(fault_id)]['ds'][all_non_zero])
             print(f'discretised dict {fault_id:0{sigfig}d} ({fix:0{sigfig}d}/{n_patches}) prep in {time() - begin:.2f} seconds (Fault Fully pre-prepared)                ', end='\r')
             continue
 
@@ -191,8 +191,8 @@ else:
         if len(non_zero_ix) > 0:
             _, requested_non_zero, non_zero_requested = np.intersect1d(all_site_ix, non_zero_ix, return_indices=True)
             if len(requested_non_zero) > 0:
-                sites_df.loc[requested_non_zero, 'Max GF Uplift (m)'] = np.maximum(sites_df.loc[requested_non_zero, 'Max GF Uplift (m)'], disps_ds[non_zero_requested])
-                sites_df.loc[requested_non_zero, 'Max GF Subsidence (m)'] = np.minimum(sites_df.loc[requested_non_zero, 'Max GF Subsidence (m)'], disps_ds[non_zero_requested])
+                sites_df.loc[requested_site_ix[requested_non_zero], 'Max GF Uplift (m)'] = np.maximum(sites_df.loc[requested_site_ix[requested_non_zero], 'Max GF Uplift (m)'], disps_ds[non_zero_requested])
+                sites_df.loc[requested_site_ix[requested_non_zero], 'Max GF Subsidence (m)'] = np.minimum(sites_df.loc[requested_site_ix[requested_non_zero], 'Max GF Subsidence (m)'], disps_ds[non_zero_requested])
 
         if fault_id % 1 == 0:
             print(f'discretised dict {fault_id:0{sigfig}d} ({fix:0{sigfig}d}/{n_patches}) done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
