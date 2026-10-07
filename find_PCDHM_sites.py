@@ -224,14 +224,15 @@ print(f"Written sites\\{centroid_name}.geojson")
 
 wellington = Point([1749150, 5428092]) # Wellington coordinates in NZTM
 te_anau = Point([1186710, 4957633])  # Te Anau coordinates in NZTM
-distance = 350  # Distance South of Wellington in km to include for hikurangi
+distance_south = 350  # Distance South of Wellington in km to include for hikurangi
+distance_north = 225  # Distance around Te Anau in km to include for Puysegur
 
 # For Hikurangi, find all centroids north of 350km south of Wellington
-northern_section = centroid_gdf[(centroid_gdf.geometry.y > wellington.y) | (centroid_gdf.distance(wellington) < distance * 1e3)]
+northern_section = centroid_gdf[(centroid_gdf.geometry.y > wellington.y) | (centroid_gdf.distance(wellington) < distance_south * 1e3)]
 northern_section.to_file(f'sites\\{centroid_name}N.geojson', driver='GeoJSON')
 print(f"Written sites\\{centroid_name}N.geojson")
 
 # For Puysegur, find all centroids within 350km of Te Anau
-southern_section = centroid_gdf[(centroid_gdf.distance(te_anau) < distance * 1e3)]
+southern_section = centroid_gdf[(centroid_gdf.distance(te_anau) < distance_north * 1e3)]
 southern_section.to_file(f'sites\\{centroid_name}S.geojson', driver='GeoJSON')
 print(f"Written sites\\{centroid_name}S.geojson")
