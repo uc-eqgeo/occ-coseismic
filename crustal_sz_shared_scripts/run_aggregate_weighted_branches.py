@@ -314,16 +314,25 @@ if not paired_crustal_sz:
         site_gdf = gpd.read_file(site_geojson).drop_duplicates().reset_index(drop=True)
         inv_sites = site_gdf['siteId'].values.tolist()
 
+    all_no_gf_sites = set()
     for ix, extension1 in enumerate(extension1_list):
         get_rupture_dict = False
         ftype = [(jj, ftype) for jj, ftype in enumerate(fault_type) if '_' + ftype.replace('rustal', '') + '_' in extension1][0]
         all_rupture_disp_file = f"../{version_discretise_directory[ftype[0]]}/{extension1}/all_rupture_disps_{extension1}{taper_extension}.h5"
 
         print(f"\n\tbranch {ix + 1} of {len(extension1_list)}: {extension1}")
+        no_gf_geojson = f"{os.path.dirname(all_rupture_disp_file)}/{os.path.basename(site_geojson).replace('.geojson', '_no_gf_sites.geojson')}"
+        if os.path.exists(no_gf_geojson):
+            no_gf_sites = set(gpd.read_file(no_gf_geojson).drop_duplicates()['siteId'].values)
+            all_no_gf_sites |= no_gf_sites
+            print(f"\n{len(no_gf_sites)} sites in no_gf_geojson. Assume these sites still have no processed greens function")
+        else:
+            no_gf_sites = set()
+
         if os.path.exists(all_rupture_disp_file):
             with h5.File(all_rupture_disp_file, 'r') as rupt_h5:
                 sites = [site.decode() for site in rupt_h5['site_name_list']]
-            if len(set(inv_sites).intersection(sites)) < len(inv_sites):
+            if len((set(inv_sites) - no_gf_sites).intersection(sites)) < len(set(inv_sites) - no_gf_sites):
                 get_rupture_dict = True
         else:
             get_rupture_dict = True
@@ -337,7 +346,7 @@ if not paired_crustal_sz:
                                     search_radius=9e5, fakequakes=fakequakes)
             with h5.File(all_rupture_disp_file, 'r') as rupt_h5:
                 sites = [site.decode() for site in rupt_h5['site_name_list']]
-            no_gf_geojson = f"{os.path.dirname(all_rupture_disp_file)}/{os.path.basename(site_geojson).replace('.geojson', '_no_gf_sites.geojson')}"
+
             if len(set(inv_sites).difference(sites)) > 0:
                 print(f"{len(set(inv_sites).difference(sites))} requested sites have no Greens Function processed. Skipping these...")
                 no_gf_sites = set(inv_sites).difference(sites)
@@ -346,6 +355,8 @@ if not paired_crustal_sz:
                     inv_sites.remove(site)
             elif os.path.exists(no_gf_geojson):
                 os.remove(no_gf_geojson)
+        for site in set(inv_sites).intersection(all_no_gf_sites):
+            inv_sites.remove(site)
 
 ### make a dictionary of all the branch probabilities, oranized by site within each branch
 # option to skip this step if you've already run it once and saved to a pickle file
