@@ -935,7 +935,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                 branch_site_disp_dict.create_group('scaled_rates')
                 branch_site_disp_dict['scaled_rates'].create_dataset(f"rates_S{str(rate_scaling_factor).replace('.', '')}", data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
 
-        fault_model_allbranch_PPE_dict[branch_id] = f"../{model_version_results_directory}/{extension1}/{branch_id}{taper_extension}_sites"
+        fault_model_allbranch_PPE_dict[branch_id] = f"../{model_version_results_directory}/{extension1}/{branch_id}{outfile_extension}{taper_extension}_sites"
         fault_branch_meta_h5 = f"{fault_model_allbranch_PPE_dict[branch_id][:-6]}_meta.h5"
         os.makedirs(fault_model_allbranch_PPE_dict[branch_id], exist_ok=True)
 
@@ -1876,17 +1876,17 @@ def create_site_weighted_mean(site_h5, site, n_samples, crustal_directory, sz_di
             nesiprint(f'Site complete: {time() - start:.2f}s\n')
 
 
-def build_branch_PPE_file(out_version_results_directory, single_branch, branch_key, inv_sites, time_intervals=["100"], thresh_lims=[0.2, 3], thresh_step=0.2, probs_lims=[0.01, 0.10], probs_step=0.01):
+def build_branch_PPE_file(out_version_results_directory, single_branch, branch_key, inv_sites, outfile_extension="", time_intervals=["100"], thresh_lims=[0.2, 3], thresh_step=0.2, probs_lims=[0.01, 0.10], probs_step=0.01):
 
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
     probabilities = np.round(np.arange(probs_lims[0], probs_lims[1] + probs_step, probs_step), 4)
 
     for branch in single_branch:
         for key in branch_key:
+            single_branch_file = f"../{out_version_results_directory}/sites{branch}/{key}{outfile_extension}_cumu_PPE.h5"
             if not key.endswith(branch):
-                print(f"skipping ../{out_version_results_directory}/sites{branch}/{key}_cumu_PPE.h5")
+                print(f"\nskipping {single_branch_file}")
                 continue
-            single_branch_file = f"../{out_version_results_directory}/sites{branch}/{key}_cumu_PPE.h5"
 
             print(f"Preparing {single_branch_file}", end="\r")
 
@@ -1912,7 +1912,7 @@ def build_branch_PPE_file(out_version_results_directory, single_branch, branch_k
 
             site_dict = {}
             for ix, site in enumerate(process_sites, 1):
-                site_file = f"../{out_version_results_directory}/sites{branch}/{key}_sites/{site}.h5"
+                site_file = f"../{out_version_results_directory}/sites{branch}/{key}{outfile_extension}_sites/{site}.h5"
                 print(f"Preparing {single_branch_file} ({ix / len(process_sites) * 100:.02f}%)", end="\r")
                 if not os.path.exists(site_file):
                     continue
@@ -3070,9 +3070,9 @@ def save_disp_prob_xarrays(extension1, slip_taper, model_version_results_directo
         print(f"Saving data arrays for weighted mean displacements {model_id}...")
     elif single_branch != '':
         branch_suffix = '_'.join(single_branch.split('_')[6:])
-        h5_file = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/{single_branch}{taper_extension}_cumu_PPE.h5"
-        sites_dir = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/{single_branch}{taper_extension}_sites"
-        outfile_directory = f"../{model_version_results_directory}/{extension1}/sites_{branch_suffix}/probability_grids"
+        h5_file = f"../{model_version_results_directory}/sites_{branch_suffix}/{single_branch}{taper_extension}{extension1}_cumu_PPE.h5"
+        sites_dir = f"../{model_version_results_directory}/sites_{branch_suffix}/{single_branch}{taper_extension}{extension1}_sites"
+        outfile_directory = f"../{model_version_results_directory}/sites_{branch_suffix}/probability_grids{extension1}"
         model_id = branch_suffix + f"_S{str(rate_scaling).replace('.','')}"
         print(f"Saving data arrays for sites_{model_id}...")
     else:

@@ -14,7 +14,7 @@ except ImportError:
 os.chdir(os.path.dirname(__file__))
 #### USER INPUTS #####
 slip_taper = False                           # True or False, only matters if crustal. Defaults to False for sz.
-fault_type = "sz"                       # "crustal", "sz", "py" or "all"; only matters for single fault model + getting name of paired crustal subduction pickle files
+fault_type = "crustal"                       # "crustal", "sz", "py" or "all"; only matters for single fault model + getting name of paired crustal subduction pickle files
 crustal_mesh_version = "_CFM"           # Name of the crustal mesh model version (e.g. "_CFM", "_CFM_steeperdip", "_CFM_gentlerdip")
 crustal_site_names = "_v0-0-2"   # Name of the sites geojson
 sz_site_names = ["_10km_coastS", "_10km_coastN"]       # Name of the sites geojson
@@ -62,7 +62,7 @@ branch_weight_csv = "branch_weight_data_sensitivity"  # If you want to use a spe
 
 # Processing Parameters
 time_interval = [5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150]     # Time span of hazard forecast (yrs)
-time_interval = [7500]
+time_interval = [100]
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 1
 thresh_lims = [0, 50]
@@ -86,11 +86,11 @@ figure_file_type_list = ["png", "pdf"]             # file types for figures
 
 ## Set parameters based on user inputs
 if testing:
-    n_samples = 1e5   # Number of scenarios to run
+    n_samples = 1e4   # Number of scenarios to run
     job_time = 1    # Amount of time to allocate per site in the cumu_PPE task array
     mem = 1    # Memory allocation for cumu_PPE task array
 else:
-    n_samples = 1e6   # Number of scenarios to run
+    n_samples = 1e5   # Number of scenarios to run
     job_time = 3    # Amount of time to allocate per site in the cumu_PPE task array
     mem = 2    # Memory allocation for cumu_PPE task array
 
@@ -315,19 +315,19 @@ if not paired_crustal_sz:
         inv_sites = site_gdf['siteId'].values.tolist()
 
     all_no_gf_sites = set()
+    no_gf_geojson = f"../{version_discretise_directory[0]}/{os.path.basename(site_geojson).replace('.geojson', '_no_gf_sites.geojson')}"
+    if os.path.exists(no_gf_geojson):
+        no_gf_sites = set(gpd.read_file(no_gf_geojson).drop_duplicates()['siteId'].values)
+        print(f"\n{len(no_gf_sites)} sites in no_gf_geojson. Assume these sites still have no processed greens function")
+    else:
+        no_gf_sites = set()
+
     for ix, extension1 in enumerate(extension1_list):
         get_rupture_dict = False
         ftype = [(jj, ftype) for jj, ftype in enumerate(fault_type) if '_' + ftype.replace('rustal', '') + '_' in extension1][0]
         all_rupture_disp_file = f"../{version_discretise_directory[ftype[0]]}/{extension1}/all_rupture_disps_{extension1}{taper_extension}.h5"
 
         print(f"\n\tbranch {ix + 1} of {len(extension1_list)}: {extension1}")
-        no_gf_geojson = f"{os.path.dirname(all_rupture_disp_file)}/{os.path.basename(site_geojson).replace('.geojson', '_no_gf_sites.geojson')}"
-        if os.path.exists(no_gf_geojson):
-            no_gf_sites = set(gpd.read_file(no_gf_geojson).drop_duplicates()['siteId'].values)
-            all_no_gf_sites |= no_gf_sites
-            print(f"\n{len(no_gf_sites)} sites in no_gf_geojson. Assume these sites still have no processed greens function")
-        else:
-            no_gf_sites = set()
 
         if os.path.exists(all_rupture_disp_file):
             with h5.File(all_rupture_disp_file, 'r') as rupt_h5:
@@ -348,15 +348,14 @@ if not paired_crustal_sz:
                 sites = [site.decode() for site in rupt_h5['site_name_list']]
 
             if len(set(inv_sites).difference(sites)) > 0:
-                print(f"{len(set(inv_sites).difference(sites))} requested sites have no Greens Function processed. Skipping these...")
-                no_gf_sites = set(inv_sites).difference(sites)
-                site_gdf[site_gdf.siteId.isin(no_gf_sites)].to_file(no_gf_geojson)
-                for site in set(inv_sites).difference(sites):
-                    inv_sites.remove(site)
-            elif os.path.exists(no_gf_geojson):
-                os.remove(no_gf_geojson)
-        for site in set(inv_sites).intersection(all_no_gf_sites):
+                print(f"{len((set(inv_sites) - no_gf_sites).difference(sites))} additional requested sites have no Greens Function processed. Skipping these...")
+                no_gf_sites |= set(inv_sites).difference(sites)
+    if len(no_gf_sites) > 0:
+        site_gdf[site_gdf.siteId.isin(no_gf_sites)].to_file(no_gf_geojson)
+        for site in no_gf_sites:
             inv_sites.remove(site)
+    elif os.path.exists(no_gf_geojson):
+        os.remove(no_gf_geojson)
 
 ### make a dictionary of all the branch probabilities, oranized by site within each branch
 # option to skip this step if you've already run it once and saved to a pickle file
@@ -456,7 +455,7 @@ if save_arrays:
     thresh_lims, thresh_step = [0.2, 5], 0.2
     if single_branch:
         weighted = False
-        build_branch_PPE_file(out_version_results_directory, single_branch, branch_key, inv_sites, time_interval, thresh_lims=thresh_lims, thresh_step=thresh_step, probs_lims=probs_lims, probs_step=probs_step)
+        build_branch_PPE_file(out_version_results_directory, single_branch, branch_key, inv_sites, outfile_extension, time_interval, thresh_lims=thresh_lims, thresh_step=thresh_step, probs_lims=probs_lims, probs_step=probs_step)
     else:
         weighted = True
         branch_key = ['']
