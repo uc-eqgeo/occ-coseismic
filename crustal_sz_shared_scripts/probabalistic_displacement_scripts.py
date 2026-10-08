@@ -930,7 +930,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
             # Extract rates from the NSHM solution directory, but it is not scaled by the rate scaling factor
             write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5_file=branch_site_disp_dict_file)
             with h5.File(branch_site_disp_dict_file, "a") as branch_site_disp_dict:
-                site_set = set(branch_site_disp_dict.keys()) - {'rates'}
+                site_set = set(branch_site_disp_dict.keys()) - {'rates', 'scaled_rates', 'site_coords'}
                 # multiply each value in the rates array by the rate scaling factor
                 branch_site_disp_dict.create_group('scaled_rates')
                 branch_site_disp_dict['scaled_rates'].create_dataset(f"rates_S{str(rate_scaling_factor).replace('.', '')}", data=branch_site_disp_dict["rates"][:] * rate_scaling_factor)
