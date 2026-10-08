@@ -1,9 +1,8 @@
+import os
 import geopandas as gpd
 import numpy as np
 import math
 from shapely.geometry import Polygon, Point
-import shapely
-import pandas as pd
 
 def split_cell(cell_dicts, parent_id, max_grid, min_grid, max_id, coastline, faults, fault_buffer, split_factor=2, hires_coast=False):
     print(f"Splitting {parent_id}", end='\r')
@@ -214,8 +213,11 @@ else:
 centroid_data = [[f"{geom.x:.0f}_{geom.y:.0f}", geom.x, geom.y, 0, res, depth, geom] for (geom, depth, res) in zip(centroids, depth, res)]
 centroid_gdf = gpd.GeoDataFrame(centroid_data, columns=['siteId', 'Lon', 'Lat', 'Height', 'res', 'depth', 'geometry'], geometry='geometry', crs='EPSG:2193')
 
+# Remove Pacific Islands
+centroid_gdf = centroid_gdf[(centroid_gdf.geometry.x < 2100000) & (centroid_gdf.geometry.y > 4740000)]
+
 poly_grid = centroid_gdf.copy()
-poly_grid['geometry'] = cell_poly
+poly_grid['geometry'] = np.array(cell_poly)[centroid_gdf.index.values]
 poly_grid.to_file(f'sites\\{polyname}.geojson', driver='GeoJSON')
 print(f"Written sites\\{polyname}.geojson")
 
@@ -229,10 +231,10 @@ distance_north = 225  # Distance around Te Anau in km to include for Puysegur
 
 # For Hikurangi, find all centroids north of 350km south of Wellington
 northern_section = centroid_gdf[(centroid_gdf.geometry.y > wellington.y) | (centroid_gdf.distance(wellington) < distance_south * 1e3)]
-northern_section.to_file(f'sites\\{centroid_name}N.geojson', driver='GeoJSON')
+northern_section.to_file(f'sites\\{centroid_name.replace("NationalGrid", f"NationalGrid{os.sep}N-S_sites")}N.geojson', driver='GeoJSON')
 print(f"Written sites\\{centroid_name}N.geojson")
 
 # For Puysegur, find all centroids within 350km of Te Anau
 southern_section = centroid_gdf[(centroid_gdf.distance(te_anau) < distance_north * 1e3)]
-southern_section.to_file(f'sites\\{centroid_name}S.geojson', driver='GeoJSON')
+southern_section.to_file(f'sites\\{centroid_name.replace("NationalGrid", f"NationalGrid{os.sep}N-S_sites")}S.geojson', driver='GeoJSON')
 print(f"Written sites\\{centroid_name}S.geojson")
