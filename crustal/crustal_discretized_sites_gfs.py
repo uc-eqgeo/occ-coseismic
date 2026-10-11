@@ -189,9 +189,11 @@ else:
         gf_h5.close()
 
         if len(non_zero_ix) > 0:
-            sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Uplift (m)'] = np.maximum(sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Uplift (m)'], disps_ds)
-            sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Subsidence (m)'] = np.minimum(sites_df.loc[sites_df.index[site_ix[non_zero_ix]], 'Max GF Subsidence (m)'], disps_ds)
-            
+            _, requested_non_zero, non_zero_requested = np.intersect1d(all_site_ix, non_zero_ix, return_indices=True)
+            if len(requested_non_zero) > 0:
+                sites_df.loc[requested_site_ix[requested_non_zero], 'Max GF Uplift (m)'] = np.maximum(sites_df.loc[requested_site_ix[requested_non_zero], 'Max GF Uplift (m)'], disps_ds[non_zero_requested])
+                sites_df.loc[requested_site_ix[requested_non_zero], 'Max GF Subsidence (m)'] = np.minimum(sites_df.loc[requested_site_ix[requested_non_zero], 'Max GF Subsidence (m)'], disps_ds[non_zero_requested])
+
         if fault_id % 1 == 0:
             print(f'discretised dict {fault_id:0{sigfig}d} ({fix:0{sigfig}d}/{n_patches}) done in {time() - begin:.2f} seconds ({triangles.shape[0]:3d} triangles per patch)    ', end='\r')
     print('')
