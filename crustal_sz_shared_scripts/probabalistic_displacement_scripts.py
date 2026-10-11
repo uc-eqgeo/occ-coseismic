@@ -173,7 +173,7 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
         # this extracts the rates from the solution directory, but it is not scaled by the rate scaling factor
         # multiply the rates by the rate scaling factor
         rate_scaling_factor = branch_weight_dict[branch_id]["S"]
-        branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}_S{str(rate_scaling_factor).replace('.', '')}{taper_extension}.h5"
+        branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}{taper_extension}.h5"
         branch_cumu_file = f"../{model_version_results_directory}/{extension1}/{branch_id}_meta.h5"
         if os.path.exists(branch_site_disp_dict_file):
             try:  # check in case h5 is corrupted
@@ -185,10 +185,13 @@ def get_all_branches_site_disp_dict(branch_weight_dict, gf_name, slip_taper, mod
             write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5_file=branch_site_disp_dict_file)
 
         with h5.File(branch_site_disp_dict_file, "a") as branch_h5:
-            if "scaled_rates" not in branch_h5.keys():
-                # multiply each value in the rates array by the rate scaling factor
-                branch_h5.create_dataset("scaled_rates", data=branch_h5["rates"][:] * rate_scaling_factor)
+            if 'scaled_rates' not in branch_h5:
+                branch_h5.create_group('scaled_rates')
 
+            scaled_rate = f"rates_S{str(rate_scaling_factor).replace('.', '')}"
+            if scaled_rate not in branch_h5['scaled_rates']:
+                # multiply each value in the rates array by the rate scaling factor
+                branch_h5['scaled_rates'].create_dataset(scaled_rate, data=branch_h5["rates"][:] * rate_scaling_factor)
 
         all_branches_site_disp_dict[branch_id] = {"site_disp_dict":branch_site_disp_dict_file,
                                                 "branch_weight":branch_weight_dict[branch_id]["total_weight_RN"],
@@ -915,7 +918,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         branch_site_disp_dict_file = f"../{model_version_results_directory}/{extension1}/branch_site_disp_dict_{extension1}{taper_extension}.h5"
         if os.path.exists(branch_site_disp_dict_file):
             with h5.File(branch_site_disp_dict_file, 'r') as branch_h5:
-                site_set = set(branch_h5.keys()) - {'rates', 'scaled_rates', 'site_coords'}
+                site_set = {site.decode() for site in branch_h5['site_coords'][:, 0]} - {'rates', 'scaled_rates', 'site_coords'}
             missing_sites = inv_sites - site_set
             if len(missing_sites) > 0:
                 write_site_disp_dict(extension1, slip_taper=slip_taper, model_version_results_directory=model_version_results_directory, site_disp_h5_file=branch_site_disp_dict_file)
@@ -1076,22 +1079,33 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                                       int(tasks_per_array), int(n_tasks), hours=int(hours), mins=int(mins), mem=10, account=account)
         raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/combine_sites.sl")
     else:
-        print('Building all branch PPE dictionary....')
-        branch_list = [branch_id for branch_id in branch_weight_dict.keys()]
-
-        site_coords_dict = {}
-        with h5.File(branch_site_disp_dict_file, "r") as branch_h5:
-            site_coords_dict = dict([[site.decode(), [int(float(lon)), int(float(lat))]] for site, lon, lat in branch_h5['site_coords'][:]])
-            for site in site_set:
-                site_coords_dict[site] = branch_h5[site]['site_coords'][:]
-        fault_model_allbranch_PPE_dict['meta'] = {'branch_ids': branch_list, 'site_ids': list(site_set), 'branch_weights': branch_weight_list, 'site_coords_dict': site_coords_dict}
-
+        print('Updating all branch PPE dictionary....')
         outfile_name = f"all_branch_PPE_dict{outfile_extension}{taper_extension}"
+        all_branch_file = f"../{model_version_results_directory}/{outfile_name}.pkl"
+
+        if os.path.exists(all_branch_file):
+            with open(f"../{model_version_results_directory}/{outfile_name}.pkl", "rb") as f:
+                all_branch_PPE_dict = pkl.load(f)
+        else:
+            all_branch_PPE_dict = {'meta': {'branch_ids': [], 'branch_weights': [], 'site_coords_dict': {}}}
+        all_branch_weight_dict = dict(zip(all_branch_PPE_dict['meta']['branch_ids'], all_branch_PPE_dict['meta']['branch_weights']))
+
+        # Update branch weights with newly processed branches
+        all_branch_weight_dict.update(dict(zip(list(branch_weight_dict.keys()), branch_weight_list)))
+        all_branch_PPE_dict['meta']['branch_ids'] = list(all_branch_weight_dict.keys())
+        all_branch_PPE_dict['meta']['branch_weights'] = list(all_branch_weight_dict.values())
+
+        # Identify any new sites that were processed in this run, and store their coordinates
+        with h5.File(branch_site_disp_dict_file, "r") as branch_h5:
+            new_site_coords_dict = dict([[site.decode(), [int(float(lon)), int(float(lat))]] for site, lon, lat in branch_h5['site_coords'][:]])
+        all_branch_PPE_dict['meta']['site_coords_dict'].update(new_site_coords_dict)
+        all_branch_PPE_dict.update(fault_model_allbranch_PPE_dict)
+        
         print(f"\nSaving {model_version_results_directory}/{outfile_name}.pkl....")
         with open(f"../{model_version_results_directory}/{outfile_name}.pkl", "wb") as f:
-            pkl.dump(fault_model_allbranch_PPE_dict, f)
+            pkl.dump(all_branch_PPE_dict, f)
 
-        return fault_model_allbranch_PPE_dict
+        return all_branch_PPE_dict
 
 
 def check_completed_weighted_sites(weighted_h5, requested_sites, time_interval, thresh_lims=[0, 3], thresh_step=0.01, n_samples=100000):
@@ -1134,7 +1148,7 @@ def calc_array_times(site_list, min_tasks_per_array=100, n_array_tasks=100, job_
 
 
 def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper, site_list=[], thresh_lims=[0, 3], thresh_step=0.01, nesi=False, nesi_step='prep', n_samples=100000,
-                               min_tasks_per_array=100, n_array_tasks=100, mem=10, cpus=1, account='', job_time=60, remake_PPE=False, time_interval=['100']):
+                               min_tasks_per_array=100, n_array_tasks=100, mem=10, cpus=1, account='', job_time=60, remake_PPE=False, time_interval=['100'], rate_scaling=True):
     """takes all the branch PPEs and combines them based on the branch weights into a weighted mean PPE dictionary
 
     :param fault_model_PPE_dict: The dictionary has PPEs for each branch (or branch pairing).
@@ -1149,10 +1163,12 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
         taper_extension = ""
 
     unique_id_list = fault_model_PPE_dict['meta']['branch_ids']
+    if not rate_scaling:
+        unique_id_list = [branch for branch in unique_id_list if branch.split("_")[3] == "S10"]
     # site_list = fault_model_PPE_dict['meta']['site_ids']
 
     # weight the probabilities by NSHM branch weights to get a weighted mean
-    branch_weights = np.array(fault_model_PPE_dict['meta']['branch_weights'])
+    branch_weights = np.array([fault_model_PPE_dict['meta']['branch_weights'][fault_model_PPE_dict['meta']['branch_ids'].index(branch)] for branch in unique_id_list])
 
     # need a more elegant solution to this I think
     thresholds = np.round(np.arange(thresh_lims[0], thresh_lims[1] + thresh_step, thresh_step), 4)
@@ -1166,7 +1182,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     exceed_type_list = ["up", "down"]
 
     # Check if previous h5 exists. If it does, preserve it until new weighted mean file is complete
-    weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
+    weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict_{len(unique_id_list)}_branch{outfile_extension}{taper_extension}.h5"
     model_directory = '/'.join(fault_model_PPE_dict[unique_id_list[0]].split('/')[1:-2])
 
     if os.path.exists(weighted_h5_file):
@@ -1195,12 +1211,12 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
         site_list, intervals_list = check_completed_weighted_sites(weighted_h5, requested_sites, time_interval, thresh_lims=thresh_lims, thresh_step=thresh_step, n_samples=n_samples)
 
     if len(site_list) == 0:
-        print(f"All sites have been processed. Skipping...")
+        print(f"All sites have been processed in {len(unique_id_list)} branches. Skipping...")
         weighted_h5.close()
         write_sites_to_geojson(weighted_h5_file, time_interval)
         return
     else:
-        print(f"{len(site_list)}/{len(requested_sites)} requested sites need processing...")
+        print(f"{len(site_list)}/{len(requested_sites)} requested sites need processing from {len(unique_id_list)} branches...")
 
     if not nesi:
         start = time()
@@ -1397,12 +1413,13 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
 
     # Check that all sites exists as a crustal site. Subduction sites are optional
     crustal_processed_site_names = set(site_names)
+    assert len(time_interval) == 1, "[ERROR]: Can only process 1 time interval at a time at the moment"
     for branch_id in list(crustal_branch_weight_dict.keys()):
         with h5.File(all_crustal_branches_site_disp_dict[branch_id]["cumu_meta_file"]) as crust_h5:
-            samples = [int(key) for key in crust_h5.keys() if key != 'branch_weight' and int(key) >= n_samples]
+            samples = [int(key) for key in crust_h5[time_interval[0]].keys() if int(key) >= n_samples]
             samples.sort()
             for sample in samples[::-1]:
-                crustal_processed_site_names = crustal_processed_site_names & {site.decode() for site in crust_h5[str(sample)][:]}
+                crustal_processed_site_names = crustal_processed_site_names & {site.decode() for site in crust_h5[time_interval[0]][str(sample)][:]}
 
     n_requested = len(site_names)
     site_names = list(set(site_names) & set(crustal_processed_site_names))
@@ -1421,11 +1438,11 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                                                                 sz_model_version_results_directory_list[ix])
         sz_processed_sites = set(site_names)
         for branch_id in list(sz_branch_weight_dict.keys()):
-            with h5.File(all_single_sz_branches_site_disp_dict[branch_id]["cumu_meta_file"]) as crust_h5:
-                samples = [int(key) for key in crust_h5.keys() if key != 'branch_weight' and int(key) >= n_samples]
+            with h5.File(all_single_sz_branches_site_disp_dict[branch_id]["cumu_meta_file"]) as interface_h5:
+                samples = [int(key) for key in interface_h5[time_interval[0]].keys() if int(key) >= n_samples]
                 samples.sort()
                 for sample in samples[::-1]:
-                    sz_processed_sites = sz_processed_sites & {site.decode() for site in crust_h5[str(sample)][:]}
+                    sz_processed_sites = sz_processed_sites & {site.decode() for site in interface_h5[time_interval[0]][str(sample)][:]}
         fault_flag_array[:, ix + 1] = np.array([True if site in sz_processed_sites else False for site in site_names])
 
         all_sz_branches_site_disp_dict = all_sz_branches_site_disp_dict | all_single_sz_branches_site_disp_dict
@@ -1466,7 +1483,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     exceed_type_list = ["up", "down"]
 
     # Check if previous h5 exists. If it does, preserve it until new weighted mean file is complete
-    weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
+    weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict_{len(crustal_sz_branch_pairs)}_branch{outfile_extension}{taper_extension}.h5"
 
     if os.path.exists(weighted_h5_file):
         weighted_h5 = h5.File(weighted_h5_file, "r+")
@@ -1530,11 +1547,11 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 fault_flag_list.append(fault_flag_array[ix, :])
 
     if len(site_names) == 0:
-        print(f"All sites have been processed. Skipping...")
+        print(f"All sites have been processed in {len(crustal_sz_branch_pairs)} branches. Skipping...")
         weighted_h5.close()
         return
     else:
-        print(f"{len(site_names)}/{len(requested_sites)} requested sites need processing...")
+        print(f"{len(site_names)}/{len(requested_sites)} requested sites need processing from {len(crustal_sz_branch_pairs)} branches...")
 
     if not nesi:
         start = time()

@@ -348,7 +348,7 @@ if not paired_crustal_sz:
                 sites = [site.decode() for site in rupt_h5['site_name_list']]
 
             if len(set(inv_sites).difference(sites)) > 0:
-                print(f"{len((set(inv_sites) - no_gf_sites).difference(sites))} additional requested sites have no Greens Function processed. Skipping these...")
+                print(f"{len(set(inv_sites).difference(sites))} additional requested sites have no Greens Function processed. Skipping these...")
                 no_gf_sites |= set(inv_sites).difference(sites)
     if len(no_gf_sites) > 0:
         site_gdf[site_gdf.siteId.isin(no_gf_sites)].to_file(no_gf_geojson)
@@ -447,7 +447,7 @@ if not paired_crustal_sz and calculate_weighted_mean_PPE:
     get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=out_version_results_directory, outfile_extension=outfile_extension,
                                slip_taper=slip_taper, nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples, min_tasks_per_array=10,
                                n_array_tasks=n_array_tasks, mem=mem, cpus=n_cpus, job_time=job_time, thresh_lims=thresh_lims, thresh_step=thresh_step,
-                               site_list=inv_sites, remake_PPE=remake_weighted_PPE, time_interval=time_interval)
+                               site_list=inv_sites, remake_PPE=remake_weighted_PPE, time_interval=time_interval, rate_scaling=rate_scaling)
 
 # plot hazard curves and save to file
 if save_arrays:
