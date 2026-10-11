@@ -15,7 +15,7 @@ import h5py as h5
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 ############### USER INPUTS #####################
 # need to run once for each green's function type (grid, sites, coast points, etc.) but can reuse for different branches
-discretise_version = "_CFM"  # Tag for the directory containing the disctretised faults
+discretise_version = "_CFM_pref"  # Tag for the directory containing the disctretised faults
 mesh_version = "_CUSP_v0-1-0"
 
 steeper_dip, gentler_dip = False, False
