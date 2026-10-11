@@ -2057,7 +2057,6 @@ def get_probability_bar_chart_data(site_PPE_dictionary, exceed_type, threshold, 
 
     return probs_threshold
 
-
 def plot_branch_hazard_curve(extension1, slip_taper, model_version_results_directory, file_type_list, plot_order=[]):
     """makes hazard curves for each site. includes the probability of cumulative displacement from multiple
     earthquakes exceeding a threshold in 100 years."""
