@@ -1168,7 +1168,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     if dip_models:
         unique_id_list = [branch for branch in unique_id_list if any(dipmod in branch for dipmod in ['_Dmin', '_Dmax', '_Dpref'])]
     else:
-        unique_id_list = [branch for branch in unique_id_list if any(dipmod not in branch for dipmod in ['_Dmin', '_Dmax', '_Dpref'])]
+        unique_id_list = [branch for branch in unique_id_list if all(dipmod not in branch for dipmod in ['_Dmin', '_Dmax', '_Dpref'])]
     # site_list = fault_model_PPE_dict['meta']['site_ids']
 
     # weight the probabilities by NSHM branch weights to get a weighted mean
@@ -1553,7 +1553,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     if len(site_names) == 0:
         print(f"All sites have been processed in {len(crustal_sz_branch_pairs)} branches. Skipping...")
         weighted_h5.close()
-        return
+        return weighted_h5_file
     else:
         print(f"{len(site_names)}/{len(requested_sites)} requested sites need processing from {len(crustal_sz_branch_pairs)} branches...")
 
@@ -1723,7 +1723,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
             
             write_sites_to_geojson(weighted_h5_file, time_interval)
     
-    return
+    return weighted_h5_file
 
 
 def process_pair(pair_id, branch_disp_dict):

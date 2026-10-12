@@ -136,7 +136,7 @@ if not nesi and fakequakes:
 if not default_plot_order and not os.path.exists(plot_order_csv) and make_hazcurves:
     raise Exception("Manual plot order selected but no plot order csv found. Please create a csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId)")
 
-if dip_models and fault_type != 'crustal':
+if dip_models and fault_type != 'crustal' and not paired_crustal_sz:
     raise Exception('dip models cannot be selected with fault_type sz or py')
 
 if paired_crustal_sz:
@@ -409,18 +409,21 @@ if not paired_crustal_sz:
         if dip_models:
             unique_id_list = [branch for branch in unique_id_list if any(dipmod in branch for dipmod in ['_Dmin', '_Dmax', '_Dpref'])]
         else:
-            unique_id_list = [branch for branch in unique_id_list if any(dipmod not in branch for dipmod in ['_Dmin', '_Dmax', '_Dpref'])]
+            unique_id_list = [branch for branch in unique_id_list if all(dipmod not in branch for dipmod in ['_Dmin', '_Dmax', '_Dpref'])]
 
 ##### paired crustal and sz PPE
 if paired_crustal_sz:
-    out_version_results_directory = f"{results_directory}/paired_c{crustal_mesh_version}"
-    model_id = f"paired_c{crustal_site_names}" # for creating xarray files for specific site combinations
+    dip_extension = "_DM" if dip_models else ""
+    out_version_results_directory = f"{results_directory}/paired_c{crustal_mesh_version}{dip_extension}"
+    model_id = f"paired_c{crustal_site_names}{dip_extension}" # for creating xarray files for specific site combinations
     for sub in fault_type[1:]:
         out_version_results_directory += f"_{sub}_{disc_version_list[1:][sz_list_order.index(sub)]}"
         model_id += f"_{sub}{sz_site_names[sz_list_order.index(sub)]}"
     if not os.path.exists(f"../{out_version_results_directory}"):
         os.mkdir(f"../{out_version_results_directory}")
+    unique_id_list = []
     for ix, branch_weight_dict in enumerate(branch_weight_dict_list):
+        unique_id_list += list(branch_weight_dict.keys())
         with open(f"../{out_version_results_directory}/branch_weight_dict_{fault_type[ix]}.pkl", 'wb') as f:
             pkl.dump(branch_weight_dict, f)
 
@@ -452,12 +455,12 @@ if paired_crustal_sz:
                 
         else:
             sz_gdf = gpd.read_file(site_geojson)
-            site_gdf = pd.concat([site_gdf, sz_gdf]).drop_duplicates().reset_index(drop=True)
+            site_gdf = pd.concat([site_gdf, sz_gdf])[['siteId', 'Lon', 'Lat', 'geometry']].drop_duplicates().reset_index(drop=True)
             inv_sites = site_gdf['siteId'].values.tolist()
 
     #### skip this part if you've already run it once and saved to a pickle file
     if calculate_fault_model_PPE or not use_saved_dictionary:
-        make_sz_crustal_paired_PPE_dict(
+        paired_h5_file = make_sz_crustal_paired_PPE_dict(
             crustal_branch_weight_dict=branch_weight_dict_list[0], sz_branch_weight_dict_list=branch_weight_dict_list[1:],
             crustal_model_version_results_directory=version_discretise_directory[0],
             sz_model_version_results_directory_list=version_discretise_directory[1:],
@@ -469,7 +472,7 @@ if paired_crustal_sz:
 
 # calculate weighted mean PPE for the branch or paired dataset
 if not paired_crustal_sz and calculate_weighted_mean_PPE:
-    print('Calculating weighted mean PPE...')
+    print('\nCalculating weighted mean PPE...')
     get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=out_version_results_directory, outfile_extension=outfile_extension,
                                slip_taper=slip_taper, nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples, min_tasks_per_array=10,
                                n_array_tasks=n_array_tasks, mem=mem, cpus=n_cpus, job_time=job_time, thresh_lims=thresh_lims, thresh_step=thresh_step,
@@ -484,8 +487,11 @@ if save_arrays:
         build_branch_PPE_file(out_version_results_directory, single_branch, branch_key, inv_sites, outfile_extension, time_interval, thresh_lims=thresh_lims, thresh_step=thresh_step, probs_lims=probs_lims, probs_step=probs_step)
     else:
         weighted = True
-        outfile_extension = f"_{len(unique_id_list)}_branch" + outfile_extension
         branch_key = ['']
+        if paired_crustal_sz:
+            outfile_extension = os.path.basename(paired_h5_file)[22:-3]
+        else:
+            outfile_extension = f"_{len(unique_id_list)}_branch" + outfile_extension
     if not paired_crustal_sz:
         model_id = None
     if interp_sites:
