@@ -1148,7 +1148,7 @@ def calc_array_times(site_list, min_tasks_per_array=100, n_array_tasks=100, job_
 
 
 def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_extension, slip_taper, site_list=[], thresh_lims=[0, 3], thresh_step=0.01, nesi=False, nesi_step='prep', n_samples=100000,
-                               min_tasks_per_array=100, n_array_tasks=100, mem=10, cpus=1, account='', job_time=60, remake_PPE=False, time_interval=['100'], rate_scaling=True):
+                               min_tasks_per_array=100, n_array_tasks=100, mem=10, cpus=1, account='', job_time=60, remake_PPE=False, time_interval=['100'], rate_scaling=True, dip_models=False):
     """takes all the branch PPEs and combines them based on the branch weights into a weighted mean PPE dictionary
 
     :param fault_model_PPE_dict: The dictionary has PPEs for each branch (or branch pairing).
@@ -1165,6 +1165,10 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
     unique_id_list = fault_model_PPE_dict['meta']['branch_ids']
     if not rate_scaling:
         unique_id_list = [branch for branch in unique_id_list if branch.split("_")[3] == "S10"]
+    if dip_models:
+        unique_id_list = [branch for branch in unique_id_list if any(dipmod in branch for dipmod in ['_Dmin', '_Dmax', '_Dpref'])]
+    else:
+        unique_id_list = [branch for branch in unique_id_list if any(dipmod not in branch for dipmod in ['_Dmin', '_Dmax', '_Dpref'])]
     # site_list = fault_model_PPE_dict['meta']['site_ids']
 
     # weight the probabilities by NSHM branch weights to get a weighted mean

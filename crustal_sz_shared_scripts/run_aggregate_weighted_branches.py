@@ -33,18 +33,20 @@ single_branch = ["_sz_fq_3nub110", "_sz_fq_pnub110", "_sz_fq_3nhb110", "_sz_fq_p
 single_branch = ["_c_MDE5", "_c_MDI0", "_c_MDE2", "_c_NjMy", "_c_NjM3", "_c_NjI5", "_c_MDE1", "_c_MDEz", "_c_MDA2", "_c_NjI3", "_c_NjI2", "_c_NjE5"]  # Order they are auto loaded from NSHM
 # single_branch = ["_c_MDE5"] # "_c_MDI0"] # "_c_MDE2"] # "_c_NjMy"] # "_c_NjM3"] # "_c_NjI5"] # "_c_MDE1"] # "_c_MDEz"] # "_c_MDA2"] # "_c_NjI3"] # "_c_NjI2"] # "_c_NjE5"]  # Order they are auto loaded from NSHM
 # single_branch = ["_c_MDA2"] # "_c_MDE2"] #"_c_NjE5"] # "_c_NjI5"] # "_c_MDEz"] #"_c_MDI0"] #"_c_NjI2"] # "_c_NjM3"] # "_c_MDE5"] # "_c_MDE1"] # "_c_NjMy"] # "_c_NjI3"] # Memory order (low -> high)
+single_branch = ["_c_LOIP", "_c_MOIP", "_c_HOIP", "_c_LOIL", "_c_MOIL", "_c_HOIL", "_c_LOIH", "_c_MOIH", "_c_HOIH"]
 # single_branch = ["_sz_NzEx"]
 # single_branch = ["_sz_fq_3nub110", "_sz_fq_3nhb110", "_sz_fq_3lhb110"]  # 3e10 sensitivity
 # single_branch = ["_sz_fq_anub110", "_sz_fq_anhb110", "_sz_fq_alhb110"]  # ATOM senstivity
 # single_branch = ["_sz_fq_pnub110", "_sz_fq_pnhb110", "_sz_fq_plhb110"]  # PREM senstivity
 # single_branch = ["_sz_fq_plhb110"]
 # single_branch = ["_c_NjI3"]
-single_branch = ["_py_M5NQ"]
-single_branch = ["_sz_fq_alhb110"]
+# single_branch = ["_py_M5NQ"]
+# single_branch = ["_sz_fq_alhb110"]
 # single_branch = None
 rate_scaling = False          # Do you want to calculate PPEs for a single branch with different rate scalings?
 paired_crustal_sz = False     # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 calculate_SED = False         # Do you want to calculate the PPEs for single event displacement in addition to cumulatively?
+dip_models = True             # Include variable crustal dip models?
 load_random = True             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
 remake_PPE = False           # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
@@ -57,12 +59,12 @@ default_plot_order = True       # Do you want to plot haz curves for all sites, 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../sites/gf_test_sites.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
-branch_weight_csv = "branch_weight_data_sensitivity"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
+branch_weight_csv = "branch_weight_data_v0-1"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
 # branch_weight_csv = "branch_weight_data_sensitivity"
 
 # Processing Parameters
 time_interval = [5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150]     # Time span of hazard forecast (yrs)
-time_interval = [7500]
+time_interval = [100]
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 1
 thresh_lims = [0, 50]
@@ -134,6 +136,9 @@ if not nesi and fakequakes:
 if not default_plot_order and not os.path.exists(plot_order_csv) and make_hazcurves:
     raise Exception("Manual plot order selected but no plot order csv found. Please create a csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId)")
 
+if dip_models and fault_type != 'crustal':
+    raise Exception('dip models cannot be selected with fault_type sz or py')
+
 if paired_crustal_sz:
     if fault_type == 'all':
         print("Running combined crustal, hikurangi-kermadec, and puysegur models")
@@ -196,13 +201,17 @@ def make_branch_weight_dict(branch_weight_file_path, sheet_name, rate_scaling=Tr
         # make a unique ID for each branch.
         # The NSHM solution files do not include the rate scaling factor (S) (i.e., they are all S=1)
         # These lines use the same solution file for 3 different S values
-        unique_id = f"N{N_string}_b{b_string}_C{C_string}_S{S_string}_{time_dependence}_{def_model}{file_suffix}"
-
-        branch_weight_dict[unique_id] = {"N": N_val, "b": b_val, "C": C_val, "S": S_val, "def_model": def_model,
-                                    "time_dependence": time_dependence, "file_suffix": file_suffix, "total_weight_RN":
-                                               total_weight_RN}
         if "dip_model" in branch_weights.keys():
-            branch_weight_dict[unique_id]['dip_model'] = branch_weights["dip_model"][row]
+            dip_string = branch_weights["dip_model"][row]
+            unique_id = f"N{N_string}_b{b_string}_C{C_string}_S{S_string}_{time_dependence}_{def_model}_D{dip_string}{file_suffix}"
+            branch_weight_dict[unique_id] = {"N": N_val, "b": b_val, "C": C_val, "S": S_val, "def_model": def_model,
+                                        "time_dependence": time_dependence, "dip_model": dip_string, "file_suffix": file_suffix, 
+                                        "total_weight_RN": total_weight_RN}
+        else:
+            unique_id = f"N{N_string}_b{b_string}_C{C_string}_S{S_string}_{time_dependence}_{def_model}{file_suffix}"
+            branch_weight_dict[unique_id] = {"N": N_val, "b": b_val, "C": C_val, "S": S_val, "def_model": def_model,
+                                        "time_dependence": time_dependence, "file_suffix": file_suffix,
+                                        "total_weight_RN": total_weight_RN}
 
     return branch_weight_dict
 ###############################
@@ -211,8 +220,12 @@ gf_name = "sites"
 
 if not paired_crustal_sz:
     if fault_type[0] == "crustal":
-        site_names_list = [crustal_site_names]
-        disc_version_list = [crustal_mesh_version.strip('_')]
+        if not dip_models:
+            site_names_list = [crustal_site_names]
+            disc_version_list = [crustal_mesh_version.strip('_')]
+        else:
+            site_names_list = [crustal_site_names] * 3
+            disc_version_list = [crustal_mesh_version.strip('_') + model for model in ['', '_pref', '_min', '_max']]
     else:
         if len(sz_site_names) > 1:
             sz_ix = sz_list_order.index(fault_type[0])
@@ -258,7 +271,10 @@ if branch_weight_csv is None:
 elif not branch_weight_csv.endswith('.xlsx'):
     branch_weight_csv += ".xlsx"
 branch_weight_file_path = os.path.relpath(os.path.join(os.path.dirname(__file__), "..", "data", branch_weight_csv))
-crustal_sheet_name = "crustal_weights_4_2"
+if dip_models:
+    crustal_sheet_name = "crustal_weights_swing_dip"
+else:
+    crustal_sheet_name = "crustal_weights_4_2"
 sz_sheet_name = "sz_weights_4_0"
 py_sheet_name = "py_weights_4_0"
 if fakequakes:
@@ -285,7 +301,7 @@ if not paired_crustal_sz:
         fault_model_branch_weight_dict = fault_model_branch_weight_dict | branch_weight_dict_list[ii]
     
     NSHM_directory_list, file_suffix_list, n_branches = get_NSHM_directories(fault_type, deformation_model='geologic and geodetic', time_independent=True,
-                            time_dependent=True, single_branch=single_branch, fakequakes=fakequakes)
+                            time_dependent=True, single_branch=single_branch, fakequakes=fakequakes, dip_models=dip_models)
     
     if single_branch or not rate_scaling:
         branch_keys = list(fault_model_branch_weight_dict.keys())
@@ -337,13 +353,17 @@ if not paired_crustal_sz:
         else:
             get_rupture_dict = True
 
+        disc_version = version_discretise_directory[ftype[0]].split('/')[-1]
+        if dip_models:
+            disc_version += f"_{branch_weight_dict_list[0][[key for key in branch_weight_dict_list[0].keys() if key.endswith(extension1[-4:])][0]]['dip_model']}"
+
         if get_rupture_dict:
             calculate_fault_model_PPE = True
             get_rupture_disp_dict(NSHM_directory=NSHM_directory_list[ix], extension1=extension1_list[ix],
                                     slip_taper=slip_taper, fault_type=ftype[1], gf_name=gf_name,
-                                    disc_version_directory=version_discretise_directory[ftype[0]],
+                                    disc_version=disc_version,
                                     crustal_directory=crustal_directory, sz_directory=sz_directory,
-                                    search_radius=9e5, fakequakes=fakequakes)
+                                    search_radius=9e5, fakequakes=fakequakes, dip_models=dip_models)
             with h5.File(all_rupture_disp_file, 'r') as rupt_h5:
                 sites = [site.decode() for site in rupt_h5['site_name_list']]
 
@@ -447,7 +467,7 @@ if not paired_crustal_sz and calculate_weighted_mean_PPE:
     get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=out_version_results_directory, outfile_extension=outfile_extension,
                                slip_taper=slip_taper, nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples, min_tasks_per_array=10,
                                n_array_tasks=n_array_tasks, mem=mem, cpus=n_cpus, job_time=job_time, thresh_lims=thresh_lims, thresh_step=thresh_step,
-                               site_list=inv_sites, remake_PPE=remake_weighted_PPE, time_interval=time_interval, rate_scaling=rate_scaling)
+                               site_list=inv_sites, remake_PPE=remake_weighted_PPE, time_interval=time_interval, rate_scaling=rate_scaling, dip_models=dip_models)
 
 # plot hazard curves and save to file
 if save_arrays:
