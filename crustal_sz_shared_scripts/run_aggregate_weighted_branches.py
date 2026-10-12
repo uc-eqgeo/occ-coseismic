@@ -384,7 +384,7 @@ if not paired_crustal_sz:
     out_version_results_directory = version_discretise_directory[ftype[0]]
     PPE_filepath = f"../{out_version_results_directory}/all_branch_PPE_dict{outfile_extension}.pkl"
     # If only creating xarrays from final datasets, don't need to calculate PPEs
-    if any([calculate_fault_model_PPE, calculate_weighted_mean_PPE]):
+    if any([calculate_fault_model_PPE, calculate_weighted_mean_PPE, (save_arrays and single_branch is None)]):
         if not os.path.exists(PPE_filepath):
             print('No fault model PPE pkl file found. Making a new one...')
             calculate_fault_model_PPE = True
@@ -403,6 +403,13 @@ if not paired_crustal_sz:
             print('Loading pre-prepared fault model PPE dictionary...')
             with open(PPE_filepath, 'rb') as f:
                 PPE_dict = pkl.load(f)
+        unique_id_list = PPE_dict['meta']['branch_ids']
+        if not rate_scaling:
+            unique_id_list = [branch for branch in unique_id_list if branch.split("_")[3] == "S10"]
+        if dip_models:
+            unique_id_list = [branch for branch in unique_id_list if any(dipmod in branch for dipmod in ['_Dmin', '_Dmax', '_Dpref'])]
+        else:
+            unique_id_list = [branch for branch in unique_id_list if any(dipmod not in branch for dipmod in ['_Dmin', '_Dmax', '_Dpref'])]
 
 ##### paired crustal and sz PPE
 if paired_crustal_sz:
@@ -461,7 +468,6 @@ if paired_crustal_sz:
             thresh_lims=thresh_lims, thresh_step=thresh_step, site_gdf=site_gdf, max_array_time=max_array_time)
 
 # calculate weighted mean PPE for the branch or paired dataset
-weighted_mean_PPE_filepath = f"../{out_version_results_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
 if not paired_crustal_sz and calculate_weighted_mean_PPE:
     print('Calculating weighted mean PPE...')
     get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=out_version_results_directory, outfile_extension=outfile_extension,
@@ -478,6 +484,7 @@ if save_arrays:
         build_branch_PPE_file(out_version_results_directory, single_branch, branch_key, inv_sites, outfile_extension, time_interval, thresh_lims=thresh_lims, thresh_step=thresh_step, probs_lims=probs_lims, probs_step=probs_step)
     else:
         weighted = True
+        outfile_extension = f"_{len(unique_id_list)}_branch" + outfile_extension
         branch_key = ['']
     if not paired_crustal_sz:
         model_id = None
@@ -535,6 +542,7 @@ if make_hazcurves:
         else:
             figure_directory =  f"{out_version_results_directory}/weighted_mean_figures/{sz_site_names[0].strip('_')}"
         print(f"Output Directory: {figure_directory}")
+        weighted_mean_PPE_filepath = f"../{out_version_results_directory}/weighted_mean_PPE_dict_{len(unique_id_list)}_branch{outfile_extension}{taper_extension}.h5"
         for interval in time_interval:
             plot_weighted_mean_haz_curves(
                 weighted_mean_PPE_dictionary=weighted_mean_PPE_filepath,
