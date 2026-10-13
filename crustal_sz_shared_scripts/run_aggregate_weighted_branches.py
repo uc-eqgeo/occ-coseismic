@@ -42,11 +42,11 @@ single_branch = ["_c_LOIP", "_c_MOIP", "_c_HOIP", "_c_LOIL", "_c_MOIL", "_c_HOIL
 # single_branch = ["_c_NjI3"]
 # single_branch = ["_py_M5NQ"]
 # single_branch = ["_sz_fq_alhb110"]
-# single_branch = None
-rate_scaling = False          # Do you want to calculate PPEs for a single branch with different rate scalings?
+single_branch = None
+rate_scaling = True          # Do you want to calculate PPEs for a single branch with different rate scalings?
 paired_crustal_sz = False     # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 calculate_SED = False         # Do you want to calculate the PPEs for single event displacement in addition to cumulatively?
-dip_models = True             # Include variable crustal dip models?
+dip_models = False             # Include variable crustal dip models?
 load_random = True             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
 calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
 remake_PPE = False           # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
@@ -59,7 +59,7 @@ default_plot_order = True       # Do you want to plot haz curves for all sites, 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../sites/gf_test_sites.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
-branch_weight_csv = "branch_weight_data_sensitivity"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
+branch_weight_csv = "branch_weight_data_v0-1"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
 # branch_weight_csv = "branch_weight_data_sensitivity"
 
 # Processing Parameters
