@@ -800,8 +800,8 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
 
 
 def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf_name,
-                          disc_version_directory, crustal_directory="crustal_files", sz_directory="subduction_files",
-                          location=[1749150, 5428092], search_radius=2.5e5, fakequakes=False):
+                          disc_version, crustal_directory="crustal_files", sz_directory="subduction_files",
+                          location=[1749150, 5428092], search_radius=2.5e5, fakequakes=False, dip_models=False):
     """
     inputs: uses extension naming scheme to load NSHM rate/slip data and fault geometry, state slip taper
 
@@ -820,7 +820,6 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     # load saved data
     print(f"\nloading data for {extension1}")
     procdir = os.path.relpath(os.path.dirname(__file__)) + '/..'
-    disc_version = disc_version_directory.split('/')[-1]
 
     if fakequakes:
         rupture_slip_dict, rates_df, all_ruptures = read_fakequakes_slip_rates(NSHM_directory)
@@ -858,9 +857,12 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     gf_total_slip_array, site_name_list, site_coords, key_order = make_total_slip_dictionary(gf_dict_pkl)
 
     extension3 = "_tapered" if slip_taper else ''
-    os.makedirs(f"{procdir}/results/{disc_version}/{extension1}", exist_ok=True)
-    all_rupture_h5 = f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}.h5"
-    with h5.File(all_rupture_h5, "w") as all_rupture_h5:
+    if dip_models:
+        disc_version = "_".join(disc_version.split("_")[:-1])   # Removes trailing _pref, _min, _max
+    branch_results_dir = f"{procdir}/results/{disc_version}/{extension1}"
+    os.makedirs(branch_results_dir, exist_ok=True)
+    all_rupture_h5_file = f"{branch_results_dir}/all_rupture_disps_{extension1}{extension3}.h5"
+    with h5.File(all_rupture_h5_file, "w") as all_rupture_h5:
         all_rupture_h5.create_dataset("site_name_list", data=site_name_list)
         all_rupture_h5.create_dataset("site_coords", data=site_coords)
 
@@ -898,7 +900,7 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
 
         if ix % 100 == 0 or ix == len(filtered_ruptures_location):
             # save displacements
-            with h5.File(f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}.h5", "a") as all_rupture_h5:
+            with h5.File(all_rupture_h5_file, "a") as all_rupture_h5:
                 dict_to_hdf5(all_rupture_h5, disp_dictionary)
             disp_dictionary = {}
 
@@ -1008,7 +1010,7 @@ def maximum_displacement_plot(site_ids, branch_site_disp_dict, model_dir, branch
 
 
 def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodetic', time_independent=True,
-                         time_dependent=True, single_branch=False, fakequakes=False):
+                         time_dependent=True, single_branch=False, fakequakes=False, dip_models=False):
     # Set up which branches you want to calculate displacements and probabilities for
     # File suffixes and NSHM directories for each branch MUST be in the same order or you'll cause problems
     file_suffix_list = []
@@ -1016,7 +1018,26 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
     n_branches = []
     for fault_type in fault_type_list:
         fault_branches = 0
-        if fault_type == "crustal":
+        if fault_type == 'crustal' and dip_models:
+            file_suffix_list_i = ["_c_LOIP", "_c_MOIP", "_c_HOIP", "_c_LOIL", "_c_MOIL", "_c_HOIL", "_c_LOIH", "_c_MOIH", "_c_HOIH"]
+            NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwMw==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwNg==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwOQ==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwMg==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwNQ==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwOA==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwMQ==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwNA==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwNw=="
+                                    ]
+            fault_branches += len(file_suffix_list_i)
+            file_suffix_list.extend(file_suffix_list_i)
+            NSHM_directory_list.extend(NSHM_directory_list_i)
+            if single_branch:
+                branch_index = [file_suffix_list.index(branch) for branch in single_branch]
+                file_suffix_list = [file_suffix_list[index] for index in branch_index]
+                NSHM_directory_list = [NSHM_directory_list[index] for index in branch_index]
+        elif fault_type == "crustal":
             if time_independent:
                 if "geologic" in deformation_model:
                     file_suffix_list_i = ["_c_MDA2", "_c_MDEz", "_c_MDE1"]
