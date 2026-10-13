@@ -59,12 +59,12 @@ default_plot_order = True       # Do you want to plot haz curves for all sites, 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../sites/gf_test_sites.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
-branch_weight_csv = "branch_weight_data_v0-1"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
+branch_weight_csv = "branch_weight_data_sensitivity"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
 # branch_weight_csv = "branch_weight_data_sensitivity"
 
 # Processing Parameters
 time_interval = [5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150]     # Time span of hazard forecast (yrs)
-time_interval = [100]
+time_interval = [7500]
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 1
 thresh_lims = [0, 50]
