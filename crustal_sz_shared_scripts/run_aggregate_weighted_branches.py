@@ -64,7 +64,7 @@ branch_weight_csv = "branch_weight_data_sensitivity"  # If you want to use a spe
 
 # Processing Parameters
 time_interval = [5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150]     # Time span of hazard forecast (yrs)
-time_interval = [7500]
+time_interval = [100]
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 1
 thresh_lims = [0, 50]
