@@ -1,6 +1,5 @@
 import os
 try:
-    import geopandas as gpd
     from plotting_scripts import constrained_triangulation_grid, save_triangulation
     from shapely.geometry import Point
 except:
@@ -15,6 +14,7 @@ import random
 import itertools
 import numpy as np
 import pandas as pd
+import geopandas as gpd
 import pickle as pkl
 from time import time, sleep
 import matplotlib

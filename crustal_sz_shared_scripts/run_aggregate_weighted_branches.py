@@ -6,10 +6,7 @@ from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, pl
     save_disp_prob_xarrays, build_branch_PPE_file
 from helper_scripts import get_NSHM_directories, get_rupture_disp_dict
 import pickle as pkl
-try:
-    import geopandas as gpd
-except ImportError:
-    print("Running on NESI. Site geojsons won't be output....")
+import geopandas as gpd
 
 os.chdir(os.path.dirname(__file__))
 #### USER INPUTS #####
@@ -67,7 +64,7 @@ time_interval = [5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150]     #
 time_interval = [100]
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 1
-thresh_lims = [0, 50]
+thresh_lims = [0, 10]
 thresh_step = 0.01
 
 # Nesi Parameters
@@ -322,13 +319,8 @@ if not paired_crustal_sz:
     else:
         site_geojson = f"../subduction/discretised_{version_discretise_directory[0].split('/')[-1]}/{fault_type[0]}_site_locations{['_fq' if fakequakes else ''][0]}{sz_site_names[0]}.geojson"
     
-    if nesi:
-        with open(site_geojson, 'r') as f:
-            sites = f.readlines()
-            inv_sites = [site.split('"')[9] for site in sites if 'siteId' in site]
-    else:
-        site_gdf = gpd.read_file(site_geojson).drop_duplicates().reset_index(drop=True)
-        inv_sites = site_gdf['siteId'].values.tolist()
+    site_gdf = gpd.read_file(site_geojson).drop_duplicates().reset_index(drop=True)
+    inv_sites = site_gdf['siteId'].values.tolist()
 
     all_no_gf_sites = set()
     no_gf_geojson = f"../{version_discretise_directory[0]}/{os.path.basename(site_geojson).replace('.geojson', '_no_gf_sites.geojson')}"
