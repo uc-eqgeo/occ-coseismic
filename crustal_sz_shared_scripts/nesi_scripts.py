@@ -112,13 +112,18 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
             f.write("#SBATCH --partition=large\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
-        f.write(f"#SBATCH -o logs/02_{os.path.basename(model_version_results_directory)}_sites_%j_task%a.out\n".encode())
-        f.write(f"#SBATCH -e logs/02_{os.path.basename(model_version_results_directory)}_sites_%j_task%a.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/02_site_PPE/02_{os.path.basename(model_version_results_directory)}_sites_%j_task%a.out\n".encode())
+        f.write(f"#SBATCH -e logs/02_site_PPE/02_{os.path.basename(model_version_results_directory)}_sites_%j_task%a.err\n\n".encode())
 
         f.write("# Activate the conda environment\n".encode())
         f.write("mkdir -p logs\n".encode())
         f.write("module purge  2>/dev/null\n".encode())
-        f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
+        f.write("module load Python/3.11.6-foss-2023a\n".encode())
+        f.write("module load Miniconda3\n\n".encode())
+
+        f.write("source $(conda info --base)/etc/profile.d/conda.sh\n".encode())
+        f.write("export PYTHONNOUSERSITE=1\n".encode())
+        f.write("conda activate postal\n\n".encode())
 
         f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {'/'.join([str(val) for val in time_interval])} --n_samples {int(n_samples)} ".encode())
         f.write(f"--sd {sd} --nesi_job site_PPE {NSHM} --thresh_lims {thresh_lims[0]}/{thresh_lims[1]} --thresh_step {thresh_step}\n\n".encode())
@@ -138,6 +143,7 @@ def slurm_timeout(slurm_id, min_time=30):
     
     return False
 
+
 def slurm_timeleft(slurm_id):
     """
     Find out timeleft on SLURM job
@@ -155,6 +161,7 @@ def slurm_timeleft(slurm_id):
         secsleft = days * 24 * 3600 + hours * 3600 + mins * 60 + secs
     
     return secsleft
+
 
 def combine_site_cumu_PPE(sites, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=None, thresholds=None, slurm_id=''):
     """
@@ -316,7 +323,12 @@ def prep_SLURM_combine_submission(combine_dict_file, branch_combine_list, model_
         f.write("# Activate the conda environment\n".encode())
         f.write("mkdir -p logs\n".encode())
         f.write("module purge  2>/dev/null\n".encode())
-        f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
+        f.write("module load Python/3.11.6-foss-2023a\n".encode())
+        f.write("module load Miniconda3\n\n".encode())
+
+        f.write("source $(conda info --base)/etc/profile.d/conda.sh\n".encode())
+        f.write("export PYTHONNOUSERSITE=1\n".encode())
+        f.write("conda activate postal\n\n".encode())
 
         f.write(f"echo python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {tasks_per_array} --combine_dict_file {combine_dict_file} --branch_combine_list {branch_combine_list} --nesi_job combine_sites  --jobID $SLURM_JOB_ID\n\n".encode())
         f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {tasks_per_array} --combine_dict_file {combine_dict_file} --branch_combine_list {branch_combine_list} --nesi_job combine_sites  --jobID $SLURM_JOB_ID\n\n".encode())
@@ -348,13 +360,18 @@ def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks
             f.write(f"#SBATCH --mem={mem * 1024:.0f}MB\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
-        f.write(f"#SBATCH -o logs/07_{os.path.basename(out_directory)}_weights{fault_combo}_%j_task%a.out\n".encode())
-        f.write(f"#SBATCH -e logs/07_{os.path.basename(out_directory)}_weights{fault_combo}_%j_task%a.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/07_weighted_sites/07_{os.path.basename(out_directory)}_weights{fault_combo}_%j_task%a.out\n".encode())
+        f.write(f"#SBATCH -e logs/07_weighted_sites/07_{os.path.basename(out_directory)}_weights{fault_combo}_%j_task%a.err\n\n".encode())
 
         f.write("# Activate the conda environment\n".encode())
-        f.write("mkdir -p logs\n".encode())
+        f.write("mkdir -p logs/07_weighted_sites\n".encode())
         f.write("module purge  2>/dev/null\n".encode())
-        f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
+        f.write("module load Python/3.11.6-foss-2023a\n".encode())
+        f.write("module load Miniconda3\n\n".encode())
+
+        f.write("source $(conda info --base)/etc/profile.d/conda.sh\n".encode())
+        f.write("export PYTHONNOUSERSITE=1\n".encode())
+        f.write("conda activate postal\n\n".encode())
 
         f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {'/'.join([str(val) for val in time_interval])} --nesi_job site_weights \n\n".encode())
     print('')
@@ -476,7 +493,7 @@ if __name__ == "__main__":
 
             extension1 = os.path.basename(branch_results_directory)
             if args.NSHM_branch:
-                branch_disp_dict = f"../{branch_results_directory}/branch_site_disp_dict_{extension1}{scaling}.h5"
+                branch_disp_dict = f"../{branch_results_directory}/branch_site_disp_dict_{extension1}.h5"
                 with h5.File(branch_disp_dict, "r") as branch_h5:
                     if isinstance([key for key in branch_h5.keys()][0], int):
                         if '_' not in sites_of_interest[0]:
@@ -485,7 +502,7 @@ if __name__ == "__main__":
                 crustal_model_dir = ''
                 subduction_model_dir = ''
             else:
-                with h5.File(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}{scaling}.h5", "r") as branch_h5:
+                with h5.File(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}.h5", "r") as branch_h5:
                     pair_site_disp_dict = hdf5_to_dict(branch_h5)
 
                 out_directory = pair_site_disp_dict[[key for key in pair_site_disp_dict.keys()][0]]['out_directory']

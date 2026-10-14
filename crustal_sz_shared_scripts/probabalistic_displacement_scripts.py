@@ -462,7 +462,7 @@ def prepare_scenario_arrays(branch_site_disp_dict_file, randdir, time_intervals,
 def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_dict, site_ids, n_samples,
                  extension1, branch_key="nan", time_interval=[100], sd=0.4, error_chunking=1000, scaling='', load_random=False,
                  thresh_lims=[0, 3], thresh_step=0.01, NSHM_branch=True, single_site=None,
-                 crustal_model_dir="", subduction_model_dirs="", cumu_PPEh5_file='', scenario_dir='', save_errors=False, sed_PPE=True):
+                 crustal_model_dir="", subduction_model_dirs="", cumu_PPEh5_file='', scenario_dir='', save_errors=False, sed_PPE=False):
     """
     Must first run get_site_disp_dict to get the dictionary of displacements and rates, with 1 sigma error bars
 
@@ -1056,10 +1056,11 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         hours, secs = divmod(array_time, 3600)
         mins = np.ceil(secs / 60)
         n_tasks = int(np.ceil(n_jobs / tasks_per_array))
-        print('\nCreating SLURM submission script....')
+        print(f'\nCreating SLURM submission script for {n_jobs} jobs....')
         prep_SLURM_submission(model_version_results_directory, int(tasks_per_array), int(n_tasks), hours=int(hours), mins=int(mins), job_time=job_time, mem=mem, cpus=cpus,
                               account=account, time_interval=process_intervals, n_samples=n_samples, sd=sd, thresh_lims=thresh_lims, thresh_step=thresh_step)
-        raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
+        print(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
+        os._exit(0)
 
     elif nesi and nesi_step == 'combine' and sbatch:
         #+ Use of single site makes this unnessecary
@@ -1077,7 +1078,8 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         branch_combine_list_file = f"../{model_version_results_directory}/branch_combine_list.txt"
         prep_SLURM_combine_submission(combine_dict_file, branch_combine_list_file, model_version_results_directory,
                                       int(tasks_per_array), int(n_tasks), hours=int(hours), mins=int(mins), mem=10, account=account)
-        raise Exception(f"Now run\n\tsbatch ../{model_version_results_directory}/combine_sites.sl")
+        print(f"Now run\n\tsbatch ../{model_version_results_directory}/combine_sites.sl")
+        os._exit(0)
     else:
         print('Updating all branch PPE dictionary....')
         outfile_name = f"all_branch_PPE_dict{outfile_extension}{taper_extension}"
@@ -1281,7 +1283,8 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
             slurm_file = prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_array_tasks, site_file,
                                          hours=int(hours), mins=int(mins), mem=mem, cpus=cpus, account=account, job_time=job_time * len(unique_id_list))
 
-            raise Exception(f"Now run\n\tsbatch {slurm_file}")
+            print(f"Now run for {len(unique_id_list)} branches\n\tsbatch {slurm_file}")
+            os._exit(0)
         
         elif nesi_step == 'combine':
             if len(os.popen('echo $SLURM_JOB_ID').read().strip()) > 0:
@@ -1331,8 +1334,7 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                 if all_intervals_prepared:
                     # Remove the site file if it has added all requested intervals into the weighted_h5
                     # If not, preserve as it'll need to be reprocessed
-                    pass
-                    # os.remove(site_h5_file)
+                    os.remove(site_h5_file)
                 sites_added += 1
                 elapsed = time_elasped(time(), start, decimal=False)
                 printProgressBar(ix + 1, len(site_list), prefix=f'\tAdding Site {site}', suffix=f'Complete {elapsed} ({(time()-start) / max([sites_added, 1]):.2f}s/site)', length=50)
@@ -1663,7 +1665,8 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 
                 print(f"Now run sbatch {slurm_file}")
 
-            raise Exception(f"Run slurm files for each fault flag combination")
+            print(f"Run slurm files for each fault flag combination")
+            os._exit(0)
         
         elif nesi_step == 'combine':
             start = time()

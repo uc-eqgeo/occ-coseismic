@@ -18,8 +18,8 @@ sz_site_names = ["_10km_coastS", "_10km_coastN"]       # Name of the sites geojs
 sz_list_order = ["py", "sz"]         # Order of the subduction zones
 sz_names = ["puysegur", "hikkerm_7500"]   # Name of the subduction zone - HIKKERK FOR SENSITIVITY TESTING, HIKKERM FOR FINAL (?)
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = False   # Prepares code for NESI runs
-testing = True   # Impacts number of samples runs, job time etc
+nesi = True   # Prepares code for NESI runs
+testing = False   # Impacts number of samples runs, job time etc
 fakequakes = True  # Use fakequakes for the subduction zone (applied only to hikkerm)
 
 # Processing Flags (True/False)
@@ -45,11 +45,11 @@ paired_crustal_sz = False     # Do you want to calculate the PPEs for a single f
 calculate_SED = False         # Do you want to calculate the PPEs for single event displacement in addition to cumulatively?
 dip_models = False             # Include variable crustal dip models?
 load_random = True             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
-calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
+calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = False           # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
 remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
-save_arrays = True         # Do you want to save the displacement and probability arrays?
+save_arrays = False         # Do you want to save the displacement and probability arrays?
 interp_sites = '../sites/national_1kmS.geojson'  # csv file with the sites to interpolate the displacements to for xarray output. None for default (i.e. use the sites in the PPE dictionary)
 interp_sites = None
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
