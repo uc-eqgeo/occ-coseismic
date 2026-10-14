@@ -452,20 +452,18 @@ if __name__ == "__main__":
         # This is a hack to get around multiple tasks trying to open the file at once, so it appearing like it doesn't exist
         find_file_count = 0
         attempt_limit = 10
-        while find_file_count < attempt_limit:
+        task_id = os.environ.get("SLURM_ARRAY_TASK_ID", "na")
+        for attempt in range(1, attempt_limit + 1):
             try:
                 with open(args.site_file, "r") as f:
                     all_sites = f.read().splitlines()
-                find_file_count = attempt_limit + 1
-            except FileNotFoundError:
+                break
+            except FileNotFoundError as e:
+                nesiprint(f"[task {task_id}] attempt {attempt}: {e.filename} not found (cwd={os.getcwd()})")
                 sleep(1 + np.random.rand())
-                find_file_count += 1
-                nesiprint(f"Attempt {find_file_count} to find {args.site_file}")
-        
-        if find_file_count == attempt_limit:
+        else:
             raise FileNotFoundError(f"File {args.site_file} not found")
 
-        # all_sites = [all_sites[ix] for ix in np.random.permutation(len(all_sites))]  # Shuffle for reduced chance of task arrays not having unprocessed sites (useful if time expired on previous attempt)
         if args.tasks_per_array == 0:
             task_sites = all_sites
         else:
@@ -561,18 +559,21 @@ if __name__ == "__main__":
                 if os.path.exists(f"../{branch_results_directory}/{branchId}_sites/{site}.h5") and not args.overwrite:
                     print(f"{ix} {extension1} {site}.h5 already exists")
                     list_of_interest.remove(site)
-            get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, list_of_interest, n_samples,
-                        extension1, branch_key=branch_unique_ids, time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True,
-                        NSHM_branch=args.NSHM_branch, crustal_model_dir=crustal_model_dir, subduction_model_dirs=subduction_model_dir,
-                        thresh_lims=[float(val) for val in args.thresh_lims.split('/')], thresh_step=float(args.thresh_step), single_site=f"../{branch_results_directory}/{branchId}_sites")
+
+            if len(list_of_interest) > 0:
+                get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, list_of_interest, n_samples,
+                            extension1, branch_key=branch_unique_ids, time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True,
+                            NSHM_branch=args.NSHM_branch, crustal_model_dir=crustal_model_dir, subduction_model_dirs=subduction_model_dir,
+                            thresh_lims=[float(val) for val in args.thresh_lims.split('/')], thresh_step=float(args.thresh_step), single_site=f"../{branch_results_directory}/{branchId}_sites")
 
             completed_sites = set(list_of_interest)
             # This is a hack to get around multiple tasks trying to open the file at once, so it appearing like it doesn't exist
             find_file_count = 0
             attempt_limit = 10
+            meta_h5_file = f"../{branch_results_directory}/{branchId}_meta.h5"
             while find_file_count < attempt_limit:
                 try:
-                    with h5.File(f"./{branch_results_directory}/{branchId}_meta.h5", "a") as branch_meta_PPEh5:                
+                    with h5.File(meta_h5_file, "a") as branch_meta_PPEh5:                
                         if str(n_samples) in branch_meta_PPEh5:
                             completed_sites |= {id.decode() for id in branch_meta_PPEh5[str(n_samples)][:]}
                             del branch_meta_PPEh5[str(n_samples)]
@@ -581,7 +582,7 @@ if __name__ == "__main__":
                 except (FileNotFoundError, PermissionError) as e:
                     sleep(1 + np.random.rand())
                     find_file_count += 1
-                    nesiprint(f"Attempt {find_file_count} to find {args.site_file}")
+                    nesiprint(f"Attempt {find_file_count} to find {meta_h5_file}")
 
             nesiprint(f"{extension1} complete in : {time() - begin:.2f} seconds\n")
 
