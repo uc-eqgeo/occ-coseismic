@@ -870,7 +870,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
 
 
 def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_directory, slip_taper, n_samples, outfile_extension, inv_sites=[],
-                              nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem: int= 5, cpus: int= 1, account: str= '',
+                              nesi=False, nesi_step = None, hours : int = 0, mins: int= 3, mem=2, cpus: int= 1, account: str= '',
                               time_interval=['100'], sd=0.4, n_array_tasks=1000, min_tasks_per_array=100, job_time=3, load_random=False,
                               remake_PPE=True, sbatch=False, thresh_lims=[0, 3], thresh_step=0.01, calculate_SED=False):
     """ This function takes the branch dictionary and calculates the PPEs for each branch.
@@ -1276,10 +1276,10 @@ def get_weighted_mean_PPE_dict(fault_model_PPE_dict, out_directory, outfile_exte
                 for site in site_list:
                     f.write(f"../{out_directory}/weighted_sites/{site}.h5\n")
     
-            tasks_per_array, n_array_tasks, hours, mins = calc_array_times(site_list, min_tasks_per_array, n_array_tasks, job_time)
+            tasks_per_array, n_array_tasks, hours, mins = calc_array_times(site_list, min_tasks_per_array, n_array_tasks, job_time * len(unique_id_list))
 
             slurm_file = prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_array_tasks, site_file,
-                                         hours=int(hours), mins=int(mins), mem=mem, cpus=cpus, account=account, job_time=job_time)
+                                         hours=int(hours), mins=int(mins), mem=mem, cpus=cpus, account=account, job_time=job_time * len(unique_id_list))
 
             raise Exception(f"Now run\n\tsbatch {slurm_file}")
         

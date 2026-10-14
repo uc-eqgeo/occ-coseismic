@@ -69,7 +69,7 @@ def prep_nesi_site_list(model_version_results_directory, branch_id, sites_of_int
 
 
 def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks,
-                          hours: int = 0, mins: int = 3, mem: int = 45, cpus: int = 1, account: str = '',
+                          hours: int = 0, mins: int = 3, mem= 2, cpus: int = 1, account: str = '',
                           time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4, job_time = 0, NSHM_branch=True,
                           thresh_lims=[0, 3], thresh_step=0.01):
     """
@@ -102,7 +102,10 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
         f.write("#!/bin/bash -e\n".encode())
         f.write(f"#SBATCH --job-name=02_{os.path.basename(model_version_results_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS), {job_time} secs/job\n".encode())
-        f.write(f"#SBATCH --mem={mem}GB\n".encode())
+        if mem >= 1:
+            f.write(f"#SBATCH --mem={np.ceil(mem):.0f}GB\n".encode())
+        else:
+            f.write(f"#SBATCH --mem={mem * 1024:.0f}MB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
         if mem > 25:
@@ -286,7 +289,7 @@ def prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_d
 
 
 def prep_SLURM_combine_submission(combine_dict_file, branch_combine_list, model_version_results_directory, 
-                                  tasks_per_array, n_tasks, hours: int = 0, mins: int = 3, mem: int = 10,
+                                  tasks_per_array, n_tasks, hours: int = 0, mins: int = 3, mem=5,
                                   cpus: int = 1, account: str = ''):
 
 
@@ -299,7 +302,10 @@ def prep_SLURM_combine_submission(combine_dict_file, branch_combine_list, model_
         f.write("#!/bin/bash -e\n".encode())
         f.write(f"#SBATCH --job-name=04-{os.path.basename(model_version_results_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
-        f.write(f"#SBATCH --mem={mem}GB\n".encode())
+        if mem >= 1:
+            f.write(f"#SBATCH --mem={np.ceil(mem):.0f}GB\n".encode())
+        else:
+            f.write(f"#SBATCH --mem={mem * 1024:.0f}MB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
@@ -336,8 +342,10 @@ def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks
         f.write(f"#SBATCH --mem={mem}GB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
-        # if mem > 25:
-        #     f.write("#SBATCH --partition=large\n".encode())
+        if mem >= 1:
+            f.write(f"#SBATCH --mem={np.ceil(mem):.0f}GB\n".encode())
+        else:
+            f.write(f"#SBATCH --mem={mem * 1024:.0f}MB\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
         f.write(f"#SBATCH -o logs/07_{os.path.basename(out_directory)}_weights{fault_combo}_%j_task%a.out\n".encode())

@@ -70,7 +70,7 @@ thresh_step = 0.01
 # Nesi Parameters
 prep_sbatch = False   # Prep jobs for sbatch
 nesi_step = 'prep'  # 'prep' or 'combine'
-n_array_tasks = 250    # Number of array tasks
+n_array_tasks = 1000    # Number of array tasks
 min_tasks_per_array = 250   # Minimum number of sites per array
 min_branches_per_array = 1  # Minimum number of branches per array
 max_array_time = 3600 * 3 # Maximum time per array task when running paired model weighting (seconds). Won't supercede min tasks per array
@@ -86,12 +86,12 @@ figure_file_type_list = ["png", "pdf"]             # file types for figures
 ## Set parameters based on user inputs
 if testing:
     n_samples = 1e4   # Number of scenarios to run
-    job_time = 1    # Amount of time to allocate per site in the cumu_PPE task array
+    job_time = 0.1    # Amount of time to allocate per site in the cumu_PPE task array
     mem = 1    # Memory allocation for cumu_PPE task array
 else:
     n_samples = 1e5   # Number of scenarios to run
-    job_time = 3    # Amount of time to allocate per site in the cumu_PPE task array
-    mem = 2    # Memory allocation for cumu_PPE task array
+    job_time = 0.1    # Amount of time to allocate per site in the cumu_PPE task array
+    mem = 0.5    # Memory allocation for cumu_PPE task array
 
 if paired_crustal_sz and nesi_step == 'prep':
     if n_array_tasks < 500:
@@ -107,12 +107,12 @@ if fault_type == 'all':
     min_tasks_per_array = 50
 
 if not calculate_fault_model_PPE and calculate_weighted_mean_PPE:
-    job_time = 20
+    job_time = 0.025
 
 if isinstance(sz_site_names, str):
     sz_site_names = [sz_site_names]
 
-n_samples, job_time, mem, n_array_tasks, min_tasks_per_array = int(n_samples), int(job_time), int(mem), int(n_array_tasks), int(min_tasks_per_array)
+n_samples, n_array_tasks, min_tasks_per_array = int(n_samples), int(n_array_tasks), int(min_tasks_per_array)
 ## Solving processing conflicts
 
 if paired_crustal_sz and calculate_weighted_mean_PPE:
@@ -466,7 +466,7 @@ if paired_crustal_sz:
 if not paired_crustal_sz and calculate_weighted_mean_PPE:
     print('\nCalculating weighted mean PPE...')
     get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=out_version_results_directory, outfile_extension=outfile_extension,
-                               slip_taper=slip_taper, nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples, min_tasks_per_array=10,
+                               slip_taper=slip_taper, nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples, min_tasks_per_array=100,
                                n_array_tasks=n_array_tasks, mem=mem, cpus=n_cpus, job_time=job_time, thresh_lims=thresh_lims, thresh_step=thresh_step,
                                site_list=inv_sites, remake_PPE=remake_weighted_PPE, time_interval=time_interval, rate_scaling=rate_scaling, dip_models=dip_models)
 
