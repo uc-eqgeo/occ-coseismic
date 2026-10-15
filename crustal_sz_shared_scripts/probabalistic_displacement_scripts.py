@@ -1056,7 +1056,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         hours, secs = divmod(array_time, 3600)
         mins = np.ceil(secs / 60)
         n_tasks = int(np.ceil(n_jobs / tasks_per_array))
-        nesiprint(f'\nCreating SLURM submission script for {n_jobs} jobs....')
+        nesiprint(f'\nCreating SLURM submission script for {n_jobs:,d} jobs....')
         prep_SLURM_submission(model_version_results_directory, int(tasks_per_array), int(n_tasks), hours=int(hours), mins=int(mins), job_time=job_time, mem=mem, cpus=cpus,
                               account=account, time_interval=process_intervals, n_samples=n_samples, sd=sd, thresh_lims=thresh_lims, thresh_step=thresh_step)
         nesiprint(f"Now run")

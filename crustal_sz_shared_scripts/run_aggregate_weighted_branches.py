@@ -86,11 +86,11 @@ figure_file_type_list = ["png", "pdf"]             # file types for figures
 ## Set parameters based on user inputs
 if testing:
     n_samples = 1e4   # Number of scenarios to run
-    job_time = 0.1    # Amount of time to allocate per site in the cumu_PPE task array
+    job_time = 0.01    # Amount of time to allocate per site in the cumu_PPE task array
     mem = 1    # Memory allocation for cumu_PPE task array
 else:
     n_samples = 1e5   # Number of scenarios to run
-    job_time = 0.1    # Amount of time to allocate per site in the cumu_PPE task array
+    job_time = 0.05    # Amount of time to allocate per site in the cumu_PPE task array
     mem = 0.5    # Memory allocation for cumu_PPE task array
 
 if paired_crustal_sz and nesi_step == 'prep':

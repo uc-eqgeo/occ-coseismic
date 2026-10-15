@@ -32,7 +32,9 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
 def nesiprint(string, end='\n'):
     if 'posix' == os.name:
         # For Unix-like systems, use echo command to print (good for nesi outputs)
-        os.system(f'echo {string}')
+        string = string.replace('\t', '    ')
+        for substring in string.split('\n'):
+            os.system(f"echo '{substring}'")
     else:
         # For Windows, use print function directly
         print(string, end=end)
