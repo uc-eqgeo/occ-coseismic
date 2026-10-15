@@ -1056,10 +1056,12 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         hours, secs = divmod(array_time, 3600)
         mins = np.ceil(secs / 60)
         n_tasks = int(np.ceil(n_jobs / tasks_per_array))
-        print(f'\nCreating SLURM submission script for {n_jobs} jobs....')
+        nesiprint(f'\nCreating SLURM submission script for {n_jobs} jobs....')
         prep_SLURM_submission(model_version_results_directory, int(tasks_per_array), int(n_tasks), hours=int(hours), mins=int(mins), job_time=job_time, mem=mem, cpus=cpus,
                               account=account, time_interval=process_intervals, n_samples=n_samples, sd=sd, thresh_lims=thresh_lims, thresh_step=thresh_step)
-        print(f"Now run\n\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
+        nesiprint(f"Now run")
+        nesiprint(f"sbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
+        sleep(5)
         os._exit(0)
 
     elif nesi and nesi_step == 'combine' and sbatch:
@@ -1463,6 +1465,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     pair_weight_list = []
     pair_id_list = []
     paired_crustal_sz_PPE_dict = {}
+    nesiprint(crustal_sz_branch_pairs)
     for pair in crustal_sz_branch_pairs:
         # get the branch unique ID for the crustal and sz combos
         crustal_unique_id, sz_unique_ids = pair[0], pair[1:]
@@ -1605,8 +1608,9 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                                     'required_intervals': [str(interval) for interval in intervals_list[ix]]}
                 with h5.File(site_h5_file, 'w') as site_h5:
                     dict_to_hdf5(site_h5, site_meta_dict)
+            print('')
 
-            # Allow for adaptive task arrays based o pairings
+            # Allow for adaptive task arrays based on pairings
             c_sz_pair_array = np.array([pair_id.split('_-_') for pair_id in pair_id_list])
             for flag_combo in np.unique(fault_flag_array, axis=0):
                 flag_ix = [ix for ix, flag in enumerate(flag_combo) if flag]
@@ -1663,9 +1667,9 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                 slurm_file = prep_SLURM_weighted_sites_submission(out_directory, combo_tasks_per_job, n_jobs, site_file,
                                             hours=int(hours), mins=int(mins), mem=combo_mem, cpus=n_cpus, account=account, job_time=combo_time, time_interval=time_interval, fault_combo=f"_{'-'.join([str(ix) for ix in flag_ix])}")
                 
-                print(f"Now run sbatch {slurm_file}")
+                nesiprint(f"Now run sbatch {slurm_file}")
 
-            print(f"Run slurm files for each fault flag combination")
+            nesiprint(f"Run slurm files for each fault flag combination")
             os._exit(0)
         
         elif nesi_step == 'combine':
