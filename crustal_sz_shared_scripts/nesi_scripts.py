@@ -579,7 +579,7 @@ if __name__ == "__main__":
                             del branch_meta_PPEh5[str(n_samples)]
                         branch_meta_PPEh5.create_dataset(str(n_samples), data=list(completed_sites))
                         find_file_count = attempt_limit + 1
-                except (FileNotFoundError, PermissionError) as e:
+                except (FileNotFoundError, PermissionError, BlockingIOError) as e:
                     sleep(1 + np.random.rand())
                     find_file_count += 1
                     nesiprint(f"Attempt {find_file_count} to find {meta_h5_file}")
