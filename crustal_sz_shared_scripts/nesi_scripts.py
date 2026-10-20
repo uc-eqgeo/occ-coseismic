@@ -353,7 +353,6 @@ def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks
         f.write("#!/bin/bash -e\n".encode())
         f.write(f"#SBATCH --job-name=07_{os.path.basename(out_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS), {job_time} secs/site\n".encode())
-        f.write(f"#SBATCH --mem={mem}GB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
         if mem >= 1:
@@ -586,7 +585,7 @@ if __name__ == "__main__":
                     find_file_count += 1
                     nesiprint(f"Attempt {find_file_count} to find {meta_h5_file}")
 
-            nesiprint(f"{extension1} complete in : {time() - begin:.2f} seconds\n")
+            nesiprint(f"\n{extension1} complete in : {time() - begin:.2f} seconds\n")
 
         print(f"All sites complete in {time() - start:.2f} seconds (Average {(time() - start) / len(task_sites):.2f} seconds per site)")
 

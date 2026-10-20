@@ -1,24 +1,20 @@
 import os
-try:
-    from shapely.geometry import Point
-except:
-    os.system(f"echo Running on NESI. Some functions wont work....")
-finally:
-    import pandas as pd
-    import geopandas as gpd
-    import h5py as h5
-    from functools import reduce
-    import numpy as np
-    from numpy.lib.function_base import _check_interpolation_as_method, _quantile_is_valid, _QuantileMethods, \
-                                        _get_indexes, _get_gamma, _lerp
-    from numpy.core.numeric import normalize_axis_tuple
-    from numpy import minimum, take, concatenate
-    import pickle as pkl
-    from scipy.interpolate import griddata
-    import matplotlib.pyplot as plt
-    import h5py as h5
-    from scipy.sparse import csr_matrix
-    from glob import glob
+from shapely.geometry import Point
+import pandas as pd
+import geopandas as gpd
+import h5py as h5
+from functools import reduce
+import numpy as np
+from numpy.lib.function_base import _check_interpolation_as_method, _quantile_is_valid, _QuantileMethods, \
+                                    _get_indexes, _get_gamma, _lerp
+from numpy.core.numeric import normalize_axis_tuple
+from numpy import minimum, take, concatenate
+import pickle as pkl
+from scipy.interpolate import griddata
+import matplotlib.pyplot as plt
+import h5py as h5
+from scipy.sparse import csr_matrix
+from glob import glob
 
 def dict_to_hdf5(hdf5_group, dictionary, compression=None, compression_opts=None, replace_groups=False):
     for key, value in dictionary.items():

@@ -4,7 +4,7 @@ import geopandas as gpd
 from collections import deque
 from scipy.spatial import cKDTree
 from shapely.geometry import LineString, Point, Polygon
-from shapely import union_all, unary_union
+from shapely import unary_union
 import triangle as tr
 import matplotlib.tri as mtri
 

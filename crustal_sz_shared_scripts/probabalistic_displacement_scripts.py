@@ -1,9 +1,6 @@
 import os
-try:
-    from plotting_scripts import constrained_triangulation_grid, save_triangulation
-    from shapely.geometry import Point
-except:
-    os.system(f"echo Running on NESI. Some functions wont work....")
+from plotting_scripts import constrained_triangulation_grid, save_triangulation
+from shapely.geometry import Point
 from helper_scripts import make_qualitative_colormap, get_probability_color, percentile, dict_to_hdf5, hdf5_to_dict, write_sites_to_geojson, \
                            check_meta_h5_samples, remove_h5_samples
 import xarray as xr
@@ -23,8 +20,7 @@ from matplotlib.patches import Rectangle
 import matplotlib.ticker as mticker
 from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 from scipy.sparse import csc_array, csr_array, hstack, csr_matrix
-from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, combine_site_cumu_PPE, \
-                         prep_combine_branch_list, prep_SLURM_combine_submission, prep_SLURM_weighted_sites_submission, \
+from nesi_scripts import prep_nesi_site_list, prep_SLURM_submission, prep_SLURM_weighted_sites_submission, \
                          slurm_timeleft, nesiprint
 import matplotlib.tri as mtri
 from concurrent.futures import ThreadPoolExecutor
@@ -864,7 +860,7 @@ def get_cumu_PPE(slip_taper, model_version_results_directory, branch_site_disp_d
             dict_to_hdf5(PPEh5, site_PPE_dict, replace_groups=True)
 
     if benchmarking:
-        print(f"Total Time: {time() - commence:.5f} s")
+        nesiprint(f"\nTotal Time: {time() - commence:.5f} s")
     
     return
 
@@ -893,7 +889,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
     if nesi:
         if nesi_step == 'prep' and os.path.exists(f"../{model_version_results_directory}/site_name_list.txt"):
             os.remove(f"../{model_version_results_directory}/site_name_list.txt")
-        if nesi_step == 'combine':
+        if nesi_step == 'finish':
             if os.path.exists(f"../{model_version_results_directory}/branch_combine_list.txt"):
                 os.remove(f"../{model_version_results_directory}/branch_combine_list.txt")
             if os.path.exists(f"../{model_version_results_directory}/combine_site_meta.pkl"):
@@ -903,7 +899,6 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
 
     branch_weight_list = []
     fault_model_allbranch_PPE_dict = {}
-    combine_branches = 0
     n_jobs = 0
     inv_sites = set(inv_sites)
     for counter, branch_id in enumerate(branch_weight_dict.keys()):
@@ -977,18 +972,6 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                         branch_meta_h5.create_dataset('branch_weight', data=branch_weight)
                 prep_nesi_site_list(model_version_results_directory, branch_id, prep_list, extension1, S=f"_S{str(rate_scaling_factor).replace('.', '')}")
                 continue
-            elif nesi_step == 'combine':
-                #+ Use of single site makes this unnessecary
-                if sbatch:
-                    print(f"\tPreparing NESI combination for {fault_model_allbranch_PPE_dict[branch_id]}....")
-                    prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
-                                        taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", weight=branch_weight_list[-1], thresholds=thresholds, sites=prep_list)
-                    combine_branches += 1
-                    continue
-                else:
-                    print(f"\tCombining site dictionaries into {fault_model_allbranch_PPE_dict[branch_id]}....")
-                    combine_site_cumu_PPE(prep_list, model_version_results_directory, extension1, branch_h5file=fault_model_allbranch_PPE_dict[branch_id],
-                                        taper_extension=taper_extension, S=f"_S{str(rate_scaling_factor).replace('.', '')}", thresholds=thresholds)
 
         else:
             if os.path.exists(fault_model_allbranch_PPE_dict[branch_id]) and not remake_branch_PPE:
@@ -1005,7 +988,7 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                              thresh_lims=thresh_lims, thresh_step=thresh_step, cumu_PPEh5_file=fault_model_allbranch_PPE_dict[branch_id],
                              scenario_dir=scenario_dir, single_site=fault_model_allbranch_PPE_dict[branch_id], sed_PPE=calculate_SED)
 
-        if not all([nesi, nesi_step == 'combine', sbatch]):
+        if not all([nesi, nesi_step == 'finish', sbatch]):
             print(f"\tUpdating {fault_branch_meta_h5}...")
             with h5.File(fault_branch_meta_h5, "a") as branch_meta_h5:
                 if 'branch_weight' in branch_meta_h5.keys():
@@ -1046,7 +1029,6 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
                         del branch_meta_h5['site_coords']
                     branch_meta_h5.create_dataset('site_coords', data=[[site, str(lon), str(lat)] for site, [lon, lat] in site_coord_dict.items()])
 
-    n_sites = len(prep_list)
     if nesi and nesi_step == 'prep':
         # n_jobs = len(branch_weight_dict.keys()) * n_sites
         tasks_per_array = np.ceil(n_jobs / n_array_tasks)
@@ -1060,28 +1042,10 @@ def make_fault_model_PPE_dict(branch_weight_dict, model_version_results_director
         prep_SLURM_submission(model_version_results_directory, int(tasks_per_array), int(n_tasks), hours=int(hours), mins=int(mins), job_time=job_time, mem=mem, cpus=cpus,
                               account=account, time_interval=process_intervals, n_samples=n_samples, sd=sd, thresh_lims=thresh_lims, thresh_step=thresh_step)
         nesiprint(f"Now run")
-        nesiprint(f"sbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
+        nesiprint(f"\t\tsbatch ../{model_version_results_directory}/cumu_PPE_slurm_task_array.sl")
         sleep(5)
         os._exit(0)
 
-    elif nesi and nesi_step == 'combine' and sbatch:
-        #+ Use of single site makes this unnessecary
-        tasks_per_array = np.ceil(combine_branches / n_array_tasks)
-        min_branches_per_array = 1
-        if tasks_per_array < min_branches_per_array:
-            tasks_per_array = min_branches_per_array
-        time_per_site = 1
-        array_time = 60 + time_per_site * n_sites * tasks_per_array
-        hours, secs = divmod(array_time, 3600)
-        mins = np.ceil(secs / 60)
-        n_tasks = int(np.ceil(combine_branches / tasks_per_array))
-        print('\nCreating SLURM submission script....')
-        combine_dict_file = f"../{model_version_results_directory}/combine_site_meta.pkl"
-        branch_combine_list_file = f"../{model_version_results_directory}/branch_combine_list.txt"
-        prep_SLURM_combine_submission(combine_dict_file, branch_combine_list_file, model_version_results_directory,
-                                      int(tasks_per_array), int(n_tasks), hours=int(hours), mins=int(mins), mem=10, account=account)
-        print(f"Now run\n\tsbatch ../{model_version_results_directory}/combine_sites.sl")
-        os._exit(0)
     else:
         print('Updating all branch PPE dictionary....')
         outfile_name = f"all_branch_PPE_dict{outfile_extension}{taper_extension}"
@@ -1465,7 +1429,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     pair_weight_list = []
     pair_id_list = []
     paired_crustal_sz_PPE_dict = {}
-    nesiprint(crustal_sz_branch_pairs)
+
     for pair in crustal_sz_branch_pairs:
         # get the branch unique ID for the crustal and sz combos
         crustal_unique_id, sz_unique_ids = pair[0], pair[1:]
@@ -1492,7 +1456,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
     exceed_type_list = ["up", "down"]
 
     # Check if previous h5 exists. If it does, preserve it until new weighted mean file is complete
-    weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict_{len(crustal_sz_branch_pairs)}_branch{outfile_extension}{taper_extension}.h5"
+    weighted_h5_file = f"../{out_directory}/weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
 
     if os.path.exists(weighted_h5_file):
         weighted_h5 = h5.File(weighted_h5_file, "r+")
@@ -1589,7 +1553,7 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
             weighted_h5.close()
             os.makedirs(f"../{out_directory}/weighted_sites", exist_ok=True)
             for ix, site in enumerate(site_names):
-                print(f'Preparing site {site} for NESI task array...', end ='\r')
+                print(f'Preparing site {ix}: {site} for NESI task array...', end ='\r')
                 site_h5_file = f"../{out_directory}/weighted_sites/{site}.h5"
                 if os.path.exists(site_h5_file):
                     os.remove(site_h5_file)
@@ -1627,21 +1591,24 @@ def make_sz_crustal_paired_PPE_dict(crustal_branch_weight_dict, sz_branch_weight
                     print(f"No sites found for fault flag combination {flag_combo}. Skipping...")
                     continue
                 if n_pairs < 50:
-                    combo_mem = 5 if mem == 0 else mem
-                    combo_time = 30 if job_time == 0 else job_time
+                    combo_mem = 0.5 if mem == 0 else mem
+                    combo_time = 1 if job_time == 0 else job_time
                     n_cpus = 4 if cpus == 0 else cpus
                 elif n_pairs < 150:
-                    combo_mem = 10 if mem == 0 else mem
-                    combo_time = 60 if job_time == 0 else job_time
+                    combo_mem = 0.5 if mem == 0 else mem
+                    combo_time = 5 if job_time == 0 else job_time
                     n_cpus = 8 if cpus == 0 else cpus
+                    min_tasks_per_array = 100
                 elif n_pairs < 300:
-                    combo_mem = 20 if mem == 0 else mem
-                    combo_time = 120 if job_time == 0 else job_time
+                    combo_mem = 2 if mem == 0 else mem
+                    combo_time = 10 if job_time == 0 else job_time
                     n_cpus = 10 if cpus == 0 else cpus
+                    min_tasks_per_array = 100
                 elif n_pairs < 500:
                     combo_mem = 25 if mem == 0 else mem
                     combo_time = 240 if job_time == 0 else job_time
                     n_cpus = 12 if cpus == 0 else cpus
+                    min_tasks_per_array = 50
                 else:
                     combo_mem = 30 if mem == 0 else mem
                     combo_time = 400 if job_time == 0 else job_time

@@ -387,7 +387,7 @@ if not paired_crustal_sz:
             PPE_dict = make_fault_model_PPE_dict(
                         branch_weight_dict=fault_model_branch_weight_dict,
                         model_version_results_directory=out_version_results_directory, n_samples=n_samples,
-                        slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step, sbatch=prep_sbatch, mem=mem,
+                        slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step, mem=mem,
                         time_interval=time_interval, sd=sd, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array, job_time=job_time,
                         load_random=load_random, remake_PPE=remake_PPE, account=account, thresh_lims=thresh_lims, thresh_step=thresh_step, inv_sites=inv_sites,
                         calculate_SED=calculate_SED)
@@ -420,9 +420,9 @@ if paired_crustal_sz:
             pkl.dump(branch_weight_dict, f)
 
     paired_PPE_pickle_name = f"weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
-    PPE_filepath = f"../{out_version_results_directory}/{paired_PPE_pickle_name}"
+    paired_h5_file = f"../{out_version_results_directory}/{paired_PPE_pickle_name}"
 
-    if not os.path.exists(PPE_filepath):
+    if not os.path.exists(paired_h5_file):
         print(f"No crustal-{'-'.join(fault_type[1:])} paired PPE .h5 file found. Making a new one...")
         calculate_fault_model_PPE = True
         use_saved_dictionary = False
@@ -452,7 +452,7 @@ if paired_crustal_sz:
 
     #### skip this part if you've already run it once and saved to a pickle file
     if calculate_fault_model_PPE or not use_saved_dictionary:
-        paired_h5_file = make_sz_crustal_paired_PPE_dict(
+        make_sz_crustal_paired_PPE_dict(
             crustal_branch_weight_dict=branch_weight_dict_list[0], sz_branch_weight_dict_list=branch_weight_dict_list[1:],
             crustal_model_version_results_directory=version_discretise_directory[0],
             sz_model_version_results_directory_list=version_discretise_directory[1:],
