@@ -1015,6 +1015,7 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
     for fault_type in fault_type_list:
         fault_branches = 0
         if fault_type == 'crustal' and dip_models:
+            # Code = _c[rustal]_[Low/Mid/Highbn][geolOgic/geodEtic(?)][timeIndependent/timeDependent][Low/Preferred/Highdip]
             file_suffix_list_i = ["_c_LOIP", "_c_MOIP", "_c_HOIP", "_c_LOIL", "_c_MOIL", "_c_HOIL", "_c_LOIH", "_c_MOIH", "_c_HOIH"]
             NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwMw==",
                                     "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwNg==",
