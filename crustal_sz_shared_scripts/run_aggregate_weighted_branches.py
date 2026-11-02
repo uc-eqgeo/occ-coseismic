@@ -18,8 +18,8 @@ sz_site_names = ["_10km_coastS", "_10km_coastN"]       # Name of the sites geojs
 sz_list_order = ["py", "sz"]         # Order of the subduction zones
 sz_names = ["puysegur", "hikkerm_7500"]   # Name of the subduction zone - HIKKERK FOR SENSITIVITY TESTING, HIKKERM FOR FINAL (?)
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = True   # Prepares code for NESI runs
-testing = False   # Impacts number of samples runs, job time etc
+nesi = False   # Prepares code for NESI runs
+testing = True   # Impacts number of samples runs, job time etc
 fakequakes = True  # Use fakequakes for the subduction zone (applied only to hikkerm)
 
 # Processing Flags (True/False)
@@ -56,15 +56,15 @@ default_plot_order = True       # Do you want to plot haz curves for all sites, 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../sites/gf_test_sites.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
-branch_weight_csv = "branch_weight_data_v0-1"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
+branch_weight_csv = "branch_weight_data_sensitivity"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
 # branch_weight_csv = "branch_weight_data_sensitivity"
 
 # Processing Parameters
 time_interval = [5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150]     # Time span of hazard forecast (yrs)
-time_interval = [100]
+time_interval = [7500]
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 1
-thresh_lims = [0, 10]
+thresh_lims = [0, 50]
 thresh_step = 0.01
 
 # Nesi Parameters
