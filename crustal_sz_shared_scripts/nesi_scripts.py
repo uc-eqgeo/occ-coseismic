@@ -32,7 +32,9 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
 def nesiprint(string, end='\n'):
     if 'posix' == os.name:
         # For Unix-like systems, use echo command to print (good for nesi outputs)
-        os.system(f'echo {string}')
+        string = string.replace('\t', '    ')
+        for substring in string.split('\n'):
+            os.system(f"echo '{substring}'")
     else:
         # For Windows, use print function directly
         print(string, end=end)
@@ -69,7 +71,7 @@ def prep_nesi_site_list(model_version_results_directory, branch_id, sites_of_int
 
 
 def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_tasks,
-                          hours: int = 0, mins: int = 3, mem: int = 45, cpus: int = 1, account: str = '',
+                          hours: int = 0, mins: int = 3, mem= 2, cpus: int = 1, account: str = '',
                           time_interval: int = 100, n_samples: int = 1000000, sd: float = 0.4, job_time = 0, NSHM_branch=True,
                           thresh_lims=[0, 3], thresh_step=0.01):
     """
@@ -102,20 +104,28 @@ def prep_SLURM_submission(model_version_results_directory, tasks_per_array, n_ta
         f.write("#!/bin/bash -e\n".encode())
         f.write(f"#SBATCH --job-name=02_{os.path.basename(model_version_results_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS), {job_time} secs/job\n".encode())
-        f.write(f"#SBATCH --mem={mem}GB\n".encode())
+        if mem >= 1:
+            f.write(f"#SBATCH --mem={np.ceil(mem):.0f}GB\n".encode())
+        else:
+            f.write(f"#SBATCH --mem={mem * 1024:.0f}MB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
         if mem > 25:
             f.write("#SBATCH --partition=large\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
-        f.write(f"#SBATCH -o logs/02_{os.path.basename(model_version_results_directory)}_sites_%j_task%a.out\n".encode())
-        f.write(f"#SBATCH -e logs/02_{os.path.basename(model_version_results_directory)}_sites_%j_task%a.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/02_site_PPE/02_{os.path.basename(model_version_results_directory)}_sites_%j_task%a.out\n".encode())
+        f.write(f"#SBATCH -e logs/02_site_PPE/02_{os.path.basename(model_version_results_directory)}_sites_%j_task%a.err\n\n".encode())
 
         f.write("# Activate the conda environment\n".encode())
         f.write("mkdir -p logs\n".encode())
         f.write("module purge  2>/dev/null\n".encode())
-        f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
+        f.write("module load Python/3.11.6-foss-2023a\n".encode())
+        f.write("module load Miniconda3\n\n".encode())
+
+        f.write("source $(conda info --base)/etc/profile.d/conda.sh\n".encode())
+        f.write("export PYTHONNOUSERSITE=1\n".encode())
+        f.write("conda activate postal\n\n".encode())
 
         f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {'/'.join([str(val) for val in time_interval])} --n_samples {int(n_samples)} ".encode())
         f.write(f"--sd {sd} --nesi_job site_PPE {NSHM} --thresh_lims {thresh_lims[0]}/{thresh_lims[1]} --thresh_step {thresh_step}\n\n".encode())
@@ -135,6 +145,7 @@ def slurm_timeout(slurm_id, min_time=30):
     
     return False
 
+
 def slurm_timeleft(slurm_id):
     """
     Find out timeleft on SLURM job
@@ -152,6 +163,7 @@ def slurm_timeleft(slurm_id):
         secsleft = days * 24 * 3600 + hours * 3600 + mins * 60 + secs
     
     return secsleft
+
 
 def combine_site_cumu_PPE(sites, model_version_results_directory, extension1, branch_h5file="", taper_extension="", S="", weight=None, thresholds=None, slurm_id=''):
     """
@@ -286,7 +298,7 @@ def prep_combine_branch_list(branch_site_disp_dict_file, model_version_results_d
 
 
 def prep_SLURM_combine_submission(combine_dict_file, branch_combine_list, model_version_results_directory, 
-                                  tasks_per_array, n_tasks, hours: int = 0, mins: int = 3, mem: int = 10,
+                                  tasks_per_array, n_tasks, hours: int = 0, mins: int = 3, mem=5,
                                   cpus: int = 1, account: str = ''):
 
 
@@ -299,7 +311,10 @@ def prep_SLURM_combine_submission(combine_dict_file, branch_combine_list, model_
         f.write("#!/bin/bash -e\n".encode())
         f.write(f"#SBATCH --job-name=04-{os.path.basename(model_version_results_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS)\n".encode())
-        f.write(f"#SBATCH --mem={mem}GB\n".encode())
+        if mem >= 1:
+            f.write(f"#SBATCH --mem={np.ceil(mem):.0f}GB\n".encode())
+        else:
+            f.write(f"#SBATCH --mem={mem * 1024:.0f}MB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
@@ -310,7 +325,12 @@ def prep_SLURM_combine_submission(combine_dict_file, branch_combine_list, model_
         f.write("# Activate the conda environment\n".encode())
         f.write("mkdir -p logs\n".encode())
         f.write("module purge  2>/dev/null\n".encode())
-        f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
+        f.write("module load Python/3.11.6-foss-2023a\n".encode())
+        f.write("module load Miniconda3\n\n".encode())
+
+        f.write("source $(conda info --base)/etc/profile.d/conda.sh\n".encode())
+        f.write("export PYTHONNOUSERSITE=1\n".encode())
+        f.write("conda activate postal\n\n".encode())
 
         f.write(f"echo python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {tasks_per_array} --combine_dict_file {combine_dict_file} --branch_combine_list {branch_combine_list} --nesi_job combine_sites  --jobID $SLURM_JOB_ID\n\n".encode())
         f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {tasks_per_array} --combine_dict_file {combine_dict_file} --branch_combine_list {branch_combine_list} --nesi_job combine_sites  --jobID $SLURM_JOB_ID\n\n".encode())
@@ -333,20 +353,26 @@ def prep_SLURM_weighted_sites_submission(out_directory, tasks_per_array, n_tasks
         f.write("#!/bin/bash -e\n".encode())
         f.write(f"#SBATCH --job-name=07_{os.path.basename(out_directory)}\n".encode())
         f.write(f"#SBATCH --time={hours:02}:{mins:02}:00      # Walltime (HH:MM:SS), {job_time} secs/site\n".encode())
-        f.write(f"#SBATCH --mem={mem}GB\n".encode())
         f.write(f"#SBATCH --cpus-per-task={cpus}\n".encode())
         f.write(f"#SBATCH --account={account}\n".encode())
-        # if mem > 25:
-        #     f.write("#SBATCH --partition=large\n".encode())
+        if mem >= 1:
+            f.write(f"#SBATCH --mem={np.ceil(mem):.0f}GB\n".encode())
+        else:
+            f.write(f"#SBATCH --mem={mem * 1024:.0f}MB\n".encode())
         f.write(f"#SBATCH --array=0-{n_tasks-1}\n".encode())
 
-        f.write(f"#SBATCH -o logs/07_{os.path.basename(out_directory)}_weights{fault_combo}_%j_task%a.out\n".encode())
-        f.write(f"#SBATCH -e logs/07_{os.path.basename(out_directory)}_weights{fault_combo}_%j_task%a.err\n\n".encode())
+        f.write(f"#SBATCH -o logs/07_weighted_sites/07_{os.path.basename(out_directory)}_weights{fault_combo}_%j_task%a.out\n".encode())
+        f.write(f"#SBATCH -e logs/07_weighted_sites/07_{os.path.basename(out_directory)}_weights{fault_combo}_%j_task%a.err\n\n".encode())
 
         f.write("# Activate the conda environment\n".encode())
-        f.write("mkdir -p logs\n".encode())
+        f.write("mkdir -p logs/07_weighted_sites\n".encode())
         f.write("module purge  2>/dev/null\n".encode())
-        f.write("module load Python/3.11.6-foss-2023a\n\n".encode())
+        f.write("module load Python/3.11.6-foss-2023a\n".encode())
+        f.write("module load Miniconda3\n\n".encode())
+
+        f.write("source $(conda info --base)/etc/profile.d/conda.sh\n".encode())
+        f.write("export PYTHONNOUSERSITE=1\n".encode())
+        f.write("conda activate postal\n\n".encode())
 
         f.write(f"python nesi_scripts.py --task_number $SLURM_ARRAY_TASK_ID --tasks_per_array {int(tasks_per_array)} --site_file {site_file} --time_interval {'/'.join([str(val) for val in time_interval])} --nesi_job site_weights \n\n".encode())
     print('')
@@ -427,20 +453,18 @@ if __name__ == "__main__":
         # This is a hack to get around multiple tasks trying to open the file at once, so it appearing like it doesn't exist
         find_file_count = 0
         attempt_limit = 10
-        while find_file_count < attempt_limit:
+        task_id = os.environ.get("SLURM_ARRAY_TASK_ID", "na")
+        for attempt in range(1, attempt_limit + 1):
             try:
                 with open(args.site_file, "r") as f:
                     all_sites = f.read().splitlines()
-                find_file_count = attempt_limit + 1
-            except FileNotFoundError:
+                break
+            except FileNotFoundError as e:
+                nesiprint(f"[task {task_id}] attempt {attempt}: {e.filename} not found (cwd={os.getcwd()})")
                 sleep(1 + np.random.rand())
-                find_file_count += 1
-                nesiprint(f"Attempt {find_file_count} to find {args.site_file}")
-        
-        if find_file_count == attempt_limit:
+        else:
             raise FileNotFoundError(f"File {args.site_file} not found")
 
-        # all_sites = [all_sites[ix] for ix in np.random.permutation(len(all_sites))]  # Shuffle for reduced chance of task arrays not having unprocessed sites (useful if time expired on previous attempt)
         if args.tasks_per_array == 0:
             task_sites = all_sites
         else:
@@ -468,7 +492,7 @@ if __name__ == "__main__":
 
             extension1 = os.path.basename(branch_results_directory)
             if args.NSHM_branch:
-                branch_disp_dict = f"../{branch_results_directory}/branch_site_disp_dict_{extension1}{scaling}.h5"
+                branch_disp_dict = f"../{branch_results_directory}/branch_site_disp_dict_{extension1}.h5"
                 with h5.File(branch_disp_dict, "r") as branch_h5:
                     if isinstance([key for key in branch_h5.keys()][0], int):
                         if '_' not in sites_of_interest[0]:
@@ -477,7 +501,7 @@ if __name__ == "__main__":
                 crustal_model_dir = ''
                 subduction_model_dir = ''
             else:
-                with h5.File(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}{scaling}.h5", "r") as branch_h5:
+                with h5.File(f"../{branch_results_directory}/branch_site_disp_dict_{extension1}.h5", "r") as branch_h5:
                     pair_site_disp_dict = hdf5_to_dict(branch_h5)
 
                 out_directory = pair_site_disp_dict[[key for key in pair_site_disp_dict.keys()][0]]['out_directory']
@@ -536,29 +560,32 @@ if __name__ == "__main__":
                 if os.path.exists(f"../{branch_results_directory}/{branchId}_sites/{site}.h5") and not args.overwrite:
                     print(f"{ix} {extension1} {site}.h5 already exists")
                     list_of_interest.remove(site)
-            get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, list_of_interest, n_samples,
-                        extension1, branch_key=branch_unique_ids, time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True,
-                        NSHM_branch=args.NSHM_branch, crustal_model_dir=crustal_model_dir, subduction_model_dirs=subduction_model_dir,
-                        thresh_lims=[float(val) for val in args.thresh_lims.split('/')], thresh_step=float(args.thresh_step), single_site=f"../{branch_results_directory}/{branchId}_sites")
+
+            if len(list_of_interest) > 0:
+                get_cumu_PPE(args.slip_taper, os.path.dirname(branch_results_directory), branch_disp_dict, list_of_interest, n_samples,
+                            extension1, branch_key=branch_unique_ids, time_interval=investigation_time, sd=sd, scaling=scaling, load_random=True,
+                            NSHM_branch=args.NSHM_branch, crustal_model_dir=crustal_model_dir, subduction_model_dirs=subduction_model_dir,
+                            thresh_lims=[float(val) for val in args.thresh_lims.split('/')], thresh_step=float(args.thresh_step), single_site=f"../{branch_results_directory}/{branchId}_sites")
 
             completed_sites = set(list_of_interest)
             # This is a hack to get around multiple tasks trying to open the file at once, so it appearing like it doesn't exist
             find_file_count = 0
             attempt_limit = 10
+            meta_h5_file = f"../{branch_results_directory}/{branchId}_meta.h5"
             while find_file_count < attempt_limit:
                 try:
-                    with h5.File(f"./{branch_results_directory}/{branchId}_meta.h5", "a") as branch_meta_PPEh5:                
+                    with h5.File(meta_h5_file, "a") as branch_meta_PPEh5:                
                         if str(n_samples) in branch_meta_PPEh5:
                             completed_sites |= {id.decode() for id in branch_meta_PPEh5[str(n_samples)][:]}
                             del branch_meta_PPEh5[str(n_samples)]
                         branch_meta_PPEh5.create_dataset(str(n_samples), data=list(completed_sites))
                         find_file_count = attempt_limit + 1
-                except (FileNotFoundError, PermissionError) as e:
+                except (FileNotFoundError, PermissionError, BlockingIOError) as e:
                     sleep(1 + np.random.rand())
                     find_file_count += 1
-                    nesiprint(f"Attempt {find_file_count} to find {args.site_file}")
+                    nesiprint(f"Attempt {find_file_count} to find {meta_h5_file}")
 
-            nesiprint(f"{extension1} complete in : {time() - begin:.2f} seconds\n")
+            nesiprint(f"\n{extension1} complete in : {time() - begin:.2f} seconds\n")
 
         print(f"All sites complete in {time() - start:.2f} seconds (Average {(time() - start) / len(task_sites):.2f} seconds per site)")
 

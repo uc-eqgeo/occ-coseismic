@@ -1,24 +1,20 @@
 import os
-try:
-    import geopandas as gpd
-    from shapely.geometry import Point
-except:
-    os.system(f"echo Running on NESI. Some functions wont work....")
-finally:
-    import pandas as pd
-    import h5py as h5
-    from functools import reduce
-    import numpy as np
-    from numpy.lib.function_base import _check_interpolation_as_method, _quantile_is_valid, _QuantileMethods, \
-                                        _get_indexes, _get_gamma, _lerp
-    from numpy.core.numeric import normalize_axis_tuple
-    from numpy import minimum, take, concatenate
-    import pickle as pkl
-    from scipy.interpolate import griddata
-    import matplotlib.pyplot as plt
-    import h5py as h5
-    from scipy.sparse import csr_matrix
-    from glob import glob
+from shapely.geometry import Point
+import pandas as pd
+import geopandas as gpd
+import h5py as h5
+from functools import reduce
+import numpy as np
+from numpy.lib.function_base import _check_interpolation_as_method, _quantile_is_valid, _QuantileMethods, \
+                                    _get_indexes, _get_gamma, _lerp
+from numpy.core.numeric import normalize_axis_tuple
+from numpy import minimum, take, concatenate
+import pickle as pkl
+from scipy.interpolate import griddata
+import matplotlib.pyplot as plt
+import h5py as h5
+from scipy.sparse import csr_matrix
+from glob import glob
 
 def dict_to_hdf5(hdf5_group, dictionary, compression=None, compression_opts=None, replace_groups=False):
     for key, value in dictionary.items():
@@ -58,26 +54,137 @@ def get_probability_color(exceed_type):
 
     return color
 
-def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, time_interval, branch_weight):
+def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, time_intervals, branch_weight):
     """Function that will check that sites have been processed with the required amount of samples, and removes sites that have
-    beed deleted manually"""
-
-    if isinstance(time_interval, list):
-        time_interval = time_interval[0]
+    been deleted manually"""
 
     all_existing_sites = {os.path.basename(site_file)[:-3] for site_file in glob(f"{site_dir}/*h5")} # All sites that have a file associated with it
     existing_sites = all_existing_sites & inv_sites  # Sites for this run that have a file associated with it
 
-    n_inv, n_existing= len(inv_sites), len(existing_sites)
+    n_inv, n_existing = len(inv_sites), len(existing_sites)
     width = len(str(n_inv))
 
-    well_processed_sites, logged_sites, n_good = set(), set(), 0
+    well_processed_sites = {time_interval: set() for time_interval in time_intervals}
+    all_coords = []
 
     if not os.path.exists(fault_branch_meta_h5):
         with h5.File(fault_branch_meta_h5, "w") as branch_meta_PPEh5:
             branch_meta_PPEh5.create_dataset('site_coords', data=[])
             branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
-            branch_meta_PPEh5.create_group(time_interval)
+            for time_interval in time_intervals:
+                branch_meta_PPEh5.create_group(time_interval)
+    else:
+        with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
+            if 'branch_weight' not in branch_meta_PPEh5:
+                branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
+
+    if n_existing == 0:
+        print(f'\t\t0/{n_inv} sites previously processed...')
+        return well_processed_sites
+
+    for time_interval in time_intervals:
+        logged_sites, zero_sites, n_good = set(), set(), 0
+        with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
+            print(f'\t\t{0:0{width}d}/{n_inv} sites previously processed, {0:0{width}d} sampled enough for {time_interval} years...', end='\r')
+            if time_interval not in branch_meta_PPEh5:
+                branch_meta_PPEh5.create_group(time_interval)
+            processed_samples = [int(key) for key in branch_meta_PPEh5[time_interval].keys()]
+            processed_samples.sort()
+            for sample in processed_samples[::-1]:
+                relog_sample = False
+                # First stage removes any log of sites from the meta file that may have been manually deleted from site dir
+                # Always runs, regardless of any existing sites
+                sites_processed = {site.decode() for site in branch_meta_PPEh5[time_interval][str(sample)][:]}
+                removed_sites = sites_processed - all_existing_sites
+                if len(removed_sites) > 0:
+                    # Remove sites from log that have been deleted previously
+                    sites_processed -= removed_sites
+                    relog_sample = True
+                if len(sites_processed & logged_sites) > 0:
+                    # Ensure that site appears in the highest bracket that it has been processed in
+                    sites_processed -= logged_sites
+                    relog_sample = True
+                if relog_sample:
+                    del branch_meta_PPEh5[time_interval][str(sample)]
+                    if len(sites_processed) > 0:
+                        branch_meta_PPEh5[time_interval].create_dataset(str(sample), data=list(sites_processed))
+                logged_sites |= sites_processed
+                if sample == 0:
+                    zero_sites |= sites_processed
+
+                if n_existing > 0:
+                    # Second stage to check if any requested existing sites have been processed enough
+                    if sample >= n_samples:
+                        # Site that already exists and has been logged as processed enough
+                        well_processed_sites[time_interval] |= existing_sites & sites_processed
+                    n_good = len(well_processed_sites[time_interval])
+                    print(f'\t\t{len(existing_sites & (logged_sites - zero_sites)):0{width}d}/{n_inv} sites previously processed, {n_good:0{width}d} sampled enough for {time_interval} years...', end='\r')
+            if 'site_coords' not in branch_meta_PPEh5:
+                coords = []
+                for site in logged_sites:
+                    with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
+                        coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
+                branch_meta_PPEh5.create_dataset('site_coords', data=coords)
+
+            # Identify sites that exist, but for some reason aren't in meta file (e.g. meta was deleted) so need be be checked individually
+            individual_check = existing_sites - well_processed_sites[time_interval] - logged_sites
+            
+            if len(individual_check) > 0:
+                # Checks for sites that exist but there are no log for
+                print_every = max(1, max(1, n_existing) // 100)  # throttle progress output to ~100 updates
+                required_keys = frozenset(['n_samples', 'thresh_para'])
+                check_dict = {}
+                coords = []
+                for ixs, site in enumerate(individual_check, n_good + 1):
+                    try:
+                        with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
+                            site_intervals = site_h5.keys()
+                            coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
+                            if all([time_interval in site_intervals 
+                                    and required_keys <= (interval_h5 := site_h5[time_interval]).keys() 
+                                    and interval_h5['n_samples'][()] >= n_samples]):
+                                well_processed_sites[time_interval].add(site)
+                                n_good += 1
+                                check_dict[str(interval_h5['n_samples'][()])] = check_dict.get(str(interval_h5['n_samples'][()]), []) + [site]
+                            else:
+                                check_dict['0'] = check_dict.get('0', []) + [site]
+                        if ixs % print_every == 0 or ixs == n_existing:
+                            print(f'\t\t{n_existing}/{n_inv} sites previously processed, {n_good:0{width}d}/{ixs:0{width}d} sampled enough for {time_interval} years...', end='\r')
+                    except OSError:
+                        os.remove(f"{site_dir}/{site}.h5")
+                        check_dict['0'] = check_dict.get('0', []) + [site]
+                # Add checked files to metadata file, ensuring that they are placed into the top processing bracket
+                with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
+                    for k, v in check_dict.items():
+                        if k in branch_meta_PPEh5[time_interval]:
+                            v += [site.decode() for site in branch_meta_PPEh5[time_interval][k][:]]
+                            del branch_meta_PPEh5[time_interval][k]
+                        branch_meta_PPEh5[time_interval].create_dataset(k, data=v)
+                    if 'site_coords' in branch_meta_PPEh5.keys():
+                        all_coords = [[site.decode(), lon.decode(), lat.decode()] for site, lon, lat in branch_meta_PPEh5['site_coords'][:]]
+                        del branch_meta_PPEh5['site_coords']
+                    all_coords += coords
+        print('')
+        if len(all_coords) > 0:
+            with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
+                branch_meta_PPEh5.create_dataset('site_coords', data=[list(c) for c in set(tuple(c) for c in all_coords)])  # Removes duplicate entries
+
+    return well_processed_sites
+
+def remove_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, time_intervals, branch_weight):
+    """If option to reprocess all sites is selected, start by deleting the any prcessed time intervals"""
+
+    all_existing_sites = {os.path.basename(site_file)[:-3] for site_file in glob(f"{site_dir}/*h5")} # All sites that have a file associated with it
+    existing_sites = all_existing_sites & inv_sites  # Sites for this run that have a file associated with it
+
+    n_inv, n_existing= len(inv_sites), len(existing_sites)
+
+    if not os.path.exists(fault_branch_meta_h5):
+        with h5.File(fault_branch_meta_h5, "w") as branch_meta_PPEh5:
+            branch_meta_PPEh5.create_dataset('site_coords', data=[])
+            branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
+            for time_interval in time_intervals:
+                branch_meta_PPEh5.create_group(time_interval)
     else:
         with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
             if 'branch_weight' not in branch_meta_PPEh5:
@@ -85,91 +192,225 @@ def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, 
 
     if n_existing == 0:
         print(f'\t\t0/{n_inv} sites previously processed to {time_interval} years...')
-        return well_processed_sites
+        return
 
+    for ix, site in enumerate(existing_sites, 1):
+        print(f'\t\tRemoving time intervals from {ix}/{len(existing_sites)} sites...', end='\r')
+        remove_site = False
+        with h5.File(f"{site_dir}/{site}.h5", 'a') as siteh5:
+            processed_intervals = siteh5.keys()
+            remove_intervals = set(processed_intervals) & set(time_intervals)
+            if len(remove_intervals) == len(time_intervals):
+                # Going to reprocess everything from scratch. Delete h5 to reduce disc space
+                remove_site = True
+            else:
+                for time_interval in remove_intervals:
+                    if time_interval in processed_intervals:
+                        del siteh5[time_interval]
+        if remove_site:
+            os.remove(f"{site_dir}/{site}.h5")
+
+    print(f'\n\t\tRemoving sites from meta file...')
     with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
-        print(f'\t\t{0:0{width}d}/{n_inv} sites previously processed to {time_interval} years, {0:0{width}d} sampled enough...', end='\r')
-        if time_interval not in branch_meta_PPEh5:
-            branch_meta_PPEh5.create_group(time_interval)
-        processed_samples = [int(key) for key in branch_meta_PPEh5[time_interval].keys()]
-        processed_samples.sort()
-        for sample in processed_samples[::-1]:
-            relog_sample = False
-            # First stage removes any log of sites from the meta file that may have been manually deleted from site dir
-            # Always runs, regardless of any existing sites
-            sites_processed = {site.decode() for site in branch_meta_PPEh5[time_interval][str(sample)][:]}
-            removed_sites = sites_processed - all_existing_sites
-            if len(removed_sites) > 0:
-                # Remove sites from log that have been deleted previously
-                sites_processed -= removed_sites
-                relog_sample = True
-            if len(sites_processed & logged_sites) > 0:
-                # Ensure that site appears in the highest bracket that it has been processed in
-                sites_processed -= logged_sites
-                relog_sample = True
-            if relog_sample:
-                del branch_meta_PPEh5[time_interval][str(sample)]
-                if len(sites_processed) > 0:
-                    branch_meta_PPEh5[time_interval].create_dataset(str(sample), data=list(sites_processed))
-            logged_sites |= sites_processed
-
-            if n_existing > 0:
-                # Second stage to check if any requested existing sites have been processed enough
-                if sample >= n_samples:
-                    # Site that already exists and has been logged as processed enough
-                    well_processed_sites |= existing_sites & sites_processed
-                n_good = len(well_processed_sites)
-                print(f'\t\t{len(existing_sites & logged_sites):0{width}d}/{n_inv} sites previously processed to {time_interval} years, {n_good:0{width}d} sampled enough...', end='\r')
-        if 'site_coords' not in branch_meta_PPEh5:
-            coords = []
-            for site in logged_sites:
-                with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
-                    coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
-            branch_meta_PPEh5.create_dataset('site_coords', data=coords)
-
-        # Identify sites that exist, but for some reason aren't in meta file (e.g. meta was deleted) so need be be checked individually
-        individual_check = existing_sites - well_processed_sites
-        
-        if len(individual_check) > 0:
-            # Checks for sites that exist but there are no log for
-            print_every = max(1, max(1, n_existing) // 100)  # throttle progress output to ~100 updates
-            required_keys = frozenset(['n_samples', 'thresh_para'])
-            check_dict = {}
-            coords = []
-            for ixs, site in enumerate(individual_check, n_good + 1):
-                try:
-                    with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
-                        site_intervals = site_h5.keys()
-                        coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
-                        if all([time_interval in site_intervals 
-                                and required_keys <= (interval_h5 := site_h5[time_interval]).keys() 
-                                and interval_h5['n_samples'][()] >= n_samples]):
-                            well_processed_sites.add(site)
-                            n_good += 1
-                            check_dict[str(interval_h5['n_samples'][()])] = check_dict.get(str(interval_h5['n_samples'][()]), []) + [site]
-                    if ixs % print_every == 0 or ixs == n_existing:
-                        print(f'\t\t{n_existing}/{n_inv} sites previously processed to {time_interval} years, {n_good:0{width}d}/{ixs:0{width}d} sampled enough...', end='\r')
-                except OSError:
-                    os.remove(f"{site_dir}/{site}.h5")
-            # Add checked files to metadata file, ensuring that they are placed into the top processing bracket
-            with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
-                for k, v in check_dict.items():
-                    if k in branch_meta_PPEh5[time_interval]:
-                        v += [site.decode() for site in branch_meta_PPEh5[k][:]]
-                        del branch_meta_PPEh5[time_interval][k]
-                    branch_meta_PPEh5[time_interval].create_dataset(k, data=v)
-                if 'site_coords' in branch_meta_PPEh5.keys():
-                    all_coords = [[site.decode(), lon.decode(), lat.decode()] for site, lon, lat in branch_meta_PPEh5['site_coords'][:]]
-                    del branch_meta_PPEh5['site_coords']
-                else:
-                    all_coords = []
-                all_coords += coords
-                branch_meta_PPEh5.create_dataset('site_coords', data=[list(c) for c in set(tuple(c) for c in all_coords)])  # Removes duplicate entries
+        for time_interval in time_intervals:
+            if time_interval not in branch_meta_PPEh5:
+                branch_meta_PPEh5.create_group(time_interval)
+            else:
+                processed_samples = [int(key) for key in branch_meta_PPEh5[time_interval].keys()]
+                processed_samples.sort()
+                for sample in processed_samples[::-1]:
+                    sites_processed = {site.decode() for site in branch_meta_PPEh5[time_interval][str(sample)][:]}
+                    sites_processed_old = sites_processed - existing_sites
+                    if len(sites_processed) != len(sites_processed_old):
+                        del branch_meta_PPEh5[time_interval][str(sample)]
+                        branch_meta_PPEh5[time_interval].create_dataset(str(sample), data=list(sites_processed_old))
     print('')
 
-    # well_processed_sites = set.union(*well_processed_sites.values())  # Output now is if a site is missing one time interval, reprocess for all time intervals
+    return
+
+def check_meta_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, n_samples, time_intervals, branch_weight, calculate_SED=False):
+    """Function that will check that sites have been processed with the required amount of samples, and removes sites that have
+    been deleted manually"""
+
+    if calculate_SED:
+        time_intervals = [interval + "_SED" for interval in time_intervals]
+
+    all_existing_sites = {os.path.basename(site_file)[:-3] for site_file in glob(f"{site_dir}/*h5")} # All sites that have a file associated with it
+    existing_sites = all_existing_sites & inv_sites  # Sites for this run that have a file associated with it
+
+    n_inv, n_existing = len(inv_sites), len(existing_sites)
+    width = len(str(n_inv))
+
+    well_processed_sites = {time_interval: set() for time_interval in time_intervals}
+    all_coords = []
+
+    if not os.path.exists(fault_branch_meta_h5):
+        with h5.File(fault_branch_meta_h5, "w") as branch_meta_PPEh5:
+            branch_meta_PPEh5.create_dataset('site_coords', data=[])
+            branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
+            for time_interval in time_intervals:
+                branch_meta_PPEh5.create_group(time_interval)
+    else:
+        with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
+            if 'branch_weight' not in branch_meta_PPEh5:
+                branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
+
+    if n_existing == 0:
+        print(f'\t\t0/{n_inv} sites previously processed...')
+        return well_processed_sites
+
+    for time_interval in time_intervals:
+        logged_sites, zero_sites, n_good = set(), set(), 0
+        with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
+            print(f'\t\t{0:0{width}d}/{n_inv} sites previously processed for {time_interval} years...', end='\r')
+            if time_interval not in branch_meta_PPEh5:
+                branch_meta_PPEh5.create_group(time_interval)
+            processed_samples = [int(key) for key in branch_meta_PPEh5[time_interval].keys()]
+            processed_samples.sort()
+            for sample in processed_samples[::-1]:
+                relog_sample = False
+                # First stage removes any log of sites from the meta file that may have been manually deleted from site dir
+                # Always runs, regardless of any existing sites
+                sites_processed = {site.decode() for site in branch_meta_PPEh5[time_interval][str(sample)][:]}
+                removed_sites = sites_processed - all_existing_sites
+                if len(removed_sites) > 0:
+                    # Remove sites from log that have been deleted previously
+                    sites_processed -= removed_sites
+                    relog_sample = True
+                if len(sites_processed & logged_sites) > 0:
+                    # Ensure that site appears in the highest bracket that it has been processed in
+                    sites_processed -= logged_sites
+                    relog_sample = True
+                if relog_sample:
+                    del branch_meta_PPEh5[time_interval][str(sample)]
+                    if len(sites_processed) > 0:
+                        branch_meta_PPEh5[time_interval].create_dataset(str(sample), data=list(sites_processed))
+                logged_sites |= sites_processed
+                if sample == 0:
+                    zero_sites |= sites_processed
+
+                if n_existing > 0:
+                    # Second stage to check if any requested existing sites have been processed enough
+                    if sample >= n_samples:
+                        # Site that already exists and has been logged as processed enough
+                        well_processed_sites[time_interval] |= existing_sites & sites_processed
+                    n_good = len(well_processed_sites[time_interval])
+                    print(f'\t\t{len(existing_sites & (logged_sites - zero_sites)):0{width}d}/{n_inv} sites previously processed for {time_interval} years, {n_good:0{width}d} sampled enough...', end='\r')
+            if 'site_coords' not in branch_meta_PPEh5:
+                coords = []
+                for site in logged_sites:
+                    with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
+                        coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
+                branch_meta_PPEh5.create_dataset('site_coords', data=coords)
+
+            # Identify sites that exist, but for some reason aren't in meta file (e.g. meta was deleted) so need be be checked individually
+            individual_check = existing_sites - well_processed_sites[time_interval] - logged_sites
+            # individual_check = {}
+            if len(individual_check) > 0:
+                # Checks for sites that exist but there are no log for
+                print_every = max(1, max(1, n_existing) // 100)  # throttle progress output to ~100 updates
+                required_keys = frozenset(['n_samples', 'thresh_para'])
+                check_dict = {}
+                coords = []
+                for ixs, site in enumerate(individual_check, n_good + 1):
+                    try:
+                        with h5.File(f"{site_dir}/{site}.h5", 'r') as site_h5:
+                            site_intervals = site_h5.keys()
+                            coords.append([site, str(site_h5['site_coords'][0]), str(site_h5['site_coords'][1])])
+                            if all([time_interval.strip("_SED") in site_intervals 
+                                    and required_keys <= (interval_h5 := site_h5[time_interval.strip("_SED")]).keys() 
+                                    and interval_h5['n_samples'][()] >= n_samples]):
+                                if not calculate_SED or (calculate_SED and 'SED_PPE' in site_h5[time_interval.strip("_SED")].keys()):
+                                    well_processed_sites[time_interval].add(site)
+                                    n_good += 1
+                                    check_dict[f"{interval_h5['n_samples'][()]}"] = check_dict.get(f"{interval_h5['n_samples'][()]}", []) + [site]
+                                else:
+                                    check_dict["0"] = check_dict.get("0", []) + [site]
+                            else:
+                                check_dict["0"] = check_dict.get("0", []) + [site]
+                        if ixs % print_every == 0 or ixs == n_existing:
+                            print(f'\t\t{n_existing}/{n_inv} sites previously processed for {time_interval} years, {n_good:0{width}d}/{ixs:0{width}d} sampled enough...', end='\r')
+                    except (OSError, KeyError) as e:
+                        os.remove(f"{site_dir}/{site}.h5")
+                        check_dict["0"] = check_dict.get("0", []) + [site]
+                # Add checked files to metadata file, ensuring that they are placed into the top processing bracket
+                with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
+                    for k, v in check_dict.items():
+                        if k in branch_meta_PPEh5[time_interval]:
+                            v += [site.decode() for site in branch_meta_PPEh5[time_interval][k][:]]
+                            del branch_meta_PPEh5[time_interval][k]
+                        branch_meta_PPEh5[time_interval].create_dataset(k, data=v)
+                    if 'site_coords' in branch_meta_PPEh5.keys():
+                        all_coords = [[site.decode(), lon.decode(), lat.decode()] for site, lon, lat in branch_meta_PPEh5['site_coords'][:]]
+                        del branch_meta_PPEh5['site_coords']
+                    all_coords += coords
+        print('')
+        if len(all_coords) > 0:
+            with h5.File(fault_branch_meta_h5, "a") as branch_meta_PPEh5:
+                if 'site_coords' in branch_meta_PPEh5:
+                    del branch_meta_PPEh5['site_coords']
+                branch_meta_PPEh5.create_dataset('site_coords', data=[list(c) for c in set(tuple(c) for c in all_coords)])  # Removes duplicate entries
 
     return well_processed_sites
+
+
+def remove_h5_samples(fault_branch_meta_h5, site_dir, inv_sites, time_intervals, branch_weight):
+    """If option to reprocess all sites is selected, start by deleting the any prcessed time intervals"""
+
+    all_existing_sites = {os.path.basename(site_file)[:-3] for site_file in glob(f"{site_dir}/*h5")} # All sites that have a file associated with it
+    existing_sites = all_existing_sites & inv_sites  # Sites for this run that have a file associated with it
+
+    n_inv, n_existing= len(inv_sites), len(existing_sites)
+
+    if not os.path.exists(fault_branch_meta_h5):
+        with h5.File(fault_branch_meta_h5, "w") as branch_meta_PPEh5:
+            branch_meta_PPEh5.create_dataset('site_coords', data=[])
+            branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
+            for time_interval in time_intervals:
+                branch_meta_PPEh5.create_group(time_interval)
+    else:
+        with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
+            if 'branch_weight' not in branch_meta_PPEh5:
+                branch_meta_PPEh5.create_dataset('branch_weight', data=branch_weight)
+
+    if n_existing == 0:
+        print(f'\t\t0/{n_inv} sites previously processed...')
+        return
+
+    for ix, site in enumerate(existing_sites, 1):
+        print(f'\t\tRemoving time intervals from {ix}/{len(existing_sites)} sites...', end='\r')
+        remove_site = False
+        with h5.File(f"{site_dir}/{site}.h5", 'a') as siteh5:
+            processed_intervals = siteh5.keys()
+            remove_intervals = set(processed_intervals) & set(time_intervals)
+            if len(remove_intervals) == len(time_intervals):
+                # Going to reprocess everything from scratch. Delete h5 to reduce disc space
+                remove_site = True
+            else:
+                for time_interval in remove_intervals:
+                    del siteh5[time_interval]
+        if remove_site:
+            os.remove(f"{site_dir}/{site}.h5")
+
+    print(f'\n\t\tRemoving sites from meta file...')
+    with h5.File(fault_branch_meta_h5, "r+") as branch_meta_PPEh5:
+        for time_interval in sum([[interval, interval + "_SED"] for interval in time_intervals], []):
+            if time_interval not in branch_meta_PPEh5:
+                if not time_interval.endswith("_SED"):
+                    branch_meta_PPEh5.create_group(time_interval)
+            else:
+                processed_samples = [int(key) for key in branch_meta_PPEh5[time_interval].keys()]
+                processed_samples.sort()
+                for sample in processed_samples[::-1]:
+                    sites_processed = {site.decode() for site in branch_meta_PPEh5[time_interval][str(sample)][:]}
+                    sites_processed_old = sites_processed - existing_sites
+                    if len(sites_processed) != len(sites_processed_old):
+                        del branch_meta_PPEh5[time_interval][str(sample)]
+                        branch_meta_PPEh5[time_interval].create_dataset(str(sample), data=list(sites_processed_old))
+    print('')
+
+    return
+
 
 def make_qualitative_colormap(name, length):
     from collections import namedtuple
@@ -378,6 +619,7 @@ def tol_cset(colorset=None):
         return cset('#77AADD', '#EE8866', '#EEDD88', '#FFAABB', '#99DDFF',
                     '#44BB99', '#BBCC33', '#AAAA00', '#DDDDDD', '#000000')
 
+
 def filter_ruptures_by_rate(directory):
     """returns rupture indices that have annual rate >0"""
 
@@ -439,7 +681,6 @@ def filter_ruptures_by_location(NSHM_directory, target_rupture_ids, fault_type, 
     return filtered_scenarios
 
 
-
 def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectangle_outlines_gdf, rupture_id,
                              ruptured_fault_ids, slip_taper, rupture_slip_dict, gf_total_slip_array, rupture_order, fakequakes=False):
     """ calculates displacements for given rupture scenario at a single site
@@ -450,6 +691,7 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
     values are tapered according to total rupture length of all rectangles.
     - this version changes all very small displacements to zero, or if no meshes are used, returns zero displacement
     """
+    MIN_DISP = 5e-3  # Minimum vertical displacement at a site from a rupture to store (default: 0.5 cm)
 
     # find which patches have a mesh and which don't, to use greens functions later just with meshed patches
     ruptured_fault_ids_with_mesh, _, mesh_indices = np.intersect1d(ruptured_fault_ids, rupture_order, assume_unique=True, return_indices=True)
@@ -470,7 +712,7 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
 
         # storing zeros is more efficient than nearly zeros. Makes v small displacements = 0
         if len(ruptured_fault_ids_with_mesh) != 0:
-            disps_scenario[np.abs(disps_scenario) < 5.e-3] = 0.
+            disps_scenario[np.abs(disps_scenario) < MIN_DISP] = 0.
         elif len(ruptured_fault_ids_with_mesh) == 0:
             disps_scenario = None
 
@@ -540,7 +782,7 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
         #sum displacements from each patch
         disps_scenario = np.sum(disps_i_list, axis=0).reshape(-1)
         if len(ruptured_fault_ids_with_mesh) != 0:
-            disps_scenario[np.abs(disps_scenario) < 5.e-3] = 0.
+            disps_scenario[np.abs(disps_scenario) < MIN_DISP] = 0.
         elif len(ruptured_fault_ids_with_mesh) == 0:
             disps_scenario = None
 
@@ -552,9 +794,10 @@ def calculate_vertical_disps(ruptured_discretised_polygons_gdf, ruptured_rectang
 
     return disps_scenario, polygon_slips
 
+
 def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf_name,
-                          results_version_directory, disc_version_directory, crustal_directory="crustal_files", sz_directory="subduction_files",
-                          location=[1749150, 5428092], search_radius=2.5e5, fakequakes=False):
+                          disc_version, crustal_directory="crustal_files", sz_directory="subduction_files",
+                          location=[1749150, 5428092], search_radius=2.5e5, fakequakes=False, dip_models=False):
     """
     inputs: uses extension naming scheme to load NSHM rate/slip data and fault geometry, state slip taper
 
@@ -573,7 +816,6 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     # load saved data
     print(f"\nloading data for {extension1}")
     procdir = os.path.relpath(os.path.dirname(__file__)) + '/..'
-    disc_version = disc_version_directory.split('/')[-1]
 
     if fakequakes:
         rupture_slip_dict, rates_df, all_ruptures = read_fakequakes_slip_rates(NSHM_directory)
@@ -610,9 +852,19 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
     # calculations), the site name list is just a list of numbers
     gf_total_slip_array, site_name_list, site_coords, key_order = make_total_slip_dictionary(gf_dict_pkl)
 
+    extension3 = "_tapered" if slip_taper else ''
+    if dip_models:
+        disc_version = "_".join(disc_version.split("_")[:-1])   # Removes trailing _pref, _min, _max
+    branch_results_dir = f"{procdir}/results/{disc_version}/{extension1}"
+    os.makedirs(branch_results_dir, exist_ok=True)
+    all_rupture_h5_file = f"{branch_results_dir}/all_rupture_disps_{extension1}{extension3}.h5"
+    with h5.File(all_rupture_h5_file, "w") as all_rupture_h5:
+        all_rupture_h5.create_dataset("site_name_list", data=site_name_list)
+        all_rupture_h5.create_dataset("site_coords", data=site_coords)
+
     # calculate displacements at all the sites by rupture. Output dictionary keys are by rupture ID.
     disp_dictionary = {}
-    for ix, rupture_id in enumerate(filtered_ruptures_location):
+    for ix, rupture_id in enumerate(filtered_ruptures_location, 1):
         print(f"calculating displacements for {extension1} ({ix}/{len(filtered_ruptures_location)})", end="\r")
         ruptured_fault_ids = all_ruptures[rupture_id]
         ruptured_discretised_polygons_gdf = discretised_polygons_gdf[
@@ -636,36 +888,23 @@ def get_rupture_disp_dict(NSHM_directory, fault_type, extension1, slip_taper, gf
             # displacement dictionary for a single rupture scenario at all sites. Key is rupture id.
             disps_scenario = [(ix, disp) for ix, disp in enumerate(disps_scenario) if disp != 0]
             rupture_disp_dict = {"rupture_id": rupture_id, "v_disps_m": disps_scenario, "annual_rate": annual_rate,
-                                 "site_name_list": site_name_list, "site_coords": site_coords,
                                  "polygon_slips_m": patch_slips}
         else:
             rupture_disp_dict = {"rupture_id": rupture_id, "v_disps_m": np.array([]), "annual_rate": annual_rate,
-                        "site_name_list": site_name_list, "site_coords": np.array([]),
-                        "polygon_slips_m": patch_slips}
+                                 "polygon_slips_m": patch_slips}
         disp_dictionary[rupture_id] = rupture_disp_dict
 
+        if ix % 100 == 0 or ix == len(filtered_ruptures_location):
+            # save displacements
+            with h5.File(all_rupture_h5_file, "a") as all_rupture_h5:
+                dict_to_hdf5(all_rupture_h5, disp_dictionary)
+            disp_dictionary = {}
+
     # print statement about how many scenarios have displacement > 0 at each site
-    print(f"\nscenarios with displacement > 0: {len(disp_dictionary)}")
+    print(f"\nscenarios with displacement > 0: {len(filtered_ruptures_location)}")
 
-    if slip_taper is True:
-        extension3 = "_tapered"
-    else:
-        extension3 = ""
+    return
 
-    # save displacements
-    os.makedirs(f"{procdir}/results/{disc_version}/{extension1}", exist_ok=True)
-
-    with open(f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}.pkl",
-              "wb") as f:
-        pkl.dump(disp_dictionary, f)
-    
-    # Save the site names to a seperate pickle file, as it is quicker to load and check on later runs
-    site_name_dict = {'site_name_list': site_name_list}
-    with open(f"{procdir}/results/{disc_version}/{extension1}/all_rupture_disps_{extension1}{extension3}_sites.pkl",
-              "wb") as f:
-        pkl.dump(site_name_dict, f)
-
-    return disp_dictionary
 
 def get_figure_bounds(polygon_gdf="", extent=""):
     """sets figure bounds based on key words
@@ -711,6 +950,7 @@ def get_figure_bounds(polygon_gdf="", extent=""):
         ymin_tick, ymax_tick = round(plot_ymin, -5) - 100000, round(plot_ymax, -5) + 100000
         tick_separation = 400000.
     return plot_xmin, plot_ymin, plot_xmax, plot_ymax, xmin_tick, xmax_tick, ymin_tick, ymax_tick, tick_separation
+
 
 def save_target_rates(NSHM_directory, target_rupture_ids, extension1, results_version_directory):
     """get the annual rates from NSHM solution for target ruptures, output a csv file
@@ -764,8 +1004,9 @@ def maximum_displacement_plot(site_ids, branch_site_disp_dict, model_dir, branch
         fig.savefig(f"../{model_dir}/{branch_name}/{branch_name}_max_disp.png", dpi=300)
     plt.close(fig)
 
+
 def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodetic', time_independent=True,
-                         time_dependent=True, single_branch=False, fakequakes=False):
+                         time_dependent=True, single_branch=False, fakequakes=False, dip_models=False):
     # Set up which branches you want to calculate displacements and probabilities for
     # File suffixes and NSHM directories for each branch MUST be in the same order or you'll cause problems
     file_suffix_list = []
@@ -773,7 +1014,27 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
     n_branches = []
     for fault_type in fault_type_list:
         fault_branches = 0
-        if fault_type == "crustal":
+        if fault_type == 'crustal' and dip_models:
+            # Code = _c[rustal]_[Low/Mid/Highbn][geolOgic/geodEtic(?)][timeIndependent/timeDependent][Low/Preferred/Highdip]
+            file_suffix_list_i = ["_c_LOIP", "_c_MOIP", "_c_HOIP", "_c_LOIL", "_c_MOIL", "_c_HOIL", "_c_LOIH", "_c_MOIH", "_c_HOIH"]
+            NSHM_directory_list_i = ["crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwMw==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwNg==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwOQ==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwMg==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwNQ==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwOA==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwMQ==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwNA==",
+                                    "crustal_solutions/NZSHM22_InversionSolution-QXV0b21hdGlvblRhc2s6NjkzMjUwNw=="
+                                    ]
+            fault_branches += len(file_suffix_list_i)
+            file_suffix_list.extend(file_suffix_list_i)
+            NSHM_directory_list.extend(NSHM_directory_list_i)
+            if single_branch:
+                branch_index = [file_suffix_list.index(branch) for branch in single_branch]
+                file_suffix_list = [file_suffix_list[index] for index in branch_index]
+                NSHM_directory_list = [NSHM_directory_list[index] for index in branch_index]
+        elif fault_type == "crustal":
             if time_independent:
                 if "geologic" in deformation_model:
                     file_suffix_list_i = ["_c_MDA2", "_c_MDEz", "_c_MDE1"]
@@ -982,6 +1243,7 @@ def get_NSHM_directories(fault_type_list, deformation_model='geologic and geodet
 
     return NSHM_directory_list, file_suffix_list, n_branches
 
+
 def write_sites_to_geojson(h5_file, intervals=['100']):
     """
     This function will read in the h5 file, and write a geojson file of all the sites that have been processed
@@ -1061,6 +1323,7 @@ def percentile(a,
         a, func=_quantile_ureduce_func, q=q, weights=weights, keepdims=keepdims, axis=axis,
         out=out, overwrite_input=overwrite_input, method=method)
 
+
 def _weights_are_valid(weights, a, axis):
     """Validate weights array.
     
@@ -1084,6 +1347,7 @@ def _weights_are_valid(weights, a, axis):
         wgt = wgt.reshape(tuple((s if ax in axis else 1)
                                 for ax, s in enumerate(a.shape)))
     return wgt
+
 
 def _ureduce(a, func, keepdims=False, **kwargs):
     """
@@ -1161,6 +1425,7 @@ def _ureduce(a, func, keepdims=False, **kwargs):
 
     return r
 
+
 def _quantile_ureduce_func(
         a: np.array,
         q: np.array,
@@ -1198,6 +1463,7 @@ def _quantile_ureduce_func(
                        out=out,
                        weights=wgt)
     return result
+
 
 def _quantile(
         arr: np.array,
