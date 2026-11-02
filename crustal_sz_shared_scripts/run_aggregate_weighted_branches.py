@@ -6,10 +6,7 @@ from probabalistic_displacement_scripts import plot_weighted_mean_haz_curves, pl
     save_disp_prob_xarrays, build_branch_PPE_file
 from helper_scripts import get_NSHM_directories, get_rupture_disp_dict
 import pickle as pkl
-try:
-    import geopandas as gpd
-except ImportError:
-    print("Running on NESI. Site geojsons won't be output....")
+import geopandas as gpd
 
 os.chdir(os.path.dirname(__file__))
 #### USER INPUTS #####
@@ -21,8 +18,8 @@ sz_site_names = ["_10km_coastS", "_10km_coastN"]       # Name of the sites geojs
 sz_list_order = ["py", "sz"]         # Order of the subduction zones
 sz_names = ["puysegur", "hikkerm_7500"]   # Name of the subduction zone - HIKKERK FOR SENSITIVITY TESTING, HIKKERM FOR FINAL (?)
 outfile_extension = ""               # Optional; something to tack on to the end so you don't overwrite files
-nesi = False   # Prepares code for NESI runs
-testing = True   # Impacts number of samples runs, job time etc
+nesi = True   # Prepares code for NESI runs
+testing = False   # Impacts number of samples runs, job time etc
 fakequakes = True  # Use fakequakes for the subduction zone (applied only to hikkerm)
 
 # Processing Flags (True/False)
@@ -42,24 +39,24 @@ single_branch = ["_c_LOIP", "_c_MOIP", "_c_HOIP", "_c_LOIL", "_c_MOIL", "_c_HOIL
 # single_branch = ["_c_NjI3"]
 # single_branch = ["_py_M5NQ"]
 # single_branch = ["_sz_fq_alhb110"]
-# single_branch = None
-rate_scaling = False          # Do you want to calculate PPEs for a single branch with different rate scalings?
+single_branch = None
+rate_scaling = True          # Do you want to calculate PPEs for a single branch with different rate scalings?
 paired_crustal_sz = False     # Do you want to calculate the PPEs for a single fault model or a paired crustal/subduction model?
 calculate_SED = False         # Do you want to calculate the PPEs for single event displacement in addition to cumulatively?
-dip_models = True             # Include variable crustal dip models?
+dip_models = False             # Include variable crustal dip models?
 load_random = True             # Do you want to uses the same grid for scenarios for each site, or regenerate a new grid for each site?
-calculate_fault_model_PPE = False   # Do you want to calculate PPEs for each branch?
+calculate_fault_model_PPE = True   # Do you want to calculate PPEs for each branch?
 remake_PPE = False           # Recalculate branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
 calculate_weighted_mean_PPE = False   # Do you want to weighted mean calculate PPEs?
 remake_weighted_PPE = False    # Recalculate weighted branch PPEs from scratch, rather than search for pre-existing files (useful if have to stop processing...)
-save_arrays = True         # Do you want to save the displacement and probability arrays?
+save_arrays = False         # Do you want to save the displacement and probability arrays?
 interp_sites = '../sites/national_1kmS.geojson'  # csv file with the sites to interpolate the displacements to for xarray output. None for default (i.e. use the sites in the PPE dictionary)
 interp_sites = None
 default_plot_order = True       # Do you want to plot haz curves for all sites, or use your own selection of sites to plot? 
 make_hazcurves = False     # Do you want to make hazard curves?
 plot_order_csv = "../sites/gf_test_sites.csv"  # csv file with the order you want the branches to be plotted in (must contain sites in order under column siteId). Does not need to contain all sites
 use_saved_dictionary = True   # Use a saved dictionary if it exists
-branch_weight_csv = "branch_weight_data_sensitivity"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
+branch_weight_csv = "branch_weight_data_v0-1"  # If you want to use a specific branch weight csv, set it here. Otherwise, it will default to branch_weight_data.xlsx in the data directory. Must be a .xlsx file
 # branch_weight_csv = "branch_weight_data_sensitivity"
 
 # Processing Parameters
@@ -67,13 +64,13 @@ time_interval = [5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150]     #
 time_interval = [100]
 sd = 0.4                # Standard deviation of the normal distribution to use for uncertainty in displacements
 n_cpus = 1
-thresh_lims = [0, 50]
+thresh_lims = [0, 10]
 thresh_step = 0.01
 
 # Nesi Parameters
 prep_sbatch = False   # Prep jobs for sbatch
 nesi_step = 'prep'  # 'prep' or 'combine'
-n_array_tasks = 250    # Number of array tasks
+n_array_tasks = 1000    # Number of array tasks
 min_tasks_per_array = 250   # Minimum number of sites per array
 min_branches_per_array = 1  # Minimum number of branches per array
 max_array_time = 3600 * 3 # Maximum time per array task when running paired model weighting (seconds). Won't supercede min tasks per array
@@ -89,12 +86,12 @@ figure_file_type_list = ["png", "pdf"]             # file types for figures
 ## Set parameters based on user inputs
 if testing:
     n_samples = 1e4   # Number of scenarios to run
-    job_time = 1    # Amount of time to allocate per site in the cumu_PPE task array
+    job_time = 0.01    # Amount of time to allocate per site in the cumu_PPE task array
     mem = 1    # Memory allocation for cumu_PPE task array
 else:
     n_samples = 1e5   # Number of scenarios to run
-    job_time = 3    # Amount of time to allocate per site in the cumu_PPE task array
-    mem = 2    # Memory allocation for cumu_PPE task array
+    job_time = 0.05    # Amount of time to allocate per site in the cumu_PPE task array
+    mem = 0.5    # Memory allocation for cumu_PPE task array
 
 if paired_crustal_sz and nesi_step == 'prep':
     if n_array_tasks < 500:
@@ -110,12 +107,12 @@ if fault_type == 'all':
     min_tasks_per_array = 50
 
 if not calculate_fault_model_PPE and calculate_weighted_mean_PPE:
-    job_time = 20
+    job_time = 0.025
 
 if isinstance(sz_site_names, str):
     sz_site_names = [sz_site_names]
 
-n_samples, job_time, mem, n_array_tasks, min_tasks_per_array = int(n_samples), int(job_time), int(mem), int(n_array_tasks), int(min_tasks_per_array)
+n_samples, n_array_tasks, min_tasks_per_array = int(n_samples), int(n_array_tasks), int(min_tasks_per_array)
 ## Solving processing conflicts
 
 if paired_crustal_sz and calculate_weighted_mean_PPE:
@@ -322,13 +319,8 @@ if not paired_crustal_sz:
     else:
         site_geojson = f"../subduction/discretised_{version_discretise_directory[0].split('/')[-1]}/{fault_type[0]}_site_locations{['_fq' if fakequakes else ''][0]}{sz_site_names[0]}.geojson"
     
-    if nesi:
-        with open(site_geojson, 'r') as f:
-            sites = f.readlines()
-            inv_sites = [site.split('"')[9] for site in sites if 'siteId' in site]
-    else:
-        site_gdf = gpd.read_file(site_geojson).drop_duplicates().reset_index(drop=True)
-        inv_sites = site_gdf['siteId'].values.tolist()
+    site_gdf = gpd.read_file(site_geojson).drop_duplicates().reset_index(drop=True)
+    inv_sites = site_gdf['siteId'].values.tolist()
 
     all_no_gf_sites = set()
     no_gf_geojson = f"../{version_discretise_directory[0]}/{os.path.basename(site_geojson).replace('.geojson', '_no_gf_sites.geojson')}"
@@ -395,7 +387,7 @@ if not paired_crustal_sz:
             PPE_dict = make_fault_model_PPE_dict(
                         branch_weight_dict=fault_model_branch_weight_dict,
                         model_version_results_directory=out_version_results_directory, n_samples=n_samples,
-                        slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step, sbatch=prep_sbatch, mem=mem,
+                        slip_taper=slip_taper, outfile_extension=outfile_extension, nesi=nesi, nesi_step=nesi_step, mem=mem,
                         time_interval=time_interval, sd=sd, n_array_tasks=n_array_tasks, min_tasks_per_array=min_tasks_per_array, job_time=job_time,
                         load_random=load_random, remake_PPE=remake_PPE, account=account, thresh_lims=thresh_lims, thresh_step=thresh_step, inv_sites=inv_sites,
                         calculate_SED=calculate_SED)
@@ -428,9 +420,9 @@ if paired_crustal_sz:
             pkl.dump(branch_weight_dict, f)
 
     paired_PPE_pickle_name = f"weighted_mean_PPE_dict{outfile_extension}{taper_extension}.h5"
-    PPE_filepath = f"../{out_version_results_directory}/{paired_PPE_pickle_name}"
+    paired_h5_file = f"../{out_version_results_directory}/{paired_PPE_pickle_name}"
 
-    if not os.path.exists(PPE_filepath):
+    if not os.path.exists(paired_h5_file):
         print(f"No crustal-{'-'.join(fault_type[1:])} paired PPE .h5 file found. Making a new one...")
         calculate_fault_model_PPE = True
         use_saved_dictionary = False
@@ -460,7 +452,7 @@ if paired_crustal_sz:
 
     #### skip this part if you've already run it once and saved to a pickle file
     if calculate_fault_model_PPE or not use_saved_dictionary:
-        paired_h5_file = make_sz_crustal_paired_PPE_dict(
+        make_sz_crustal_paired_PPE_dict(
             crustal_branch_weight_dict=branch_weight_dict_list[0], sz_branch_weight_dict_list=branch_weight_dict_list[1:],
             crustal_model_version_results_directory=version_discretise_directory[0],
             sz_model_version_results_directory_list=version_discretise_directory[1:],
@@ -474,7 +466,7 @@ if paired_crustal_sz:
 if not paired_crustal_sz and calculate_weighted_mean_PPE:
     print('\nCalculating weighted mean PPE...')
     get_weighted_mean_PPE_dict(fault_model_PPE_dict=PPE_dict, out_directory=out_version_results_directory, outfile_extension=outfile_extension,
-                               slip_taper=slip_taper, nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples, min_tasks_per_array=10,
+                               slip_taper=slip_taper, nesi=nesi, nesi_step=nesi_step, account=account, n_samples=n_samples, min_tasks_per_array=100,
                                n_array_tasks=n_array_tasks, mem=mem, cpus=n_cpus, job_time=job_time, thresh_lims=thresh_lims, thresh_step=thresh_step,
                                site_list=inv_sites, remake_PPE=remake_weighted_PPE, time_interval=time_interval, rate_scaling=rate_scaling, dip_models=dip_models)
 
